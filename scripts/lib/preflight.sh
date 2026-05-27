@@ -38,13 +38,26 @@ check_root() {
 }
 
 # ─── 3. Internet connectivity ────────────────────────────────────────────────
+# We don't care which endpoint responds — just that *any* of these well-known
+# liveness URLs is reachable. Docker Hub's registry root returns 401 without
+# auth headers, which would trip `curl -f`. So we use clear "I'm alive" endpoints
+# instead, and check connection success (not HTTP status).
 check_internet() {
-    local target="https://registry-1.docker.io/"
-    if curl -fsS --max-time 5 "$target" > /dev/null 2>&1; then
-        ok "$(t pf_internet_ok)"
-    else
-        die "$(t pf_internet_fail "$target")"
-    fi
+    local targets=(
+        "https://www.google.com/generate_204"     # → 204 No Content
+        "https://cloudflare.com/cdn-cgi/trace"    # → 200 plain text
+        "https://1.1.1.1/"                        # → 200 (Cloudflare DNS site)
+    )
+    local t
+    for t in "${targets[@]}"; do
+        # -s = silent, -o /dev/null = drop body, --max-time 5 = give up fast.
+        # No -f: any HTTP response (even 4xx/5xx) proves the network works.
+        if curl -sS -o /dev/null --max-time 5 "$t" 2>/dev/null; then
+            ok "$(t pf_internet_ok)"
+            return 0
+        fi
+    done
+    die "$(t pf_internet_fail "${targets[*]}")"
 }
 
 # ─── 4. Docker ───────────────────────────────────────────────────────────────
