@@ -1,0 +1,264 @@
+{
+  "name": "Langfuse — patch userId on Flowise traces",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "86189c65-c529-47ae-ae29-60f97bf30f39",
+      "name": "Schedule (every 30 min)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [
+        608,
+        448
+      ],
+      "typeVersion": 1.2
+    },
+    {
+      "parameters": {
+        "url": "http://smartrag-langfuse-web:3001/api/public/traces",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "100"
+            },
+            {
+              "name": "orderBy",
+              "value": "timestamp.desc"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "26c5398b-b9c9-4559-9545-94b8c946d7c1",
+      "name": "Langfuse: fetch traces without userId",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        832,
+        448
+      ],
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpBasicAuth": {
+          "name": "smartrag-httpBasicAuth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const traces = $input.first().json.data || [];\n\n// Nur Traces ohne userId\nconst nullTraces = traces.filter(t => !t.userId && t.sessionId);\n\nconsole.log(`Gesamt: ${traces.length}, ohne userId: ${nullTraces.length}`);\n\nreturn nullTraces.map(t => ({\n  json: {\n    traceId: t.id,\n    traceTimestamp: t.timestamp,\n    langfuseSessionId: t.sessionId  // = Flowise chatId\n  }\n}));"
+      },
+      "id": "8037dec8-dcb3-472c-9b10-b0bb52dc0ab0",
+      "name": "Extract traces without userId",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        1056,
+        448
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT DISTINCT ON (\"chatId\") \"chatId\", \"sessionId\" FROM chat_message WHERE \"chatId\" = '{{ $json.langfuseSessionId }}' AND \"sessionId\" LIKE '%|%' ORDER BY \"chatId\", \"createdDate\" DESC",
+        "options": {}
+      },
+      "id": "8d5a6cdc-81fe-49a4-b301-5b7b04b3159a",
+      "name": "Flowise DB: lookup sessionId",
+      "type": "n8n-nodes-base.postgres",
+      "position": [
+        1280,
+        448
+      ],
+      "typeVersion": 2.5,
+      "credentials": {
+        "postgres": {
+          "name": "smartrag-postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// PostgreSQL-Ergebnis\nconst pgRow = $json;\n\n// Wenn kein Match in PostgreSQL → überspringen\nif (!pgRow.sessionId) {\n  return { json: { skip: true } };\n}\n\n// LTI sessionId splitten: userId|givenName|agentId|ts|fullName\nconst parts = pgRow.sessionId.split('|');\nconst userId   = parts[0] || null;\nconst agentId  = parts[2] || null;\n// parts[4] = fullName (neu ab main.py update)\n// Fallback auf parts[1] (givenName) für ältere Sessions ohne fullName\nconst fullName = parts[4] || parts[1] || null;\n\nif (!userId) {\n  return { json: { skip: true } };\n}\n\n// traceId und timestamp aus vorherigem Node holen\nconst traceData = $('Extrahiere null-userId Traces').item.json;\n\nreturn {\n  json: {\n    traceId: traceData.traceId,\n    traceTimestamp: traceData.traceTimestamp,\n    userId,\n    fullName,\n    agentId,\n    skip: false\n  }\n};"
+      },
+      "id": "b5cfd529-cd7c-4f8c-b815-23871e2cb7c1",
+      "name": "Extract userId from sessionId",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        1488,
+        448
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "29d160c6-8cc3-4368-997d-214d1f1ea737",
+      "name": "Filter: skip=false",
+      "type": "n8n-nodes-base.filter",
+      "position": [
+        1712,
+        448
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://smartrag-langfuse-web:3001/api/public/ingestion",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ batch: [{ id: $now + '-patch-' + $json.traceId.substring(0,8), type: 'trace-create', timestamp: $json.traceTimestamp, body: { id: $json.traceId, userId: $json.userId, metadata: { fullName: $json.fullName, agentId: $json.agentId }, tags: ['user:' + $json.userId, 'name:' + $json.fullName, $json.agentId] } }] }) }}",
+        "options": {}
+      },
+      "id": "c4941b19-3b48-4326-aa5f-77eec63be915",
+      "name": "Langfuse: patch userId",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        1936,
+        448
+      ],
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpBasicAuth": {
+          "name": "smartrag-httpBasicAuth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconsole.log(`Langfuse userId patch v3: ${items.length} Traces aktualisiert`);\nreturn items;"
+      },
+      "id": "ae612ffd-a5ee-4042-8e4d-e1a34ee96071",
+      "name": "Log",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        2160,
+        448
+      ],
+      "typeVersion": 2
+    }
+  ],
+  "connections": {
+    "Schedule (every 30 min)": {
+      "main": [
+        [
+          {
+            "node": "Langfuse: fetch traces without userId",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Langfuse: fetch traces without userId": {
+      "main": [
+        [
+          {
+            "node": "Extract traces without userId",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract traces without userId": {
+      "main": [
+        [
+          {
+            "node": "Flowise DB: lookup sessionId",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flowise DB: lookup sessionId": {
+      "main": [
+        [
+          {
+            "node": "Extract userId from sessionId",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract userId from sessionId": {
+      "main": [
+        [
+          {
+            "node": "Filter: skip=false",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter: skip=false": {
+      "main": [
+        [
+          {
+            "node": "Langfuse: patch userId",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Langfuse: patch userId": {
+      "main": [
+        [
+          {
+            "node": "Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

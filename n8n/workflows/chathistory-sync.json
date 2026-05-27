@@ -1,0 +1,444 @@
+{
+  "name": "ChatHistory Sync — Postgres → Weaviate",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "id": "e9d7b1e2-68fa-4e28-867d-d932d0120fc4",
+      "name": "Schedule (every 5 min)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [
+        -1760,
+        240
+      ],
+      "typeVersion": 1.2
+    },
+    {
+      "parameters": {
+        "jsCode": "// Liest lastTimestamp aus Weaviate WorkflowState\nconst raw = await this.helpers.httpRequest({\n  method: 'GET',\n  url: 'http://smartrag-weaviate:8080/v1/objects/WorkflowState/3fa2478e-a528-4ca4-84e4-50bc76948667',\n  headers: { 'Authorization': 'Bearer ={{ $env.WEAVIATE_API_KEY }}' },\n  json: true\n});\nconst lastTimestamp = raw?.properties?.value || '2026-03-16T00:00:00.000Z';\nreturn [{ json: { lastTimestamp } }];"
+      },
+      "id": "a93ee638-2541-45b7-bbfb-f4a9ba38ef10",
+      "name": "Read lastTimestamp",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        -1536,
+        240
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, \"sessionId\", \"chatId\", role, content, \"createdDate\", chatflowid \nFROM chat_message \nWHERE \"createdDate\" > $1::timestamp \nORDER BY \"createdDate\" ASC \nLIMIT 100\n",
+        "options": {
+          "queryReplacement": "={{ [$json.lastTimestamp] }}"
+        }
+      },
+      "id": "2a7ed81e-43ac-4f59-a443-9dc6b42d568a",
+      "name": "Fetch new messages",
+      "type": "n8n-nodes-base.postgres",
+      "position": [
+        -1328,
+        240
+      ],
+      "typeVersion": 2.5,
+      "credentials": {
+        "postgres": {
+          "name": "smartrag-postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $input.all().length }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "6f59824a-ab88-4efe-805a-c8817f083082",
+      "name": "Any messages?",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        -1104,
+        240
+      ],
+      "typeVersion": 2.2
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aufbereitung aus PostgreSQL chat_message Zeilen\n// Gruppieren nach sessionId, sortieren nach createdDate, message_index vergeben\n\nconst grouped = {};\n\nfor (const item of $input.all()) {\n  const row = item.json;\n  const sessionId = row.sessionId || '';\n  if (!grouped[sessionId]) grouped[sessionId] = [];\n  grouped[sessionId].push(row);\n}\n\nconst results = [];\n\nfor (const sessionId of Object.keys(grouped)) {\n  // Nach createdDate aufsteigend sortieren\n  const messages = grouped[sessionId].sort((a, b) =>\n    new Date(a.createdDate) - new Date(b.createdDate)\n  );\n\n  const parts = sessionId.split('|');\n  const userId = parts[0] || '';\n  const agentIdStr = parts[2] || 'agent-01';\n  const agentId = parseInt(agentIdStr.replace('agent-', '')) || 1;\n  const chapter = agentId;\n\n  messages.forEach((row, idx) => {\n    let role = 'user';\n    if (row.role === 'apiMessage') role = 'assistant';\n\n    const traceId = row.id;\n    const timestamp = row.createdDate\n      ? new Date(row.createdDate).toISOString()\n      : new Date().toISOString();\n\n    const text = row.content || '';\n    if (!text.trim()) return;\n\n    results.push({ json: {\n      user_id: userId,\n      session_id: sessionId,\n      agent_id: agentId,\n      role: role,\n      text: text,\n      timestamp: timestamp,\n      message_index: idx,\n      message_hash: `${traceId}_${idx}`,\n      trace_id: traceId,\n      chapter: chapter\n    }});\n  });\n}\n\nreturn results;"
+      },
+      "id": "041306d5-f7dc-4c62-9328-8ca70d253004",
+      "name": "Prepare messages",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        -656,
+        128
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "const WEAVIATE_URL = 'http://smartrag-weaviate:8080';\nconst WEAVIATE_KEY = $env.WEAVIATE_API_KEY || '';\nconst results = [];\n\nfor (const item of $input.all()) {\n  const hash = item.json.message_hash;\n  const query = `{\n    Get {\n      ChatHistory(where: {\n        path: [message_hash],\n        operator: Equal,\n        valueText: ${hash}\n      }) { message_hash }\n    }\n  }`;\n\n  const raw = await this.helpers.httpRequest({\n    method: 'POST',\n    url: `${WEAVIATE_URL}/v1/graphql`,\n    headers: {\n      'Authorization': `Bearer ${WEAVIATE_KEY}`,\n      'Content-Type': 'application/json'\n    },\n    body: { query },\n    json: true\n  });\n\n  const response = typeof raw === 'string' ? JSON.parse(raw) : raw;\n  results.push({ json: {\n    ...item.json,\n    ChatHistory: response?.data?.Get?.ChatHistory ?? []\n  }});\n}\n\nreturn results;"
+      },
+      "id": "77766c22-5e33-412d-aa48-77a57fc1e8a1",
+      "name": "Deduplicate against Weaviate",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        -448,
+        128
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond2",
+              "leftValue": "={{ $json.ChatHistory.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "1d3b2b3a-e45d-4229-b370-d5715d977ad1",
+      "name": "Only new messages",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        -224,
+        128
+      ],
+      "typeVersion": 2.2
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map(item => ({ json: { ...item.json } }));"
+      },
+      "id": "783ac85c-8e53-415a-9e3b-ebc253843c8e",
+      "name": "Restore message data",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        0,
+        0
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LLM_BASE_URL || 'https://api.openai.com/v1' }}/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.LLM_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: $env.LLM_MODEL_FAST || 'gpt-4o-mini',\n  temperature: 0.1,\n  response_format: { type: 'json_object' },\n  messages: [\n    { role: 'system', content: 'You analyse a chat message and respond ONLY with valid JSON in this exact shape (no extra text): {\"message_type\": \"question|statement|greeting|farewell|other\", \"question_type\": \"factual|conceptual|procedural|none\", \"concepts_mentioned\": [\"concept1\"]}' },\n    { role: 'user',   content: 'role: ' + $json.role + '\\nmessage: ' + $json.text }\n  ]\n}) }}",
+        "options": {}
+      },
+      "id": "8dc3148f-6d96-490a-b55d-e3b73fe4bc18",
+      "name": "Extract Metadata (LLM)",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        224,
+        0
+      ],
+      "typeVersion": 4.2
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse OpenAI-compatible chat completion response\n// Expected shape: { choices: [{ message: { content: \"<json string>\" } }] }\n// content is a JSON string like {\"message_type\":\"...\",\"question_type\":\"...\",\"concepts_mentioned\":[...]}\n\nconst results = [];\n\nfor (const item of $input.all()) {\n  const stored = $('Restore message data').item.json;\n  let parsed = {};\n\n  try {\n    const content = item.json?.choices?.[0]?.message?.content || item.json?.message?.content || '{}';\n    parsed = typeof content === 'string' ? JSON.parse(content) : content;\n  } catch (e) {\n    // Fallback — keep going even if the LLM returned malformed JSON\n    parsed = { message_type: 'other', question_type: 'none', concepts_mentioned: [] };\n  }\n\n  results.push({\n    json: {\n      ...stored,\n      message_type:       parsed.message_type       || 'other',\n      question_type:      parsed.question_type      || 'none',\n      concepts_mentioned: Array.isArray(parsed.concepts_mentioned) ? parsed.concepts_mentioned : []\n    }\n  });\n}\n\nreturn results;\n"
+      },
+      "id": "b05dff39-f255-45b6-802e-7759a1e1b7c5",
+      "name": "Parse LLM Response",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        448,
+        0
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "// Embedding via OpenAI-compatible API (provider-agnostic)\n// Reads endpoint/model/key from n8n env vars (set via docker-compose).\n\nconst baseUrl = $env.EMBEDDING_BASE_URL || 'https://api.openai.com/v1';\nconst model   = $env.EMBEDDING_MODEL    || 'text-embedding-3-small';\nconst apiKey  = $env.EMBEDDING_API_KEY  || '';\n\nconst results = [];\n\nfor (const item of $input.all()) {\n  const text = (item.json.text || '').slice(0, 8000);\n\n  const response = await this.helpers.httpRequest({\n    method: 'POST',\n    url:    baseUrl + '/embeddings',\n    headers: {\n      'Content-Type':  'application/json',\n      'Authorization': 'Bearer ' + apiKey\n    },\n    body: { model, input: text },\n    json: true\n  });\n\n  const vector = response?.data?.[0]?.embedding;\n  if (!vector) {\n    throw new Error('No embedding returned from ' + baseUrl);\n  }\n\n  results.push({ json: { ...item.json, embedding: vector } });\n}\n\nreturn results;\n"
+      },
+      "id": "450b3496-87e2-428a-b0ba-3c6c6f6e9151",
+      "name": "Embedding",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        656,
+        0
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://smartrag-weaviate:8080/v1/objects",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer ={{ $env.WEAVIATE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"class\": \"ChatHistory\",\n  \"vector\": $json.embedding,\n  \"properties\": {\n    \"user_id\": $json.user_id,\n    \"session_id\": $json.session_id,\n    \"agent_id\": $json.agent_id,\n    \"role\": $json.role,\n    \"text\": $json.text,\n    \"timestamp\": $json.timestamp,\n    \"message_index\": $json.message_index,\n    \"message_hash\": $json.message_hash,\n    \"trace_id\": $json.trace_id,\n    \"chapter\": $json.chapter,\n    \"message_type\": $json.message_type,\n    \"question_type\": $json.question_type,\n    \"concepts_mentioned\": $json.concepts_mentioned\n  }\n} }}",
+        "options": {}
+      },
+      "id": "31a89458-acd1-429e-8bc8-1871e0cb273e",
+      "name": "Write to Weaviate ChatHistory",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        896,
+        0
+      ],
+      "typeVersion": 4.2
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "fefaa2ea-f85c-498e-93e8-2219792ad75d",
+      "name": "Aggregate items",
+      "type": "n8n-nodes-base.aggregate",
+      "position": [
+        1136,
+        144
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "jsCode": "const newTimestamp = new Date().toISOString();\nawait this.helpers.httpRequest({\n  method: 'PATCH',\n  url: 'http://smartrag-weaviate:8080/v1/objects/WorkflowState/3fa2478e-a528-4ca4-84e4-50bc76948667',\n  headers: {\n    'Authorization': 'Bearer ={{ $env.WEAVIATE_API_KEY }}',\n    'Content-Type': 'application/json'\n  },\n  body: { properties: { key: 'lastTimestamp', value: newTimestamp } },\n  json: true\n});\nreturn [{ json: { updated: true, newTimestamp } }];"
+      },
+      "id": "cabc4bfe-b01d-4a7c-bca6-48944b6eefa7",
+      "name": "Update lastTimestamp",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        1424,
+        144
+      ],
+      "typeVersion": 2
+    }
+  ],
+  "connections": {
+    "Schedule (every 5 min)": {
+      "main": [
+        [
+          {
+            "node": "Read lastTimestamp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read lastTimestamp": {
+      "main": [
+        [
+          {
+            "node": "Fetch new messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch new messages": {
+      "main": [
+        [
+          {
+            "node": "Any messages?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any messages?": {
+      "main": [
+        [
+          {
+            "node": "Prepare messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare messages": {
+      "main": [
+        [
+          {
+            "node": "Deduplicate against Weaviate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deduplicate against Weaviate": {
+      "main": [
+        [
+          {
+            "node": "Only new messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Only new messages": {
+      "main": [
+        [
+          {
+            "node": "Restore message data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Aggregate items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore message data": {
+      "main": [
+        [
+          {
+            "node": "Extract Metadata (LLM)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Metadata (LLM)": {
+      "main": [
+        [
+          {
+            "node": "Parse LLM Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse LLM Response": {
+      "main": [
+        [
+          {
+            "node": "Embedding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embedding": {
+      "main": [
+        [
+          {
+            "node": "Write to Weaviate ChatHistory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write to Weaviate ChatHistory": {
+      "main": [
+        [
+          {
+            "node": "Aggregate items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate items": {
+      "main": [
+        [
+          {
+            "node": "Update lastTimestamp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

@@ -1,0 +1,44 @@
+# n8n Workflows — Core
+
+These workflows are the runtime memory/observability pipelines that keep the
+multi-agent system stateful and traceable. They are imported automatically
+by `scripts/bootstrap.sh` via the n8n REST API.
+
+| File | Trigger | Purpose |
+|------|---------|---------|
+| `chathistory-sync.json`     | Schedule (every 5 min) | Polls Postgres for new Flowise messages, generates embeddings + metadata, writes to Weaviate `ChatHistory` for cross-agent semantic recall. |
+| `usermemory-summary.json`   | Schedule              | Periodically condenses each user's recent sessions into the Weaviate `UserMemory` record. Uses the configured LLM. |
+| `langfuse-userid-patch.json`| Schedule (every 30 min) | Looks up `userId` from Flowise's Postgres for Langfuse traces that came in without one, then patches the trace. |
+
+## Required environment variables
+
+These workflows read configuration from the following n8n env vars (set by
+`docker/docker-compose.yml`):
+
+- `WEAVIATE_API_KEY`              — auth for Weaviate writes/queries
+- `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL_FAST` — for metadata extraction
+- `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL` — for chat-history embedding
+
+## Required n8n credentials
+
+After import, attach matching credentials in the n8n UI to these nodes:
+
+| Workflow | Node | Credential type | Suggested name |
+|----------|------|-----------------|----------------|
+| `chathistory-sync` | Fetch new messages           | Postgres                | `smartrag-postgres` |
+| `usermemory-summary` | LLM: summarise session     | Anthropic API           | `smartrag-anthropic` |
+| `langfuse-userid-patch` | Langfuse: fetch/patch   | HTTP Basic Auth (LF keys) | `smartrag-langfuse` |
+| `langfuse-userid-patch` | Flowise DB: lookup      | Postgres                | `smartrag-postgres` |
+
+`bootstrap.sh` creates these credentials automatically.
+
+## LLM provider note
+
+`chathistory-sync` uses an **OpenAI-compatible HTTP request** for metadata
+extraction (it sets `response_format: { type: "json_object" }`). It works
+out-of-the-box with OpenAI, OpenRouter, vLLM, LM Studio, and most local
+servers.
+
+If you set `LLM_PROVIDER=anthropic`, the metadata-extractor node needs to be
+swapped for the Anthropic LangChain node (see `usermemory-summary` for the
+pattern). The setup wizard can do this for you.

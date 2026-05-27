@@ -1,0 +1,104 @@
+{
+  "_comment": "Agent → Flowise Chatflow mapping. The middleware reads each chatflow_id from the env var named in chatflow_env (set in the main .env). Copy this file to agents.json and customise. Agent IDs are stable and used as URL path segments — do not rename after deployment without migrating session data.",
+
+  "agents": [
+    {
+      "id":           "agent-01",
+      "label":        "Universal Assistant",
+      "chatflow_env": "CHATFLOW_AGENT01",
+      "block":        1,
+      "embed_style":  "bubble"
+    },
+    {
+      "id":           "agent-02",
+      "label":        "Topic 1",
+      "chatflow_env": "CHATFLOW_AGENT02",
+      "block":        2,
+      "embed_style":  "fullscreen"
+    },
+    {
+      "id":           "agent-03",
+      "label":        "Topic 2",
+      "chatflow_env": "CHATFLOW_AGENT03",
+      "block":        3,
+      "embed_style":  "fullscreen"
+    },
+    {
+      "id":           "agent-04",
+      "label":        "Topic 3",
+      "chatflow_env": "CHATFLOW_AGENT04",
+      "block":        4,
+      "embed_style":  "fullscreen"
+    },
+    {
+      "id":           "agent-05",
+      "label":        "Topic 4",
+      "chatflow_env": "CHATFLOW_AGENT05",
+      "block":        5,
+      "embed_style":  "fullscreen"
+    },
+    {
+      "id":           "agent-06",
+      "label":        "Topic 5",
+      "chatflow_env": "CHATFLOW_AGENT06",
+      "block":        6,
+      "embed_style":  "fullscreen"
+    },
+    {
+      "id":           "agent-07",
+      "label":        "Topic 6",
+      "chatflow_env": "CHATFLOW_AGENT07",
+      "block":        7,
+      "embed_style":  "fullscreen"
+    },
+    {
+      "id":           "agent-08",
+      "label":        "Topic 7",
+      "chatflow_env": "CHATFLOW_AGENT08",
+      "block":        8,
+      "embed_style":  "fullscreen"
+    },
+    {
+      "id":           "agent-09",
+      "label":        "Topic 8",
+      "chatflow_env": "CHATFLOW_AGENT09",
+      "block":        9,
+      "embed_style":  "fullscreen"
+    },
+    {
+      "id":           "agent-10",
+      "label":        "Persona Agent",
+      "chatflow_env": "CHATFLOW_AGENT10",
+      "block":        10,
+      "embed_style":  "fullscreen"
+    },
+    {
+      "id":           "agent-11",
+      "label":        "Expert Feedback",
+      "chatflow_env": "CHATFLOW_AGENT11",
+      "block":        11,
+      "embed_style":  "fullscreen"
+    },
+    {
+      "id":           "agent-12",
+      "label":        "Applied Topic",
+      "chatflow_env": "CHATFLOW_AGENT12",
+      "block":        12,
+      "embed_style":  "fullscreen"
+    },
+    {
+      "id":           "agent-13",
+      "label":        "Knowledge Test",
+      "chatflow_env": "CHATFLOW_AGENT13",
+      "block":        13,
+      "embed_style":  "fullscreen"
+    },
+    {
+      "id":           "agent-14",
+      "label":        "Backup Assistant",
+      "chatflow_env": "CHATFLOW_AGENT14",
+      "block":        14,
+      "embed_style":  "fullscreen"
+    }
+  ]
+}
