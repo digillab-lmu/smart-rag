@@ -1,0 +1,209 @@
+# SMART RAG
+
+**Shared Memory Agent-Based Retrieval for Teaching**
+
+An open-source, course-agnostic deployment of a multi-agent AI tutoring system.
+Built for university and professional-education contexts where a single subject
+benefits from several specialized AI agents — each covering one topic — with
+persistent per-student memory, hybrid retrieval, and optional LMS integration.
+
+> Developed by **Benjamin Götzinger** at [DigiLLab, LMU München](https://edpsych.psy.lmu.de/) —
+> Chair of Empirical Educational Research and Educational Psychology
+> (Prof. Frank Fischer) — and generalized for community use.
+
+---
+
+## What it gives you
+
+- **Up to 14 specialized AI agents** (Flowise AgentFlows) with a unified
+  memory model — students keep their progress across agents and sessions.
+- **Hybrid retrieval** (Weaviate) with optional re-ranking (Cohere or custom).
+- **Concept prerequisite graph** (Neo4j) for adaptive scaffolding.
+- **Persistent user memory** (`UserMemory` + `ChatHistory` in Weaviate) refreshed
+  by scheduled n8n pipelines.
+- **LLM observability** (Langfuse + ClickHouse, optional).
+- **LMS integration** via LTI 1.3 (Moodle, ILIAS, Canvas — optional).
+- **One-command deployment** to Ubuntu 24.04 LTS via interactive wizard.
+
+---
+
+## Architecture
+
+```
+LMS (LTI 1.3, optional)
+    │
+    ▼
+LTI Middleware (Flask)
+    │  session token: user_id|name|agent_id|timestamp
+    ▼
+Flowise — 14 AgentFlows (1 per topic)
+    ├──► Weaviate     — RAG over course materials
+    ├──► Neo4j        — concept prerequisites
+    ├──► Redis        — chat queue + LTI sessions
+    └──► LLM API      — Anthropic | OpenAI | Google | Mistral | Cohere |
+                        OpenRouter | any OpenAI-compatible endpoint
+
+n8n — background pipelines
+    ├──► ChatHistory sync     (Postgres → Weaviate, every 5 min)
+    ├──► UserMemory summary   (Weaviate + LLM)
+    └──► Langfuse userId patch (Postgres → Langfuse)
+
+PostgreSQL — Flowise + n8n + Langfuse state
+MinIO      — document store + Langfuse blob backend
+```
+
+Document **ingestion** (PDF/audio/video → chunks → Weaviate) lives in a
+separate repository: [`smart-rag-ingest`](https://github.com/) (planned).
+
+---
+
+## Quick start
+
+**Requirements**: Ubuntu 24.04 LTS, Docker, Docker Compose v2, a public domain
+with DNS pointing to your server, ports 80/443 reachable.
+
+```bash
+# On the server — clone into /srv/smart-rag (recommended)
+sudo mkdir -p /srv && sudo chown $USER /srv
+git clone <this-repo-url> /srv/smart-rag
+cd /srv/smart-rag
+
+# Phase 1 — interactive wizard (≈ 5 min)
+sudo bash scripts/bootstrap.sh
+#   → answers: domain, LLM provider, embedding model, etc.
+#   → generates: .env, credentials.txt, nginx config, Weaviate schema
+
+# Set DNS A-record(s) for *.your-domain.example
+#   (one wildcard *.your-domain.example, OR individual records per subdomain)
+
+# Phase 2 — deploy (≈ 10 min)
+sudo bash scripts/bootstrap.sh --continue
+#   → installs nginx + certbot (if missing)
+#   → obtains Let's Encrypt SAN certificate
+#   → starts Docker stack and waits for health
+```
+
+When `--continue` finishes, your stack is running at:
+- `https://smart-rag.your-domain.example` — Flowise (chat interface)
+- `https://n8n.your-domain.example` — n8n (automation)
+- `https://minio.your-domain.example` — MinIO console
+- `https://langfuse.your-domain.example` — Langfuse (if observability profile)
+- `https://lti.your-domain.example` — LTI middleware (if lti profile)
+
+Initial admin credentials are in `credentials.txt` (chmod 600).
+
+---
+
+## Wizard features
+
+- **Bilingual** — English or German (auto-detected from `$LANG`, override
+  with `--lang en|de`).
+- **Coexistence-safe** — designed to deploy on a server that already runs
+  other web services. See [`docs/COEXISTENCE.md`](docs/COEXISTENCE.md) for
+  the explicit contract of what we touch and (mostly) don't touch.
+- **Auto-resolves port conflicts** — if port 9000 is already taken on the
+  host, the wizard proposes a free alternative (e.g. 9100) and writes the
+  override into `.env`. No manual intervention needed.
+- **Pre-flight checks** — Ubuntu version, Docker, disk space, DNS resolution,
+  nginx server-name collisions, existing certificates, base data path.
+- **Safety snapshot** — before any destructive action, the script captures
+  `/etc/nginx`, current Docker state, and listening ports to
+  `/var/backups/smartrag-pre-bootstrap-<timestamp>/` for easy rollback.
+
+---
+
+## What's NOT done by the bootstrap (yet)
+
+The bootstrap deploys the *infrastructure*. After `--continue` succeeds, Flowise
+and n8n are running but empty — no agents or workflows imported yet. The next
+release will add:
+
+- **Phase 8** — deploy Weaviate + Neo4j schemas
+- **Phase 9** — set up Flowise credentials, variables, and import the 6 agent
+  templates from `flowise/agents/`
+- **Phase 10** — import the 3 n8n core workflows and create credentials
+- **Phase 11** — generate LTI RSA keys (if LTI profile is enabled)
+
+For now you can do these steps manually through the Flowise / n8n UIs using
+the JSON templates in `flowise/agents/` and `n8n/workflows/`.
+
+A **Textual-based admin TUI** (raspi-config-style) is also planned for
+day-to-day operations: configure agents, rotate secrets, view health, run
+backups.
+
+---
+
+## Configuration
+
+Everything lives in `.env`. The wizard writes a complete one, but here are the
+key knobs:
+
+| Variable | Purpose |
+|----------|---------|
+| `COMPOSE_PROFILES` | `core` always; add `observability` for Langfuse, `lti` for LTI |
+| `LLM_PROVIDER` / `LLM_API_KEY` | LLM provider + key (Anthropic, OpenAI, …) |
+| `EMBEDDING_PROVIDER` / `EMBEDDING_MODEL` / `EMBEDDING_DIMENSIONS` | Embedding model (**don't change after first ingest!**) |
+| `WEAVIATE_COLLECTION_NAME` | Derived from `COURSE_ID` |
+| `FLOWISE_PORT`, `N8N_PORT`, … | Host port bindings (override if conflicts) |
+
+See [`.env.example`](.env.example) for the complete annotated list.
+
+---
+
+## Repository layout
+
+```
+smart-rag/
+├── docker/                 # docker-compose.yml (profiles: core, observability, lti)
+├── nginx/                  # smartrag-suite.conf template
+├── weaviate/               # schema.json (with __COLLECTION_NAME__ placeholder)
+├── neo4j/                  # schema.cypher (constraints) + seed.example.cypher
+├── flowise/agents/         # 6 generic agent JSON templates
+├── n8n/
+│   ├── workflows/          # 3 core workflows (sync, summary, observability)
+│   └── workflows-ingest/   # Document ingest workflows (→ moving to smart-rag-ingest)
+├── lti-middleware/         # Flask app for LTI 1.3
+├── scripts/                # bootstrap.sh, lib/, standalone phase scripts
+└── docs/                   # COEXISTENCE.md, requirements.md
+```
+
+---
+
+## License
+
+The code in this repository is licensed under the **GNU AGPLv3**.
+The documentation (`docs/`, `README.md`) is licensed under **CC BY-NC-SA 4.0**.
+
+- **Code** — free to use, modify, and self-host. If you provide a hosted
+  service based on it, the AGPLv3 source-disclosure clause applies.
+- **Docs** — share and adapt freely, but **non-commercial only**, with
+  attribution and same-license re-sharing. This prevents commercial
+  resellers from rebranding the documentation.
+
+See [`LICENSE`](LICENSE) and [`docs/LICENSE-docs`](docs/LICENSE-docs).
+
+---
+
+## Contributing
+
+This is an early public release. Issues, pull requests, and discussion welcome.
+The most useful contributions right now:
+
+- **Real deployment testing** — run the bootstrap on a fresh server and report
+  what does or doesn't work.
+- **Documentation gaps** — anything unclear in this README or `docs/`.
+- **Translations** — German + English are first-class; other languages welcome
+  via `scripts/lib/messages.sh`.
+
+---
+
+## Acknowledgements
+
+- Built on top of the excellent open-source work of the
+  [Flowise](https://flowiseai.com/), [n8n](https://n8n.io/),
+  [Weaviate](https://weaviate.io/), [Neo4j](https://neo4j.com/),
+  [Langfuse](https://langfuse.com/), and [MinIO](https://min.io/) teams.
+- Developed by [Benjamin Götzinger](https://www.psy.lmu.de/edu/persons/ag-fischer/goetzinger_benjamin/index.html)
+  at [DigiLLab, LMU München](https://edpsych.psy.lmu.de/) — Chair of
+  Empirical Educational Research and Educational Psychology (Prof. Frank Fischer).
+- Pedagogical concept developed in collaboration with the DigiLLab team.

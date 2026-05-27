@@ -1,0 +1,864 @@
+{
+  "name": "vhb Document Ingest (docling2minio + VL) v2",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const splitItem = $('Split Files').item;\nconst originalFileName = splitItem.binary?.data?.fileName || \"document.md\";\nconst directory = $('Form Trigger').item.json[\"Verzeichnis\"] || \"upload\";\n\nconst inputData = $json.document.md_content;\n\n// Regex erfasst eingebettete Base64-Bilder aus Docling-Markdown-Output\n// Zwei Formate: ![Image](data:...) und reine data:-URLs\nconst imgRegex = /!\\[Image\\]\\(data:image\\/([^;]+);base64,([A-Za-z0-9+/=\\s]+)\\)|data:image\\/([^;]+);base64,([A-Za-z0-9+/=\\s]+)/g;\n\nconst tempImages = [];\nlet match;\nwhile ((match = imgRegex.exec(inputData)) !== null) {\n  const mimeType = (match[1] || match[3] || 'unknown').toLowerCase();\n  const rawBase64 = match[2] || match[4];\n  const cleanBase64 = rawBase64.replace(/\\s+/g, '');\n\n  // PNG-Dimensionen aus Header lesen (Bytes 16-23 des PNG-Headers)\n  // Nur für PNG – JPEG gibt immer 999x999 zurück (Fallback)\n  function getPngDimensions(base64) {\n    try {\n      const binary = atob(base64.substring(0, 40));\n      const width  = (binary.charCodeAt(16) << 24) | (binary.charCodeAt(17) << 16) |\n                     (binary.charCodeAt(18) << 8)  |  binary.charCodeAt(19);\n      const height = (binary.charCodeAt(20) << 24) | (binary.charCodeAt(21) << 16) |\n                     (binary.charCodeAt(22) << 8)  |  binary.charCodeAt(23);\n      return { width, height };\n    } catch(e) { return { width: 999, height: 999 }; }\n  }\n\n  const dims = mimeType.includes('png') ? getPngDimensions(cleanBase64) : { width: 999, height: 999 };\n\n  // SVG/PDF/Unknown werden nicht unterstützt\n  const isKnownUnsupported = ['svg', 'pdf', 'unknown'].some(t => mimeType.includes(t));\n\n  // >= 33 statt >= 50: qwen3-vl's SmartResize crasht (Ollama Panic) bei Bildern < 32px\n  // Bestätigt durch Ollama Logs: \"height:1 or width:1 must be larger than factor:32\"\n  const isSupported = !isKnownUnsupported && dims.width >= 33 && dims.height >= 33;\n\n  tempImages.push({\n    base64: cleanBase64,\n    mimeType,\n    isSupported,\n    index: match.index,\n    length: match[0].length,\n    width: dims.width,\n    height: dims.height\n  });\n}\n\n// Bilder durch Platzhalter ersetzen → cleanMarkdown für LLM-Verarbeitung\nlet counter = 0;\nconst cleanMarkdown = inputData.replace(imgRegex, () => {\n  counter++;\n  return ` ##FIGURE_${counter}## `;\n});\n\n// Kontext vor/nach jedem Bild extrahieren (für qwen3-vl Prompt)\n// 1000 Zeichen reichen für Abbildungstitel und Quelle\nconst images = tempImages.map((img, i) => {\n  const placeholder = ` ##FIGURE_${i + 1}## `;\n  const pos = cleanMarkdown.indexOf(placeholder);\n  return {\n    imageIndex: i + 1,\n    base64Image: img.isSupported ? img.base64 : null,\n    imageType: img.mimeType,\n    isSupported: img.isSupported,\n    width: img.width,\n    height: img.height,\n    totalImages: tempImages.length,\n    contextBefore: cleanMarkdown.substring(Math.max(0, pos - 1000), pos).trim(),\n    contextAfter: cleanMarkdown.substring(pos + placeholder.length, pos + placeholder.length + 1000).trim()\n  };\n});\n\nreturn [{\n  json: {\n    cleanMarkdown,\n    images,\n    hasImages: images.some(img => img.isSupported),\n    originalFileName,\n    directory,\n    fileName: originalFileName.replace(/\\.[^/.]+$/, '.md')\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        528
+      ],
+      "id": "f7f7eb3b-8fec-4a88-b841-7fe3363184bd",
+      "name": "Extract Images"
+    },
+    {
+      "parameters": {
+        "fromEmail": "noreply@edpsych-ai.de",
+        "toEmail": "={{ $('Form Trigger').first().json[\"E-Mail\"] }}",
+        "subject": "Status PDF Verarbeitung ",
+        "html": "=<div style=\"font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; border: 1px solid #e5e7eb; padding: 20px; border-radius: 10px;\">\n  <h2 style=\"color: #1d4ed8; margin-top: 0;\">✅ Verarbeitung erfolgreich</h2>\n  <p>Die Konvertierung Ihrer Dokumente ist abgeschlossen. Hier sind die Details für Ihren <strong>Document Store (z.B. Flowise).</strong> Bitte geben Sie diese genau so beim Einbinden ein, denn es kann sein, dass die ursprünglich von Ihnen eingegeben Ordner syntaxkonform umbenannt wurden:</p>\n  \n  <div style=\"background-color: #f8fafc; border-left: 4px solid #1d4ed8; padding: 15px; margin: 20px 0;\">\n    <p style=\"margin: 5px 0;\"><strong>Bucket:</strong> <code>vhb-rag</code></p>\n    <p style=\"margin: 5px 0;\"><strong>Region / Location:</strong> <code>eu-north-1</code></p>\n    <p style=\"margin: 5px 0;\"><strong>Prefix / Base Directory:</strong> \n      <code>{{ (() => {\n        const replaceUmlauts = (str) => {\n          if (!str) return 'upload';\n          return str.replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue')\n                    .replace(/Ä/g, 'Ae').replace(/Ö/g, 'Oe').replace(/Ü/g, 'Ue')\n                    .replace(/ß/g, 'ss').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '');\n        };\n        const raw = $('Form Trigger').first().json.Verzeichnis || \"upload\";\n        return replaceUmlauts(raw).replace(/[^a-zA-Z0-9/_-]/g, '-').toLowerCase();\n      })() }}</code>\n    </p>\n  </div>\n  <h3>Verarbeitete Dateien:</h3>\n  <ul style=\"background: #f3f4f6; padding: 15px 30px; border-radius: 8px;\">\n    {{ $('Split Files').all().map(item => `<li>${item.binary.data.fileName}</li>`).join('') }}\n  </ul>\n  <div style=\"text-align: center; margin: 25px 0;\">\n    <a href=\"https://vhb-minio.edpsych-ai.de/browser/vhb-rag\" \n       style=\"background-color: #1d4ed8; color: white; padding: 12px 25px; text-decoration: none; font-weight: bold; border-radius: 5px; display: inline-block;\">\n       Dateien in MinIO ansehen\n    </a>\n  </div>\n  <p style=\"font-size: 0.85em; color: #6b7280; border-top: 1px solid #eee; padding-top: 15px;\">\n    🔒 <strong>Datenschutz-Hinweis:</strong> Die Analyse der Bilder erfolgte lokal auf der NVIDIA DGX Spark. Es wurden keine Daten an externe Cloud-Anbieter übertragen.\n  </p>\n</div>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1344,
+        240
+      ],
+      "id": "2d45da40-c1be-447b-9b66-6ba765630155",
+      "name": "Send email",
+      "webhookId": "4c9a5b86-95c9-4ce3-8f08-3f4b4c4de21e",
+      "credentials": {
+        "smtp": {
+          "id": "BQ3f7FyLWQXvlNIp",
+          "name": "SMTP Brevo"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://docling-serve:5001/v1/convert/file",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "files",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "force_ocr",
+              "value": "={{ $('Form Trigger').item.json['Gescanntes PDF'] === true ? 'true' : 'false' }}"
+            },
+            {
+              "name": "ocr_engine",
+              "value": "tesseract"
+            },
+            {
+              "name": "ocr_language",
+              "value": "de"
+            },
+            {
+              "name": "ocr_language",
+              "value": "en"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 1800000
+        }
+      },
+      "id": "f29b6dc7-9fe1-48ca-ae74-812565ca7eae",
+      "name": "Docling API (Intern)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1280,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        944,
+        512
+      ],
+      "id": "99cf9a10-f1ea-43f7-9a14-42bf03a5968e",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "path": "document-ingest-v2",
+        "formTitle": "vhb Docling Document Ingest",
+        "formDescription": "=<h3>LMU SMART-RAG || Document Ingest</h3>\n<p>Konvertieren Sie Ihre Dokumente für <b>RAG-Systeme</b> präzise in Markdown (.md) und speichern Sie diese direkt in MinIO.</p>\n<br><hr>\n<p style=\"text-align: left;\">\n<h4>📂 Zielkonfiguration</h4>\nGeben Sie den <b>Ordnerpfad</b> an, in den die .md-Dateien hochgeladen werden sollen.<br>\nFehlende Verzeichnisse werden automatisch angelegt.\n</p>\n<hr>\n<p style=\"text-align: left;\">\n<h4>✅ Unterstützte Formate</h4>\nPDF, DOCX, XLSX, PPTX, HTML, Markdown, PNG, JPEG, TIFF\n</p><br><hr>\n<h3>Hinweise:</h3>\nDie Verarbeitung erfolgt auf den institutseigenen Servern des Lehrstuhls Empirische Pädagogik und Pädagogische Psychologie.<br><br>\n<b>Bitte beachten Sie:</b> Die Verarbeitung großer und zahlreicher Dokumente kann sehr lange dauern (ca. 3 min pro 100 Seiten OHNE Abbildungen).<br>\nWenn Sie <b>Dokumente mit Abbildungen</b> hochladen, steigt die Verarbeitungszeit drastisch, da die Bilder mittels KI verbalisiert und eingebettet werden. Dies dauert je nach Komplexität <b>bis zu 10 min pro Abbildung</b> (Beispiel: Ein Dokument mit 12 Seiten und 10 Abbildungen braucht ca. 1 Stunde Verarbeitungszeit). Wir <b>empfehlen, nicht mehr als drei Dokumente gleichzeitig</b> zu verarbeiten.<br><br>\nSie müssen nicht auf die Verarbeitung warten, Sie werden per Mail informiert, wenn der Vorgang abgeschlossen ist.\n<br><br><hr>\n<div style=\"background: #fffbeb; border-left: 4px solid #f59e0b; padding: 15px; border-radius: 5px; margin-top: 10px;\">\n<h4 style=\"margin-top: 0;\">⚠️ Hinweis zur Urheberrechtslage</h4>\n<p>Dieses System darf ausschließlich für nicht-kommerzielle Lehr- und Forschungszwecke verwendet werden. Das Hochladen von Dokumenten ist nur zulässig, wenn Sie die entsprechenden Nutzungsrechte besitzen oder eine gesetzliche Erlaubnisgrundlage greift. Schulbücher und andere ausschließlich für den Schulgebrauch bestimmte Werke dürfen nicht hochgeladen werden. Der Zugriff auf verarbeitete Inhalte ist auf den jeweiligen Kurs bzw. die jeweilige Lehrveranstaltung zu beschränken. Der Betreiber dieses Systems übernimmt keine Haftung für urheberrechtlich unzulässige Uploads.</p>\n</div>",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Dateien",
+              "fieldType": "file",
+              "acceptFileTypes": ".pdf, .docx, .xlsx, .pptx, .html, .htm, .adoc, .asciidoc, .md, .png, .jpg, .jpeg, .tiff, .tif, .bmp",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Gescanntes PDF",
+              "fieldType": "checkbox",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Es handelt sich um gescannte Dokumente"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "Verzeichnis",
+              "placeholder": "z.B. assistent_1",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "E-Mail",
+              "fieldType": "email",
+              "placeholder": "Ihre E-Mailadresse",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Urheberrechtsbestätigung",
+              "fieldType": "checkbox",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Ich bestätige, dass ich für die hochgeladenen Dokumente die erforderlichen Nutzungsrechte besitze oder mich auf eine gesetzliche Erlaubnisgrundlage (z.B. §60a oder §60d UrhG) berufen kann. Werke, die ausschließlich für den Schulgebrauch bestimmt sind (z.B. Schulbücher), sind von der Nutzung ausgeschlossen. Die Nutzung erfolgt ausschließlich zu nicht-kommerziellen Lehr- oder Forschungszwecken. Die Verantwortung für die rechtmäßige Nutzung liegt vollständig bei mir als hochladender Person."
+                  }
+                ]
+              },
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {
+          "buttonLabel": "Hochladen",
+          "respondWithOptions": {
+            "values": {
+              "formSubmittedText": "Ihre Dateien werden nun umgewandelt und in min.io abgelegt. Dies kann unter Umständen sehr lang dauern. Sie erhalten eine E-Mail, wenn der Vorgang abgeschlossen ist. Sie können dieses Fenster nun schließen."
+            }
+          }
+        }
+      },
+      "id": "c0173861-5928-486b-842a-8a88410b1670",
+      "name": "Form Trigger",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2,
+      "position": [
+        16,
+        512
+      ],
+      "webhookId": "2c38e606-32fa-4c14-8725-128782461473"
+    },
+    {
+      "parameters": {
+        "jsCode": "const allAnalyses = $input.all();\nconst meta = $input.first().json.meta \n  ?? $('Add Metadata').item.json; // Fallback\nlet finalDocument = meta.cleanMarkdown || '';\n\nconst analysesWithIndex = allAnalyses\n  .map(item => ({\n    imageIndex:\n      item.json.imageIndex ??\n      item.json.image?.imageIndex ??\n      item.json.meta?.imageIndex ??\n      item.json.data?.imageIndex ??\n      item.json.index,\n    content: item.json.message?.content ?? item.json.content ?? \"\"\n  }))\n  .filter(a => Number.isInteger(a.imageIndex) && a.content.trim().length > 0)\n  .sort((a, b) => a.imageIndex - b.imageIndex);\n\nconst analysisMap = {};\nfor (const a of analysesWithIndex) {\n  analysisMap[a.imageIndex] = a.content;\n}\n\n// Token normalisieren\nfinalDocument = finalDocument.replace(/##\\s*FIGURE_(\\d+)\\s*##/g, '##FIGURE_$1##');\n\nconst parts = finalDocument.split(/##FIGURE_(\\d+)##/);\n\nfinalDocument = '';\nfor (let i = 0; i < parts.length; i++) {\n  if (i % 2 === 0) {\n    finalDocument += parts[i];\n  } else {\n    const index = parseInt(parts[i]);\n    const analysis = analysisMap[index];\n    if (analysis) {\n      finalDocument += `\\n---\\n> ### 🖼️ KI-BILDANALYSE (ABBILDUNG ${index})\\n>\\n${analysis.split('\\n').map(line => '> ' + line).join('\\n')}\\n---\\n`;\n    } else {\n      finalDocument += `[Keine Analyse für Abbildung ${index}]`;\n    }\n  }\n}\n\nreturn [{\n  json: {\n    ...meta,\n    fileName: meta.fileName || $json.fileName,\n    message: { content: finalDocument }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3536,
+        144
+      ],
+      "id": "7d4e07a8-217d-40d1-a5f9-9568573a9a4a",
+      "name": "Reassemble Markdown"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "7c7d39c2-9e7f-43a2-b07a-ebbf3967657e",
+              "leftValue": "={{ $json.hasImages }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2544,
+        528
+      ],
+      "id": "aca498f0-cb6b-4588-92a6-768e1f99e865",
+      "name": "Has Images?"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    message: {\n      content: $json.message?.content || $json.cleaned || \"\"\n    },\n    directory: $json.directory || \"upload\",\n    originalFileName: $json.originalFileName || \"document.md\",\n    hasImages: false,\n    images: [],\n    cleanMarkdown: $json.cleaned || $json.cleanMarkdown || \"\"\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3264,
+        544
+      ],
+      "id": "6b01f1a8-6e31-489f-9769-9307c5eab942",
+      "name": "Pass Through Markdown"
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "bucketName": "vhb-rag",
+        "fileName": "={{ (() => {\n  const replaceUmlauts = (str) => {\n    if (!str) return 'default';\n    return str\n      .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue')\n      .replace(/Ä/g, 'Ae').replace(/Ö/g, 'Oe').replace(/Ü/g, 'Ue')\n      .replace(/ß/g, 'ss')\n      .normalize('NFD')\n      .replace(/[\\u0300-\\u036f]/g, '');\n  };\n\n  const verzeichnis = replaceUmlauts($json.directory || \"upload\")\n    .replace(/[^a-zA-Z0-9/_-]/g, '-')\n    .replace(/-+/g, '-')\n    .replace(/^-|-$/g, '')\n    .toLowerCase();\n\n  const baseName = replaceUmlauts(($json.originalFileName || \"document\").replace(/\\.[^.]+$/, ''))\n    .replace(/[^a-zA-Z0-9_-]/g, '-')\n    .replace(/-+/g, '-')\n    .replace(/^-+|-+$/g, '');\n\n  return `${verzeichnis}/${baseName}.md`;\n})() }}",
+        "binaryData": false,
+        "fileContent": "={{ $json.message.content }}",
+        "additionalFields": {}
+      },
+      "id": "f3036218-2f55-46f6-a192-79a190889e14",
+      "name": "Upload to MinIO",
+      "type": "n8n-nodes-base.s3",
+      "typeVersion": 1,
+      "position": [
+        5008,
+        544
+      ],
+      "credentials": {
+        "s3": {
+          "id": "sCifJbbJmwfbTi6z",
+          "name": "vhb-minio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const binaryData = $binary;\nconst results = [];\n\nfor (const key of Object.keys(binaryData)) {\n  results.push({\n    json: {\n      originalKey: key,\n      Verzeichnis: $('Form Trigger').item.json[\"Verzeichnis\"]\n    },\n    binary: {\n      data: binaryData[key]\n    }\n  });\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        512
+      ],
+      "id": "8d123fb5-21c8-4c5a-bf91-d650e19b9b77",
+      "name": "Split Files"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst splitFilesItem = $('Split Files').item;\nconst formTriggerItem = $('Form Trigger').first();\n\nconst originalFileName = splitFilesItem.binary?.data?.fileName || \"unnamed-file\";\n\nreturn items.map(item => ({\n  json: {\n    ...item.json,\n    message: {\n      content: item.json.cleaned || item.json.cleanMarkdown || item.json.message?.content || \"\"\n    },\n    originalFileName: originalFileName,\n    directory: formTriggerItem.json[\"Verzeichnis\"] || \"upload\",\n    hasImages: item.json.hasImages || false,\n    images: item.json.images || [],\n    cleanMarkdown: item.json.cleanMarkdown || item.json.cleaned || \"\"\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2320,
+        528
+      ],
+      "id": "2224e651-2c2a-4428-a6b0-d0e25e6b8bac",
+      "name": "Add Metadata"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        48
+      ],
+      "id": "788e0494-2ede-4af0-9937-5f80755f7e13",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "fromEmail": "noreply@edpsych-ai.de",
+        "toEmail": "benjamin.goetzinger@psy.lmu.de",
+        "subject": "❌ Fehler bei PDF Verarbeitung",
+        "html": "==<div style=\"font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; border: 1px solid #e5e7eb; padding: 20px; border-radius: 10px;\">\n  <h2 style=\"color: #dc2626;\">❌ Fehler bei der Dokumentverarbeitung</h2>\n  <p>Bei der Verarbeitung Ihrer Dokumente ist ein Fehler aufgetreten. Die Verarbeitung wurde abgebrochen.</p>\n\n  <div style=\"background: #fef2f2; border-left: 4px solid #dc2626; padding: 15px; margin: 20px 0; border-radius: 5px;\">\n    <p style=\"margin: 0 0 8px 0;\"><strong>Fehlermeldung:</strong></p>\n    <code style=\"background: #fff; padding: 10px; display: block; border-radius: 5px; color: #dc2626; word-break: break-word;\">\n      {{ $json.error?.message || $json.error?.description || 'Unbekannter Fehler' }}\n    </code>\n    <p style=\"margin: 10px 0 0 0;\"><strong>Betroffener Schritt:</strong> {{ $json.error?.node?.name || 'Unbekannt' }}</p>\n    <p style=\"margin: 5px 0 0 0;\"><strong>Zeitpunkt:</strong> {{ new Date($json.error?.timestamp || Date.now()).toLocaleString('de-DE') }}</p>\n  </div>\n\n  <div style=\"background: #f8fafc; border-left: 4px solid #6b7280; padding: 15px; margin: 20px 0; border-radius: 5px;\">\n    <p style=\"margin: 0 0 5px 0;\"><strong>Verzeichnis:</strong> {{ $execution.customData.get('userDirectory') }}</p>\n  </div>\n\n  <h3>Mögliche Ursachen:</h3>\n  <ul style=\"background: #f3f4f6; padding: 15px 30px; border-radius: 8px;\">\n    <li>Die Datei ist beschädigt oder kann nicht gelesen werden</li>\n    <li>Das Dateiformat wird nicht unterstützt</li>\n    <li>Die Dateien sind zu groß (&gt; 100 MB)</li>\n    <li>Zeitüberschreitung bei sehr langen Dokumenten mit vielen Abbildungen</li>\n    <li>Technisches Problem auf dem Server</li>\n  </ul>\n\n  <div style=\"margin: 25px 0; padding: 15px; background: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 5px;\">\n    <p style=\"margin: 0;\"><strong>💡 Empfehlung:</strong></p>\n    <p style=\"margin: 5px 0 0 0;\">Bitte versuchen Sie es erneut. Bei wiederholten Fehlern wenden Sie sich an den Support: <a href=\"mailto:benjamin.goetzinger@psy.lmu.de\">benjamin.goetzinger@psy.lmu.de</a></p>\n  </div>\n\n  <p style=\"font-size: 0.85em; color: #6b7280; border-top: 1px solid #eee; padding-top: 15px; margin-top: 20px;\">\n    🤖 Automatische Fehlermeldung vom Document Ingest System\n  </p>\n</div>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1344,
+        48
+      ],
+      "id": "808bbfa7-4ebd-431d-ae46-73a3f8b37ab4",
+      "name": "Send error email",
+      "webhookId": "4c9a5b86-95c9-4ce3-8f08-3f4b4c4de21e",
+      "credentials": {
+        "smtp": {
+          "id": "BQ3f7FyLWQXvlNIp",
+          "name": "SMTP Brevo"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const replaceUmlauts = (str) => {\n  if (!str) return str;\n  return str\n    .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue')\n    .replace(/Ä/g, 'Ae').replace(/Ö/g, 'Oe').replace(/Ü/g, 'Ue')\n    .replace(/ß/g, 'ss')\n    .normalize('NFD').replace(/[\\u0300-\\u036f]/g, '');\n};\n\nconst toS3Safe = (str) => {\n  return replaceUmlauts(str).replace(/[^a-zA-Z0-9/_-]/g, '-').toLowerCase();\n};\n\nconst rawFileName = $json.originalFileName || \"document\";\nconst rawDirectory = $json.directory || \"upload\";\nconst cleanedContent = $json.message?.content || \"\";\n\nreturn [{\n  json: {\n    message: {\n      content: cleanedContent\n    },\n    directory: toS3Safe(rawDirectory),\n    originalFileName: toS3Safe(rawFileName.replace(/\\.[^/.]+$/, '')) + '.md'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3888,
+        544
+      ],
+      "id": "db7b4997-2fa2-4752-8f68-11a572d72092",
+      "name": "Preserve Metadata"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://markdowncleaner:8000/clean",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "markdown",
+              "value": "={{ $json.cleanMarkdown }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 2400000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1776,
+        528
+      ],
+      "id": "26a97ce9-07ee-440d-a17f-9018fa2c9e80",
+      "name": "Cleanup Markdown",
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "jsCode": "// cleaned aus dem vorherigen Cleanup Markdown Node holen\nlet cleaned = $json.cleaned || \"\";\n\n// Schritt A: Nach Umlaut (\"ä ltige\" → \"ältige\") - 2x für Ketten\ncleaned = cleaned.replace(/([äöüÄÖÜß])\\s+([a-zA-ZäöüÄÖÜß])/gu, '$1$2');\ncleaned = cleaned.replace(/([äöüÄÖÜß])\\s+([a-zA-ZäöüÄÖÜß])/gu, '$1$2');\n\n// Schritt B: Vor Umlaut (\"vielf ä\" → \"vielä\") - 2x für Ketten\ncleaned = cleaned.replace(/([a-zA-ZäöüÄÖÜß])\\s+([äöüÄÖÜß])/gu, '$1$2');\ncleaned = cleaned.replace(/([a-zA-ZäöüÄÖÜß])\\s+([äöüÄÖÜß])/gu, '$1$2');\n\n// Platzhalter-Stabilisierung: Leerzeichen um FIGURE-Token normalisieren\ncleaned = cleaned.replace(/##\\s*FIGURE_(\\d+)\\s*##/g, '##FIGURE_$1##');\n\n// Quellen-Abschnitte entfernen (split auf H2-Überschriften, dann filtern)\nconst sections = cleaned.split(/(?=^## )/m);\ncleaned = sections.filter(s => !s.startsWith('## Quellen')).join('');\n\n// Bild-Daten aus Extract Images holen (werden von Cleanup Markdown nicht durchgereicht)\nconst extractItem = $('Extract Images').item;\n\n// Korrektes Array-Return (war vorher plain Object – n8n-Fehlerquelle)\nreturn [{\n  json: {\n    ...$json,\n    cleaned: cleaned.trim(),\n    cleanMarkdown: cleaned.trim(),\n    hasImages: extractItem.json.hasImages || false,\n    images: extractItem.json.images || []\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2064,
+        528
+      ],
+      "id": "25c16d60-4046-4d5d-a12e-fce04306acbc",
+      "name": "Merge Cleanup + Images"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst images = $json.images || [];\nconst supportedImages = images.filter(img => img.isSupported && img.base64Image);\n\nif (supportedImages.length === 0) {\n  return [{ json: { skip: true } }];\n}\n\nreturn supportedImages.map(img => ({\n  json: {\n    ...img,\n    cleanMarkdown: $json.cleanMarkdown,\n    fileName: $json.fileName,\n    originalFileName: $json.originalFileName,\n    directory: $json.directory\n  }\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2752,
+        160
+      ],
+      "id": "0b0f18d9-fd37-4fe2-923b-a53c97d20352",
+      "name": "Prepare Image Loop"
+    },
+    {
+      "parameters": {
+        "jsCode": "// imageIndex aus Prepare Image Loop holen (geht durch Image Verbalizer verloren)\nconst imageIndex = $('Prepare Image Loop').item.json.imageIndex;\n\nconst raw = $json.message?.content || \"\";\n\n// Thinking-Tags strippen (qwen3-vl gibt manchmal nur Thinking ohne Antwort-Text)\nconst content = raw.includes('</think>')\n  ? raw.split('</think>').pop().trim()\n  : raw.replace(/<think>[\\s\\S]*?<\\/think>/g, '').trim();\n\nreturn [{\n  json: {\n    imageIndex: imageIndex,\n    message: {\n      content: content\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3536,
+        336
+      ],
+      "id": "55c2f9ae-0418-4259-973b-84fc71074eaf",
+      "name": "Preserve Image Index"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        2944,
+        160
+      ],
+      "id": "ea43b14d-c568-431c-893a-7630386bbcfa",
+      "name": "Loop Over Images"
+    },
+    {
+      "parameters": {
+        "jsCode": "$execution.customData.set('userEmail', $json[\"E-Mail\"]);\n$execution.customData.set('userDirectory', $json[\"Verzeichnis\"]);\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        512
+      ],
+      "id": "554cd6a7-c275-4fbb-963c-3aa3c4c72e37",
+      "name": "Save User Context"
+    },
+    {
+      "parameters": {
+        "jsCode": "const content = $json.message?.content || '';\n\n// Interview detection: Timestamp-Marker in Überschriften (WhisperX-Transkripte)\nconst isInterview = /###\\s+.+[\\s\\S]*?<!--\\s*ts:/.test(content);\n\n// Wissensbausteine detection: nummeriertes Heading mit mind. zwei Segmenten + trailing dot\n// z.B. \"## 2.1. Medienbegriff\" oder \"## 8.2. Mikro- und Makroadaptivität\"\nconst isWissensbausteine = /^##\\s+\\d+\\.\\d+[.\\s]/m.test(content);\n\nconst docType = isInterview ? 'interview'\n  : isWissensbausteine ? 'wissensbausteine'\n  : 'buchkapitel';\n\n// Bildanalyse-Blöcke entfernen – LLM soll keine KI-generierten Texte als Input bekommen\nconst cleanedForLLM = content\n  .replace(/---\\n> ### 🖼️ KI-BILDANALYSE[\\s\\S]*?---\\n/g, '')\n  .replace(/#{1,6}\\s*🖼️[^\\n]*/g, '')\n  .trim();\n\n// Alle Überschriften extrahieren (H1-H4) – kompakter Input für Metadaten-Extraktion\nconst headings = cleanedForLLM\n  .split('\\n')\n  .filter(line => /^#{1,4}\\s+/.test(line))\n  .join('\\n');\n\n// Wissensbausteine: Metadaten sind bekannt → hartcodieren, LLM-Call trotzdem nötig\n// (minimaler Dummy-Prompt damit Extract Metadata via LLM nicht fehlschlägt)\nif (docType === 'wissensbausteine') {\n  return [{ \n    json: { \n      ...$json, \n      doc_type: docType,\n      meta_title: 'Wissensbausteine Mediendidaktik',\n      meta_authors: 'Berger, Sonja; Götzinger, Benjamin; Schultz-Pernice, Florian',\n      meta_year: 2026,\n      meta_topic: 'Mediendidaktik, Lerntheorien, Kognitive Belastung, Adaptivität, Unterrichtsmethoden, Digitale Medien, Scaffolding, Feedback, Instruktionsdesign, KI im Unterricht',\n      llm_body: {\n        model: 'nemotron-3-nano:latest',\n        stream: false,\n        options: { temperature: 0.0, num_predict: 1 },\n        prompt: 'x'  // Dummy-Prompt – Antwort wird in Parse LLM Metadata ignoriert\n      }\n    } \n  }];\n}\n\n// Normalpfad buchkapitel/interview: LLM extrahiert Titel, Autoren, Jahr, Schlagworte\nconst prompt = \"Du bist ein Metadaten-Extraktor. Analysiere den folgenden wissenschaftlichen Text und gib NUR ein JSON-Objekt zurück (kein Markdown, keine Erklärung, kein Text davor oder danach).\\n\\nFormat:\\n{\\\"title\\\": \\\"Vollständiger Titel\\\", \\\"authors\\\": \\\"Nachname, Vorname; Nachname2, Vorname2\\\", \\\"year\\\": 2024, \\\"topic\\\": \\\"Schlagwort1, Schlagwort2, Schlagwort3, Schlagwort4, Schlagwort5, Schlagwort6, Schlagwort7, Schlagwort8, Schlagwort9, Schlagwort10\\\"}\\n\\nRegeln:\\n- title: Offizieller Titel des Werks (meist H1)\\n- authors: Alle Autoren, Semikolon getrennt, Nachname zuerst. Falls nicht erkennbar: \\\"\\\"\\n- year: Erscheinungsjahr als Zahl. Falls nicht erkennbar: null\\n- topic: Genau 10 prägnante Fachbegriffe zum Inhalt. Alle Begriffe MÜSSEN auf Deutsch sein, keine englischen Begriffe erlaubt.\\n\\n[ÜBERSCHRIFTEN]:\\n\"\n  + headings.substring(0, 3000) \n  + \"\\n\\n[TEXTANFANG]:\\n\" + cleanedForLLM.substring(0, 1000)\n  + \"\\n\\n[TEXTENDE]:\\n\" + cleanedForLLM.slice(-800);\n\nconst llmBody = {\n  model: 'nemotron-3-nano:latest',\n  stream: false,  // stream:false – Extract Metadata via LLM nutzt eigenen Agent ohne Timeout\n  options: { temperature: 0.1 },\n  prompt: prompt\n};\n\nreturn [{ json: { ...$json, doc_type: docType, llm_body: llmBody } }];"
+      },
+      "id": "dba24543-5160-4291-9f30-953de843e900",
+      "name": "Detect Type",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4112,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.response || '';\nconst prev = $('Detect Type').first().json;\n\n// Wissensbausteine: hardcodierte Metadaten aus Detect Type direkt nehmen\nif (prev.doc_type === 'wissensbausteine') {\n  return [{\n    json: {\n      ...prev,\n      meta_title: prev.meta_title || '',\n      meta_authors: prev.meta_authors || '',\n      meta_year: prev.meta_year || null,\n      meta_topic: prev.meta_topic || ''\n    }\n  }];\n}\n\n// Normalpfad buchkapitel/interview\nconst stripped = raw.includes('</think>')\n  ? raw.split('</think>').pop().trim()\n  : raw.replace(/<think>[\\s\\S]*?<\\/think>/g, '').trim();\n\nlet metadata = { title: '', authors: '', year: null, topic: '' };\ntry {\n  const match = stripped.match(/\\{[\\s\\S]*\\}/);\n  if (match) {\n    metadata = JSON.parse(match[0]);\n  }\n} catch(e) {\n  metadata.title = $('Preserve Metadata').first().json.originalFileName?.replace('.md','') || 'Unbekannt';\n}\n\nreturn [{\n  json: {\n    ...prev,\n    meta_title: metadata.title || '',\n    meta_authors: metadata.authors || '',\n    meta_year: metadata.year || null,\n    meta_topic: metadata.topic || ''\n  }\n}];"
+      },
+      "id": "15b953dc-9c69-4b79-8e64-0d28d8cce6c8",
+      "name": "Parse LLM Metadata",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4560,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst d = $json;\nconst content = d.message?.content || '';\n\nconst year = d.meta_year ? String(d.meta_year) : 'null';\n\nconst frontmatter = [\n  '---',\n  `title: \"${(d.meta_title || '').replace(/\"/g, '\\'')}\"`,\n  `authors: \"${(d.meta_authors || '').replace(/\"/g, '\\'')}\"`,\n  `year: ${year}`,\n  `type: ${d.doc_type || 'buchkapitel'}`,\n  `topic: \"${(d.meta_topic || '').replace(/\"/g, '\\'')}\"`,\n  `language: de`,\n  '---',\n  ''\n].join('\\n');\n\nreturn [{\n  json: {\n    ...d,\n    message: { content: frontmatter + content }\n  }\n}];\n"
+      },
+      "id": "e330a923-7291-4fcd-b23f-91fbebe49f90",
+      "name": "Add YAML Frontmatter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4784,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "skip-001",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "70ba7bba-f3e2-4e18-bd80-3e0966b9b21d",
+      "name": "Skip Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3120,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const http = require('http');\nconst item = $input.first().json;\n\n// Eigener HTTP Agent ohne keepAlive – umgeht n8n's globalen Agent,\n// der einen ~179s Socket-Timeout hat und lange Ollama-Requests abbricht.\n// n8n setzt http.globalAgent mit keepAlive:true und timeout:5000,\n// was bei idle TCP-Verbindungen (Ollama rechnet still) nach ~179s abbricht.\nconst agent = new http.Agent({ keepAlive: false });\n\n// Request Body für Ollama /api/chat (multimodal mit Bild)\n// stream: false möglich da eigener Agent keinen Idle-Timeout hat\nconst body = JSON.stringify({\n  model: \"qwen3-vl:32b\",\n  keep_alive: \"5m\",  // Modell 5 min im VRAM halten zwischen Bildern\n  messages: [\n    {\n      role: \"system\",\n      content: \"Du bist ein Spezialist für die präzise Beschreibung wissenschaftlicher Abbildungen für Retrieval-Augmented Generation (RAG) Systeme.\\n\\nDeine Beschreibungen müssen so formuliert sein, dass ein Sprachmodell ohne Zugriff auf das Originalbild alle relevanten Informationen aus dem Text allein korrekt abrufen kann.\\n\\nGrundregeln:\\n- Keine Pronomen ('dies', 'jenes', 'hier', 'es') — immer volle Begriffsnamen\\n- Kausalpfade explizit: 'Element X führt zu Element Y, was Z bedeutet'\\n- Abbildungstitel, Nummer und Quelle aus dem Dokumentkontext extrahieren und explizit nennen\\n- Mehrdeutigkeiten als solche kennzeichnen\\n- Farbkodierungen benennen und ihre semantische Bedeutung erklären (z.B. 'grün = Eingangsvoraussetzungen')\\n- Symbole und Icons beschreiben, auch wenn kein Text vorhanden (z.B. 'gelbe sitzende Figur vor Bildschirm symbolisiert passive Rezeption')\\n- Teilmenge-Beziehungen in Mengendiagrammen explizit benennen: 'X ist eine Teilmenge von Y'\\n- Strukturelle Trennlinien (z.B. horizontale Ebenentrennungen) als semantische Grenzen benennen und erklären\\n- Falls die Abbildung mehrere Teilbilder enthält (erkennbar an Beschriftungen a, b, c, d): jedes Teilbild separat beschreiben und mit dem entsprechenden Buchstaben kennzeichnen\"\n    },\n    {\n      role: \"user\",\n      content:\n        \"Analysiere die beigefügte Abbildung.\\n\\n\" +\n        \"=== DOKUMENTKONTEXT ===\\n\\n\" +\n        \"Text VOR dem Bild:\\n\" + (item.contextBefore || \"KEIN TEXT VOR DEM BILD - möglicherweise Titelseite oder Buchcover\") + \"\\n\\n\" +\n        \"Text NACH dem Bild:\\n\" + (item.contextAfter || \"nicht verfügbar\") + \"\\n\\n\" +\n        \"=== AUSGABE (exakt dieses Format) ===\\n\\n\" +\n        \"**[Abbildungsnummer aus Kontext] – [Titel aus Kontext]**\\n\" +\n        \"Quelle: [Autor, Jahr — aus Kontext extrahiert. Falls nicht erkennbar: 'nicht angegeben']\\n\\n\" +\n        \"**Grafiktyp:** [z.B. Zyklisches Prozessmodell | Zweiebeniges Flussdiagramm | Mengendiagramm | Icon-Reihe | Vergleichslayout | Balkendiagramm | Säulendiagramm | Liniendiagramm | Streudiagramm | Foto | Foto-Vergleich | Screenshot/UI | Molekularstruktur-Diagramm | Anatomische Illustration]\\n\\n\" +\n        \"**Kernaussage:** [4-7 Sätze: Was zeigt diese Abbildung auf der Metaebene? Welches Konzept oder Modell wird vermittelt? Welche Schlussfolgerung soll der Betrachter ziehen?]\\n\\n\" +\n        \"**Beschreibung:**\\n\" +\n        \"[Vollständige, fließende Beschreibung. Regeln:\\n\" +\n        \"- Falls mehrere Teilbilder (a, b, c, d): jedes Teilbild separat und vollständig beschreiben\\n\" +\n        \"- Alle sichtbaren Texte, Beschriftungen und Symbole extrahieren und ihre Position benennen\\n\" +\n        \"- Farbkodierungen und ihre Bedeutung erklären\\n\" +\n        \"- Bei Icon/Symbol-Grafiken: visuelle Darstellung beschreiben\\n\" +\n        \"- Bei Mengendiagrammen: Teilmenge-Beziehungen explizit nennen\\n\" +\n        \"- Bei Mehrebenen-Diagrammen: Trennlinien und Ebenen benennen\\n\" +\n        \"- Beziehungen als Kausalpfade: 'A führt zu B, was C bedeutet'\\n\" +\n        \"- Keine Pronomen]\\n\\n\" +\n        \"**Schlüsselbegriffe:** [Begriff1 | Begriff2 | Begriff3 | ...]\\n\\n\" +\n        \"Gib NUR die formatierte Beschreibung zurück, keine Meta-Kommentare.\",\n      images: [item.base64Image]  // Base64-PNG aus Extract Images Node\n    }\n  ],\n  stream: false,  // kein Streaming nötig – eigener Agent hat keinen Idle-Timeout\n  options: {\n    num_ctx: 32768,      // Kontext: 32k Tokens (per-Request, überschreibt OLLAMA_CONTEXT_LENGTH)\n    temperature: 0.0,    // deterministisch – reproduzierbare Beschreibungen\n    num_predict: 8192,   // max. Output-Tokens (Thinking + Beschreibung)\n    top_p: 0.1\n  }\n});\n\n// HTTP Request an Ollama auf dem DGX Spark (via SSH-Reverse-Tunnel Port 11434)\nconst raw = await new Promise((resolve, reject) => {\n  const req = http.request({\n    hostname: '172.18.0.1',  // DGX Spark IP (SSH-Tunnel: Spark → vServer)\n    port: 11434,                // Ollama Standard-Port\n    path: '/api/chat',          // Chat Endpoint (unterstützt multimodale Eingaben)\n    method: 'POST',\n    agent: agent,               // eigener Agent – kein globalAgent-Timeout\n    headers: {\n      'Content-Type': 'application/json',\n      'Content-Length': Buffer.byteLength(body)\n    }\n  }, (res) => {\n    let data = '';\n    res.on('data', chunk => { data += chunk; });\n    res.on('end', () => resolve(data));\n  });\n  req.on('error', reject);\n  req.write(body);\n  req.end();\n});\n\n// Response parsen: stream:false liefert ein einzelnes JSON-Objekt\n// Struktur: { message: { role: \"assistant\", content: \"...\", thinking: \"...\" } }\nconst parsed = JSON.parse(raw);\nlet content = parsed.message?.content || '';\n\n// Thinking-Blöcke entfernen: qwen3-vl gibt <think>...</think> aus\n// Diese werden rausgefiltert – nur die eigentliche Bildbeschreibung bleibt\ncontent = content.includes('</think>')\n  ? content.split('</think>').pop().trim()\n  : content.replace(/<think>[\\s\\S]*?<\\/think>/g, '').trim();\n\n// Output: { message: { content } } – identisches Format wie vorheriger HTTP Request Node\n// wird von \"Preserve Image Index\" Node weiterverarbeitet\nreturn [{ json: { message: { content } } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3312,
+        368
+      ],
+      "id": "897918f4-0b0f-4d9b-b16b-81bd156509e4",
+      "name": "Image Verbalizer"
+    },
+    {
+      "parameters": {
+        "jsCode": "const http = require('http');\nconst item = $input.first().json;\n\n// Eigener HTTP Agent – gleiche Begründung wie im Image Verbalizer Node\nconst agent = new http.Agent({ keepAlive: false });\n\n// llm_body kommt von \"Detect Type\" Node – enthält model, prompt, options\n// stream: true wird zu false überschrieben – mit eigenem Agent kein Problem\nconst body = JSON.stringify({\n  ...item.llm_body,\n  stream: false  // kein Streaming nötig – eigener Agent hat keinen Idle-Timeout\n});\n\n// HTTP Request an Ollama /api/generate (Text-only, kein multimodal)\n// Modell: nemotron-3-nano (schnell, für JSON-Metadaten-Extraktion ausreichend)\nconst raw = await new Promise((resolve, reject) => {\n  const req = http.request({\n    hostname: '172.18.0.1',\n    port: 11434,\n    path: '/api/generate',  // Generate Endpoint (kein Chat-Format nötig)\n    method: 'POST',\n    agent: agent,\n    headers: {\n      'Content-Type': 'application/json',\n      'Content-Length': Buffer.byteLength(body)\n    }\n  }, (res) => {\n    let data = '';\n    res.on('data', chunk => { data += chunk; });\n    res.on('end', () => resolve(data));\n  });\n  req.on('error', reject);\n  req.write(body);\n  req.end();\n});\n\n// Response parsen: stream:false liefert { \"response\": \"...\", \"done\": true, ... }\nconst parsed = JSON.parse(raw);\nlet response = parsed.response || '';\n\n// Thinking-Blöcke entfernen – \"Parse LLM Metadata\" erwartet reines JSON\nresponse = response.includes('</think>')\n  ? response.split('</think>').pop().trim()\n  : response.replace(/<think>[\\s\\S]*?<\\/think>/g, '').trim();\n\n// Output: { ...item } erhält alle Felder aus Detect Type (doc_type, llm_body etc.)\n// + response = LLM-Text → wird von \"Parse LLM Metadata\" als $json.response gelesen\nreturn [{ json: { ...item, response } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4320,
+        544
+      ],
+      "id": "015c8313-62c1-4253-b500-9251666b5b31",
+      "name": "Extract Metadata via LLM"
+    }
+  ],
+  "pinData": {
+    "Form Trigger": [
+      {
+        "json": {
+          "Dateien": [
+            {
+              "filename": "bonfadelli-kurz.pdf",
+              "mimetype": "application/pdf",
+              "size": 1521067
+            }
+          ],
+          "Gescanntes PDF": [],
+          "Verzeichnis": "asdfasdf",
+          "E-Mail": "benjamin.goetzinger@gmx.de",
+          "submittedAt": "2026-02-27T08:31:05.786Z",
+          "formMode": "production"
+        },
+        "binary": {
+          "Dateien": {
+            "mimeType": "application/pdf",
+            "fileType": "pdf",
+            "fileExtension": "pdf",
+            "data": "filesystem-v2",
+            "fileName": "bonfadelli-kurz.pdf",
+            "id": "filesystem-v2:workflows/Hir3ejqhxxuZqmYu/executions/temp/binary_data/a731af87-72e9-4972-8660-b3d4b8ce9f1e",
+            "fileSize": "1.52 MB"
+          }
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Extract Images": {
+      "main": [
+        [
+          {
+            "node": "Cleanup Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Docling API (Intern)": {
+      "main": [
+        [
+          {
+            "node": "Extract Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Send email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Docling API (Intern)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Form Trigger": {
+      "main": [
+        [
+          {
+            "node": "Save User Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reassemble Markdown": {
+      "main": [
+        [
+          {
+            "node": "Preserve Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Images?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Image Loop",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Pass Through Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pass Through Markdown": {
+      "main": [
+        [
+          {
+            "node": "Preserve Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to MinIO": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Files": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Metadata": {
+      "main": [
+        [
+          {
+            "node": "Has Images?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Send error email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preserve Metadata": {
+      "main": [
+        [
+          {
+            "node": "Detect Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cleanup Markdown": {
+      "main": [
+        [
+          {
+            "node": "Merge Cleanup + Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Cleanup + Images": {
+      "main": [
+        [
+          {
+            "node": "Add Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Image Loop": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preserve Image Index": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Images": {
+      "main": [
+        [
+          {
+            "node": "Reassemble Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save User Context": {
+      "main": [
+        [
+          {
+            "node": "Split Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect Type": {
+      "main": [
+        [
+          {
+            "node": "Extract Metadata via LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse LLM Metadata": {
+      "main": [
+        [
+          {
+            "node": "Add YAML Frontmatter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add YAML Frontmatter": {
+      "main": [
+        [
+          {
+            "node": "Upload to MinIO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Check": {
+      "main": [
+        [
+          {
+            "node": "Preserve Image Index",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Image Verbalizer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Image Verbalizer": {
+      "main": [
+        [
+          {
+            "node": "Preserve Image Index",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Metadata via LLM": {
+      "main": [
+        [
+          {
+            "node": "Parse LLM Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "7b4b15ba-25dc-49a3-8700-aa43bfb44265",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "25da3802e714f894a2a49cb808491cfbfdd181c658cb3d753b3d76d16123badf"
+  },
+  "id": "8G7vBkbR6BEsH4YJ",
+  "tags": [
+    {
+      "updatedAt": "2026-02-09T08:33:01.742Z",
+      "createdAt": "2026-02-09T08:33:01.742Z",
+      "id": "9tQKttbqZZHnEia5",
+      "name": "RAG"
+    }
+  ]
+}

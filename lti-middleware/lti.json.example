@@ -1,0 +1,17 @@
+{
+  "_comment": "LTI 1.3 Tool Configuration. Copy this file to lti.json and replace placeholders. The top-level key is your LMS's issuer URL (Moodle / ILIAS / Canvas). client_id and deployment_ids come from your LMS admin when registering this tool. Keys are generated via ./generate_keys.sh and stored alongside this file.",
+
+  "https://lms.example.com": [
+    {
+      "default":          true,
+      "client_id":        "CLIENT_ID_FROM_LMS_TOOL_REGISTRATION",
+      "auth_login_url":   "https://lms.example.com/mod/lti/auth.php",
+      "auth_token_url":   "https://lms.example.com/mod/lti/token.php",
+      "key_set_url":      "https://lms.example.com/mod/lti/certs.php",
+      "key_set":          null,
+      "private_key_file": "/app/config/private.key",
+      "public_key_file":  "/app/config/public.key",
+      "deployment_ids":   ["DEPLOYMENT_ID_FROM_LMS"]
+    }
+  ]
+}

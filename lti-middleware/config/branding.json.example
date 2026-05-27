@@ -1,0 +1,34 @@
+{
+  "_comment": "UI branding and copy for the LTI-embedded chatbot pages. Copy this file to branding.json and customise. All keys are optional — anything you omit falls back to the defaults baked into main.py. Use this file to translate the interface to your language.",
+
+  "title":           "SMART RAG · Learning Assistant",
+  "html_lang":       "en",
+  "institution":     "Your Institution",
+  "institution_url": "https://example.com",
+
+  "logo_url":        "",
+  "bot_avatar_url":  "",
+
+  "colors": {
+    "primary":           "#0066CC",
+    "background":        "#FFFFFF",
+    "bot_message_bg":    "#F5F5F5",
+    "bot_message_text":  "#232323",
+    "user_message_bg":   "#232323",
+    "user_message_text": "#FFFFFF",
+    "footer_text":       "#626468"
+  },
+
+  "language": {
+    "welcome_fullscreen":    "Hello {given_name}! How can I help you today?",
+    "welcome_bubble":        "Hi {given_name}!",
+    "input_placeholder":     "Your question...",
+    "footer_disclaimer":     "This assistant is an AI and may make mistakes — please verify its statements.",
+    "error_title":           "Access denied",
+    "error_unknown_agent":   "Agent '{agent_id}' is not configured.",
+    "error_invalid_launch":  "Invalid LTI launch.",
+    "error_no_user_id":      "user_id missing from JWT.",
+    "error_session_invalid": "Please open the assistant from your LMS course.",
+    "default_given_name":    "Student"
+  }
+}
