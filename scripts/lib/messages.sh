@@ -84,7 +84,11 @@ declare -A MSG_EN=(
 
     # --- config wizard ------------------------------------------------------
     [phase_config]="Phase 2 · Configuration Wizard"
-    [cfg_intro]="A few questions about your deployment. Defaults shown in [brackets]."
+    [cfg_intro]="A few questions about your deployment.
+
+  ─ Values in [brackets] are the suggested default.
+  ─ Press Enter on its own to accept the default.
+  ─ To enter your own value: just type it, no quotes or brackets needed."
     [cfg_env_exists_prompt]="An existing .env was found. What should we do?"
     [cfg_env_keep]="Keep existing .env (skip wizard, use saved values)"
     [cfg_env_backup_new]="Back up existing .env and create new one (recommended)"
@@ -92,8 +96,8 @@ declare -A MSG_EN=(
 
     # course & deployment
     [cfg_section_course]="Course & deployment"
-    [cfg_course_name]="Course title (free text, e.g. \"Intro to Research Methods\")"
-    [cfg_course_id]="Course ID (lowercase, hyphens only, e.g. \"intro-research\")"
+    [cfg_course_name]="Course title (free text — e.g. Intro to Research Methods)"
+    [cfg_course_id]="Course ID (lowercase, hyphens only — e.g. intro-research)"
     [cfg_course_id_invalid]="Course ID must be lowercase letters, digits, hyphens only."
     [cfg_domain]="Your base domain (subdomains added automatically; e.g. example.com or my-org.edu)"
     [cfg_domain_invalid]="Not a valid fully-qualified domain name."
@@ -296,7 +300,11 @@ declare -A MSG_DE=(
 
     # --- config wizard ------------------------------------------------------
     [phase_config]="Phase 2 · Konfigurations-Assistent"
-    [cfg_intro]="Ein paar Fragen zu deinem Deployment. Vorschläge in [eckigen Klammern]."
+    [cfg_intro]="Ein paar Fragen zu deinem Deployment.
+
+  ─ Werte in [eckigen Klammern] sind die Standard-Vorschläge.
+  ─ Drück einfach Enter, um den Standard zu übernehmen.
+  ─ Für eigene Eingabe: einfach tippen — ohne Anführungszeichen oder Klammern."
     [cfg_env_exists_prompt]="Eine bestehende .env wurde gefunden. Was tun?"
     [cfg_env_keep]="Bestehende .env behalten (Assistent überspringen)"
     [cfg_env_backup_new]="Bestehende .env sichern und neu anlegen (empfohlen)"
@@ -304,8 +312,8 @@ declare -A MSG_DE=(
 
     # course & deployment
     [cfg_section_course]="Kurs & Deployment"
-    [cfg_course_name]="Kurstitel (Freitext, z.B. \"Einführung in Forschungsmethoden\")"
-    [cfg_course_id]="Kurs-ID (Kleinbuchstaben, nur Bindestriche, z.B. \"forschungsmethoden\")"
+    [cfg_course_name]="Kurstitel (Freitext — z.B. Einführung in Forschungsmethoden)"
+    [cfg_course_id]="Kurs-ID (Kleinbuchstaben, nur Bindestriche — z.B. forschungsmethoden)"
     [cfg_course_id_invalid]="Kurs-ID darf nur aus Kleinbuchstaben, Ziffern und Bindestrichen bestehen."
     [cfg_domain]="Deine Basis-Domain (Subdomains werden automatisch ergänzt; z.B. example.com oder meine-uni.de)"
     [cfg_domain_invalid]="Keine gültige Domain."
