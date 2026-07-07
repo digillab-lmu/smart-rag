@@ -65,6 +65,21 @@ EOF
 
 # ─── Interactive prompts ─────────────────────────────────────────────────────
 
+# Back-navigation: any prompt/select_one/confirm/prompt_password accepts the
+# literal input "back", "b", "zurück", or "z" (case-insensitive) instead of a
+# value. When detected, the primitive sets WIZARD_BACK=1 and returns 1 with
+# no output. Callers chain `|| return 1` to bubble the signal up to the
+# section function, which run_config_wizard's step loop catches to step back
+# one section. WIZARD_BACK is reset at the start of every primitive call so
+# a stale flag can never leak into an unrelated later prompt.
+WIZARD_BACK=0
+_is_back_input() {
+    case "${1,,}" in
+        back|b|zurück|zurueck|z) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # prompt KEY DEFAULT [VALIDATOR]  →  echoes user input
 # KEY:        i18n message key (the question)
 # DEFAULT:    default value if user just hits enter (may be empty)
@@ -73,6 +88,7 @@ prompt() {
     local key="$1" default="${2:-}" validator="${3:-}"
     local question; question="$(t "$key")"
     local input
+    WIZARD_BACK=0
 
     # IMPORTANT: All prompt output goes to stderr so that command substitution
     # ($(prompt KEY)) captures ONLY the user's input, not the question text.
@@ -83,6 +99,10 @@ prompt() {
             printf "  %s: " "$question" >&2
         fi
         IFS= read -r input
+        if _is_back_input "$input"; then
+            WIZARD_BACK=1
+            return 1
+        fi
         input="${input:-$default}"
         if [[ -z "$input" ]]; then
             err "$(t value_required)"
@@ -101,6 +121,7 @@ prompt_password() {
     local key="$1" default="${2:-}"
     local question; question="$(t "$key")"
     local input
+    WIZARD_BACK=0
     if [[ -n "$default" ]]; then
         printf "  %s ${DIM}[%s]${RESET}: " "$question" "$default" >&2
     else
@@ -108,10 +129,14 @@ prompt_password() {
     fi
     IFS= read -rs input
     printf "\n" >&2
+    if _is_back_input "$input"; then
+        WIZARD_BACK=1
+        return 1
+    fi
     printf '%s' "${input:-$default}"
 }
 
-# confirm KEY [DEFAULT]  →  returns 0=yes, 1=no
+# confirm KEY [DEFAULT]  →  returns 0=yes, 1=no (or back — check WIZARD_BACK)
 # DEFAULT: "y" or "n" (default "n")
 confirm() {
     local key="$1" default="${2:-n}"
@@ -119,9 +144,14 @@ confirm() {
     local suffix
     if [[ "$default" == "y" ]]; then suffix="${BOLD}Y${RESET}/n"; else suffix="y/${BOLD}N${RESET}"; fi
     local input
+    WIZARD_BACK=0
     while true; do
         printf "  %s [%s]: " "$question" "$suffix" >&2
         IFS= read -r input
+        if _is_back_input "$input"; then
+            WIZARD_BACK=1
+            return 1
+        fi
         input="${input:-$default}"
         case "${input,,}" in
             y|yes|j|ja)  return 0 ;;
@@ -138,6 +168,7 @@ select_one_index() {
     local options=("$@")
     local prompt_text; prompt_text="$(t "$key")"
     local i input
+    WIZARD_BACK=0
     printf "  ${BOLD}%s${RESET}\n" "$prompt_text" >&2
     for i in "${!options[@]}"; do
         printf "    ${BOLD}[%d]${RESET}  %s\n" $((i+1)) "${options[$i]}" >&2
@@ -145,6 +176,10 @@ select_one_index() {
     while true; do
         printf "  ${DIM}%s${RESET} ${BOLD}[1]${RESET}: " "$(t enter_choice)" >&2
         IFS= read -r input
+        if _is_back_input "$input"; then
+            WIZARD_BACK=1
+            return 1
+        fi
         input="${input:-1}"
         if [[ "$input" =~ ^[0-9]+$ ]] && (( input >= 1 && input <= ${#options[@]} )); then
             printf '%s' "$input"
@@ -159,7 +194,7 @@ select_one_index() {
 select_one() {
     local key="$1"; shift
     local options=("$@")
-    local idx; idx="$(select_one_index "$key" "${options[@]}")"
+    local idx; idx="$(select_one_index "$key" "${options[@]}")" || return 1
     printf '%s' "${options[$((idx-1))]}"
 }
 
