@@ -141,7 +141,17 @@ ask_course_info() {
 
     CFG_COURSE_NAME="$(prompt cfg_course_name "My Course")"
     CFG_COURSE_ID="$(prompt cfg_course_id "my-course" validate_slug)"
-    CFG_DOMAIN="$(prompt cfg_domain "example.com" validate_fqdn)"
+
+    # Try to pre-fill domain from reverse DNS — user always confirms
+    local domain_default="example.com"
+    local detected_domain
+    detected_domain="$(detect_base_domain 2>/dev/null || true)"
+    if [[ -n "$detected_domain" ]]; then
+        info "$(t cfg_domain_detected "$detected_domain")" >&2
+        domain_default="$detected_domain"
+    fi
+    CFG_DOMAIN="$(prompt cfg_domain "$domain_default" validate_fqdn)"
+
     CFG_ADMIN_EMAIL="$(prompt cfg_admin_email "" validate_email)"
     CFG_BASE_DATA_PATH="$(prompt cfg_base_data_path "/srv/smart-rag/data")"
     CFG_TZ="$(prompt cfg_tz "Europe/Berlin")"

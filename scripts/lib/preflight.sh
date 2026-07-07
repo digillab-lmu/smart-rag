@@ -98,7 +98,35 @@ check_disk_space() {
     fi
 }
 
-# ─── 7. DNS check (warning only) ─────────────────────────────────────────────
+# ─── 7a. Detect base domain from reverse DNS ─────────────────────────────────
+# Returns the PTR record for the server's public IP, stripped to the registrable
+# base domain (last two labels). Falls back to empty string if detection fails.
+# Callers should always let the user confirm the result.
+detect_base_domain() {
+    local pub_ip ptr_record base_domain
+    pub_ip="$(curl -sf --max-time 5 https://api.ipify.org 2>/dev/null || true)"
+    [[ -z "$pub_ip" ]] && return 0
+
+    if command -v dig &>/dev/null; then
+        ptr_record="$(dig +short -x "$pub_ip" 2>/dev/null | sed 's/\.$//' | head -1)"
+    elif command -v host &>/dev/null; then
+        ptr_record="$(host "$pub_ip" 2>/dev/null \
+            | awk '/domain name pointer/ {sub(/\.$/, "", $NF); print $NF; exit}')"
+    elif command -v python3 &>/dev/null; then
+        ptr_record="$(python3 -c \
+            "import socket; print(socket.gethostbyaddr('$pub_ip')[0])" 2>/dev/null || true)"
+    fi
+
+    [[ -z "$ptr_record" ]] && return 0
+    # Validate: must look like a proper FQDN (has at least one dot, all valid chars)
+    if [[ "$ptr_record" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]+\.[a-zA-Z]{2,}$ ]]; then
+        # Strip to last two labels — e.g. "static.123.duenn-mit-pfiff.de" → "duenn-mit-pfiff.de"
+        base_domain="$(echo "$ptr_record" | awk -F'.' '{print $(NF-1)"."$NF}')"
+        echo "$base_domain"
+    fi
+}
+
+# ─── 7b. DNS check (warning only) ────────────────────────────────────────────
 # Args: $1 = domain (e.g. smart-rag.example.com)
 # Checks: does the domain resolve, and to this server?
 check_dns() {
