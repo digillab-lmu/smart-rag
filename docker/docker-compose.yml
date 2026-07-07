@@ -99,14 +99,18 @@ x-flowise-env: &flowise-env
   PASSWORD_RESET_TOKEN_EXPIRY_IN_MINS: "180"
   PASSWORD_SALT_HASH_ROUNDS: "10"
 
-  # ── SMTP (optional — for password resets and invitations) ────────────────────
-  # Set SMTP_HOST to the Docker bridge gateway IP (run: docker inspect bridge | grep Gateway)
-  # or to an external SMTP relay hostname. Leave empty to disable.
-  SMTP_HOST: ""
-  SMTP_PORT: "25"
-  SMTP_SECURE: "false"
+  # ── SMTP (strongly recommended — for password resets and invitations) ────────
+  # SMTP_HOST/PORT/USER/PASSWORD are set by the bootstrap wizard's mail-relay
+  # section — either the local Postfix relay (see scripts/install-postfix.sh,
+  # gateway 172.28.92.1, see the `networks:` block at the end of this file) or
+  # a directly-configured external SMTP relay. Empty SMTP_HOST disables it.
+  SMTP_HOST: "${SMTP_HOST:-}"
+  SMTP_PORT: "${SMTP_PORT:-25}"
+  SMTP_USER: "${SMTP_USER:-}"
+  SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
+  SMTP_SECURE: "${SMTP_SECURE:-false}"
   ALLOW_UNAUTHORIZED_CERTS: "true"
-  SENDER_EMAIL: "${LANGFUSE_EMAIL_FROM_ADDRESS}"
+  SENDER_EMAIL: "${SMTP_SENDER_EMAIL}"
 
   # ── Logging & Metrics ────────────────────────────────────────────────────────
   DEBUG: "false"
@@ -405,6 +409,16 @@ services:
       N8N_DB_POSTGRESDB_DATABASE: "n8n"
       GENERIC_TIMEZONE: "${TZ}"
       TZ: "${TZ}"
+      # ── SMTP (strongly recommended — for password resets and invitations) ──
+      # Same relay as Flowise/Langfuse, see SMTP_* in .env. N8N_EMAIL_MODE is
+      # set to "smtp" by the wizard only when a relay was actually configured.
+      N8N_EMAIL_MODE: "${N8N_EMAIL_MODE:-}"
+      N8N_SMTP_HOST: "${SMTP_HOST:-}"
+      N8N_SMTP_PORT: "${SMTP_PORT:-25}"
+      N8N_SMTP_USER: "${SMTP_USER:-}"
+      N8N_SMTP_PASS: "${SMTP_PASSWORD:-}"
+      N8N_SMTP_SENDER: "${SMTP_SENDER_EMAIL}"
+      N8N_SMTP_SSL: "${SMTP_SECURE:-false}"
     volumes:
       - ${BASE_DATA_PATH}/n8n/data:/home/node/.n8n
     ports:
@@ -577,9 +591,20 @@ services:
 # ════════════════════════════════════════════════════════════════════════════════
 
 networks:
+  # Subnet pinned (not auto-assigned) so the gateway IP is a known constant —
+  # scripts/install-postfix.sh restricts Postfix's mail relay to exactly this
+  # range (see mynetworks in that script) without waiting for this network to
+  # exist. If 172.28.92.0/24 collides with another Docker network already on
+  # this host, `docker compose up` will fail loudly with an address-pool error
+  # — change the subnet/gateway here (and the two IPs in install-postfix.sh
+  # and config-wizard.sh's ask_mail_config) to a free range and retry.
   smart-rag-network:
     name: smart-rag-network
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.92.0/24
+          gateway: 172.28.92.1
 
   # proxy-network is the network shared with nginx (reverse proxy).
   # It is declared external because nginx manages it independently.

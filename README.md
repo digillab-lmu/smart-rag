@@ -114,6 +114,12 @@ Initial admin credentials are in `credentials.txt` (chmod 600).
 - **Domain auto-detection** — pre-fills the base-domain prompt from the
   server's reverse DNS, if it resolves to something sensible. Always shown
   as an editable default, never applied silently.
+- **Mail relay setup** — Flowise/n8n/Langfuse all need SMTP for password-reset
+  and invite emails. The wizard can install and configure a local Postfix
+  relay for you (`scripts/install-postfix.sh`) — apps talk to it
+  unauthenticated over the internal Docker network, so your real mail
+  provider's password only ever lives in Postfix's config, not in three
+  separate app credentials.
 - **Coexistence-safe** — designed to deploy on a server that already runs
   other web services. See [`docs/COEXISTENCE.md`](docs/COEXISTENCE.md) for
   the explicit contract of what we touch and (mostly) don't touch.

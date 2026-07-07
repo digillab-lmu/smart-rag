@@ -348,6 +348,99 @@ ask_reranker_config() {
 }
 
 
+# ─── Section: Mail relay (SMTP) ──────────────────────────────────────────────
+# Strongly recommended, not required — a user can decline and fix it later by
+# editing .env directly. Two paths:
+#   a) Local Postfix (recommended): collects the *upstream* smarthost's
+#      credentials into SMTP_RELAY_* (consumed by install-postfix.sh later);
+#      the apps themselves are pointed at the pinned Docker gateway IP,
+#      unauthenticated (Postfix holds the real credentials, not the apps).
+#   b) Direct: apps connect straight to an external relay with SMTP_*.
+# Either way we also derive SMTP_CONNECTION_URL for Langfuse, which wants a
+# single URL rather than discrete host/port/user/pass fields.
+#
+# Must match the pinned subnet/gateway in docker/docker-compose.yml exactly.
+readonly SMARTRAG_DOCKER_GATEWAY="172.28.92.1"
+
+ask_mail_config() {
+    header "$(t cfg_section_mail)"
+    printf "  ${YELLOW}${BOLD}%s${RESET}\n" "$(t cfg_mail_warning_bold)"
+    printf "  ${DIM}%s${RESET}\n\n" "$(t cfg_mail_intro)"
+
+    if ! confirm cfg_mail_enable "y"; then
+        (( WIZARD_BACK )) && return 1
+        CFG_INSTALL_POSTFIX="false"
+        CFG_SMTP_RELAY_HOST=""
+        CFG_SMTP_RELAY_PORT="587"
+        CFG_SMTP_RELAY_USER=""
+        CFG_SMTP_RELAY_PASSWORD=""
+        CFG_SMTP_HOST=""
+        CFG_SMTP_PORT="25"
+        CFG_SMTP_SECURE="false"
+        CFG_SMTP_USER=""
+        CFG_SMTP_PASSWORD=""
+        CFG_N8N_EMAIL_MODE=""
+        CFG_SMTP_CONNECTION_URL=""
+        return 0
+    fi
+
+    if confirm cfg_mail_use_postfix "y"; then
+        CFG_INSTALL_POSTFIX="true"
+        CFG_SMTP_RELAY_HOST="$(prompt cfg_mail_relay_host "${CFG_SMTP_RELAY_HOST:-}")" || return 1
+        CFG_SMTP_RELAY_PORT="$(prompt cfg_mail_relay_port "${CFG_SMTP_RELAY_PORT:-587}" validate_positive_int)" || return 1
+        if confirm cfg_mail_relay_auth "y"; then
+            CFG_SMTP_RELAY_USER="$(prompt cfg_mail_relay_user "${CFG_SMTP_RELAY_USER:-}")" || return 1
+            CFG_SMTP_RELAY_PASSWORD="$(prompt_password cfg_mail_relay_password "${CFG_SMTP_RELAY_PASSWORD:-}")" || return 1
+        else
+            (( WIZARD_BACK )) && return 1
+            CFG_SMTP_RELAY_USER=""
+            CFG_SMTP_RELAY_PASSWORD=""
+        fi
+        # Apps talk to local Postfix, unauthenticated, on the pinned gateway.
+        CFG_SMTP_HOST="$SMARTRAG_DOCKER_GATEWAY"
+        CFG_SMTP_PORT="25"
+        CFG_SMTP_SECURE="false"
+        CFG_SMTP_USER=""
+        CFG_SMTP_PASSWORD=""
+    else
+        (( WIZARD_BACK )) && return 1
+        CFG_INSTALL_POSTFIX="false"
+        CFG_SMTP_RELAY_HOST=""
+        CFG_SMTP_RELAY_PORT="587"
+        CFG_SMTP_RELAY_USER=""
+        CFG_SMTP_RELAY_PASSWORD=""
+
+        CFG_SMTP_HOST="$(prompt cfg_mail_host "${CFG_SMTP_HOST:-}")" || return 1
+        CFG_SMTP_PORT="$(prompt cfg_mail_port "${CFG_SMTP_PORT:-587}" validate_positive_int)" || return 1
+        if confirm cfg_mail_secure "n"; then
+            CFG_SMTP_SECURE="true"
+        else
+            (( WIZARD_BACK )) && return 1
+            CFG_SMTP_SECURE="false"
+        fi
+        CFG_SMTP_USER="$(prompt cfg_mail_user "${CFG_SMTP_USER:-}")" || return 1
+        if [[ -n "$CFG_SMTP_USER" ]]; then
+            CFG_SMTP_PASSWORD="$(prompt_password cfg_mail_password "${CFG_SMTP_PASSWORD:-}")" || return 1
+        else
+            CFG_SMTP_PASSWORD=""
+        fi
+    fi
+
+    CFG_N8N_EMAIL_MODE="smtp"
+
+    # Derive Langfuse's SMTP_CONNECTION_URL (smtp://[user:pass@]host:port).
+    # Credentials must be URL-encoded — a raw ':' or '@' in a password would
+    # otherwise break URL parsing.
+    local scheme="smtp"
+    [[ "$CFG_SMTP_SECURE" == "true" ]] && scheme="smtps"
+    if [[ -n "$CFG_SMTP_USER" ]]; then
+        CFG_SMTP_CONNECTION_URL="${scheme}://$(url_encode "$CFG_SMTP_USER"):$(url_encode "$CFG_SMTP_PASSWORD")@${CFG_SMTP_HOST}:${CFG_SMTP_PORT}"
+    else
+        CFG_SMTP_CONNECTION_URL="${scheme}://${CFG_SMTP_HOST}:${CFG_SMTP_PORT}"
+    fi
+}
+
+
 # ─── Review & confirm ────────────────────────────────────────────────────────
 show_config_summary() {
     header "$(t cfg_review_title)"
@@ -372,6 +465,13 @@ show_config_summary() {
 
   Weaviate coll:    $CFG_WEAVIATE_COLLECTION_NAME
 EOF
+    if [[ "$CFG_INSTALL_POSTFIX" == "true" ]]; then
+        echo "  Mail relay:       local Postfix → $CFG_SMTP_RELAY_HOST:$CFG_SMTP_RELAY_PORT"
+    elif [[ -n "$CFG_SMTP_HOST" ]]; then
+        echo "  Mail relay:       direct → $CFG_SMTP_HOST:$CFG_SMTP_PORT"
+    else
+        echo "  Mail relay:       disabled (no password-reset emails)"
+    fi
     if [[ "$CFG_ENABLE_LTI" == "yes" ]]; then
         echo "  LMS URL:          $CFG_LMS_URL"
     fi
@@ -386,7 +486,7 @@ EOF
 # nothing entered earlier is lost when stepping back and forward again.
 _wizard_step_loop() {
     local i="$1"
-    local steps=(ask_course_info ask_profiles ask_llm_config ask_embedding_config ask_reranker_config)
+    local steps=(ask_course_info ask_profiles ask_llm_config ask_embedding_config ask_reranker_config ask_mail_config)
     local n=${#steps[@]}
     while (( i < n )); do
         if "${steps[$i]}"; then
@@ -409,7 +509,7 @@ run_config_wizard() {
         if confirm cfg_review_confirm "y"; then
             return 0
         elif (( WIZARD_BACK )); then
-            _wizard_step_loop 4   # re-enter at the last section (reranker)
+            _wizard_step_loop 5   # re-enter at the last section (mail relay)
         else
             die "$(t cfg_aborted)"
         fi

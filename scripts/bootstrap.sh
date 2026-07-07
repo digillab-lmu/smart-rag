@@ -137,6 +137,7 @@ if [[ "$MODE" == "continue" ]]; then
     create_system_snapshot
 
     bash "$SCRIPT_DIR/install-system-packages.sh" --lang "$LANG_CHOICE"
+    bash "$SCRIPT_DIR/install-postfix.sh"         --lang "$LANG_CHOICE"
     bash "$SCRIPT_DIR/get-ssl-certs.sh"           --lang "$LANG_CHOICE"
     bash "$SCRIPT_DIR/start-services.sh"          --lang "$LANG_CHOICE"
 
