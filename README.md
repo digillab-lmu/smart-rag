@@ -187,16 +187,18 @@ smart-rag/
 
 ## License
 
-The code in this repository is licensed under the **GNU AGPLv3**.
-The documentation (`docs/`, `README.md`) is licensed under **CC BY-NC-SA 4.0**.
+This entire repository (code and documentation) is licensed under the
+**[PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0)**.
 
-- **Code** — free to use, modify, and self-host. If you provide a hosted
-  service based on it, the AGPLv3 source-disclosure clause applies.
-- **Docs** — share and adapt freely, but **non-commercial only**, with
-  attribution and same-license re-sharing. This prevents commercial
-  resellers from rebranding the documentation.
+- **Free for any noncommercial use** — personal projects, research, and
+  use by charitable organizations, educational institutions, public
+  research organizations, and government institutions is explicitly
+  permitted regardless of funding source (this covers university/school
+  deployments like this project's own origin at LMU München).
+- **Commercial use requires a separate license from the licensor.**
+  Reach out if you want to use SMART RAG commercially.
 
-See [`LICENSE`](LICENSE) and [`docs/LICENSE-docs`](docs/LICENSE-docs).
+See [`LICENSE`](LICENSE) for the full legal text.
 
 ---
 
