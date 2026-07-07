@@ -176,7 +176,7 @@ ask_model_choice() {
     opts+=("$(t cfg_model_custom)")
 
     local selected
-    selected="$(select_one "$msg_key" "${opts[@]}")"
+    selected="$(select_one "$msg_key" "${opts[@]}")" || return 1
     if [[ "$selected" == "$(t cfg_model_custom)" ]]; then
         prompt "$msg_key" "$default_model"
     else
@@ -197,25 +197,31 @@ default_embedding_model() {
 
 
 # ─── Section: Course & deployment ────────────────────────────────────────────
+# Each field uses `|| return 1` so a "back" request (WIZARD_BACK, see common.sh)
+# aborts the section immediately and bubbles up to run_config_wizard's step
+# loop. Defaults read from previously-entered CFG_* values so re-entering a
+# section after going back doesn't lose earlier answers.
 ask_course_info() {
     header "$(t cfg_section_course)"
 
-    CFG_COURSE_NAME="$(prompt cfg_course_name "My Course")"
-    CFG_COURSE_ID="$(prompt cfg_course_id "my-course" validate_slug)"
+    CFG_COURSE_NAME="$(prompt cfg_course_name "${CFG_COURSE_NAME:-My Course}")" || return 1
+    CFG_COURSE_ID="$(prompt cfg_course_id "${CFG_COURSE_ID:-my-course}" validate_slug)" || return 1
 
     # Try to pre-fill domain from reverse DNS — user always confirms
-    local domain_default="example.com"
-    local detected_domain
-    detected_domain="$(detect_base_domain 2>/dev/null || true)"
-    if [[ -n "$detected_domain" ]]; then
-        info "$(t cfg_domain_detected "$detected_domain")" >&2
-        domain_default="$detected_domain"
+    local domain_default="${CFG_DOMAIN:-example.com}"
+    if [[ -z "${CFG_DOMAIN:-}" ]]; then
+        local detected_domain
+        detected_domain="$(detect_base_domain 2>/dev/null || true)"
+        if [[ -n "$detected_domain" ]]; then
+            info "$(t cfg_domain_detected "$detected_domain")" >&2
+            domain_default="$detected_domain"
+        fi
     fi
-    CFG_DOMAIN="$(prompt cfg_domain "$domain_default" validate_fqdn)"
+    CFG_DOMAIN="$(prompt cfg_domain "$domain_default" validate_fqdn)" || return 1
 
-    CFG_ADMIN_EMAIL="$(prompt cfg_admin_email "" validate_email)"
-    CFG_BASE_DATA_PATH="$(prompt cfg_base_data_path "/srv/smart-rag/data")"
-    CFG_TZ="$(prompt cfg_tz "Europe/Berlin")"
+    CFG_ADMIN_EMAIL="$(prompt cfg_admin_email "${CFG_ADMIN_EMAIL:-}" validate_email)" || return 1
+    CFG_BASE_DATA_PATH="$(prompt cfg_base_data_path "${CFG_BASE_DATA_PATH:-/srv/smart-rag/data}")" || return 1
+    CFG_TZ="$(prompt cfg_tz "${CFG_TZ:-Europe/Berlin}")" || return 1
 
     CFG_WEAVIATE_COLLECTION_NAME="$(derive_collection_name "$CFG_COURSE_ID")"
     dim "Weaviate collection name: $CFG_WEAVIATE_COLLECTION_NAME"
@@ -232,14 +238,16 @@ ask_profiles() {
         CFG_ENABLE_OBSERVABILITY="yes"
         profiles="${profiles},observability"
     else
+        (( WIZARD_BACK )) && return 1
         CFG_ENABLE_OBSERVABILITY="no"
     fi
 
     if confirm cfg_enable_lti "n"; then
         CFG_ENABLE_LTI="yes"
         profiles="${profiles},lti"
-        CFG_LMS_URL="$(prompt cfg_lms_url "https://lms.example.com" validate_url)"
+        CFG_LMS_URL="$(prompt cfg_lms_url "${CFG_LMS_URL:-https://lms.example.com}" validate_url)" || return 1
     else
+        (( WIZARD_BACK )) && return 1
         CFG_ENABLE_LTI="no"
         CFG_LMS_URL="https://lms.example.com"
     fi
@@ -254,15 +262,15 @@ ask_llm_config() {
     header "$(t cfg_section_llm)"
 
     CFG_LLM_PROVIDER="$(select_one cfg_llm_provider \
-        anthropic openai google mistral cohere openrouter custom)"
+        anthropic openai google mistral cohere openrouter custom)" || return 1
 
-    CFG_LLM_MODEL_STRONG="$(ask_model_choice "$CFG_LLM_PROVIDER" strong cfg_llm_model_strong)"
-    CFG_LLM_MODEL_FAST="$(ask_model_choice "$CFG_LLM_PROVIDER" fast cfg_llm_model_fast)"
+    CFG_LLM_MODEL_STRONG="$(ask_model_choice "$CFG_LLM_PROVIDER" strong cfg_llm_model_strong)" || return 1
+    CFG_LLM_MODEL_FAST="$(ask_model_choice "$CFG_LLM_PROVIDER" fast cfg_llm_model_fast)" || return 1
 
-    CFG_LLM_API_KEY="$(prompt_password cfg_llm_api_key)"
+    CFG_LLM_API_KEY="$(prompt_password cfg_llm_api_key "${CFG_LLM_API_KEY:-}")" || return 1
 
     if [[ "$CFG_LLM_PROVIDER" == "custom" ]]; then
-        CFG_LLM_BASE_URL="$(prompt cfg_llm_base_url "" validate_url)"
+        CFG_LLM_BASE_URL="$(prompt cfg_llm_base_url "${CFG_LLM_BASE_URL:-}" validate_url)" || return 1
     else
         CFG_LLM_BASE_URL=""
     fi
@@ -276,20 +284,20 @@ ask_embedding_config() {
     printf "  ${DIM}%s${RESET}\n\n" "$(t cfg_embed_warning)"
 
     CFG_EMBEDDING_PROVIDER="$(select_one cfg_embed_provider \
-        openai cohere google mistral custom)"
+        openai cohere google mistral custom)" || return 1
 
     local d_model
     d_model="$(default_embedding_model "$CFG_EMBEDDING_PROVIDER")"
-    CFG_EMBEDDING_MODEL="$(prompt cfg_embed_model "$d_model")"
+    CFG_EMBEDDING_MODEL="$(prompt cfg_embed_model "${CFG_EMBEDDING_MODEL:-$d_model}")" || return 1
 
     # Auto-suggest dimensions if model is known
     local known_dims
     known_dims="$(known_embedding_dimensions "$CFG_EMBEDDING_MODEL")"
     if [[ -n "$known_dims" ]]; then
         info "$(t cfg_embed_dims_known "$known_dims")"
-        CFG_EMBEDDING_DIMENSIONS="$(prompt cfg_embed_dimensions "$known_dims" validate_positive_int)"
+        CFG_EMBEDDING_DIMENSIONS="$(prompt cfg_embed_dimensions "$known_dims" validate_positive_int)" || return 1
     else
-        CFG_EMBEDDING_DIMENSIONS="$(prompt cfg_embed_dimensions "1536" validate_positive_int)"
+        CFG_EMBEDDING_DIMENSIONS="$(prompt cfg_embed_dimensions "${CFG_EMBEDDING_DIMENSIONS:-1536}" validate_positive_int)" || return 1
     fi
 
     # If same provider as LLM, offer to reuse the API key
@@ -297,11 +305,11 @@ ask_embedding_config() {
         CFG_EMBEDDING_API_KEY="$CFG_LLM_API_KEY"
         dim "Reusing LLM API key (same provider)"
     else
-        CFG_EMBEDDING_API_KEY="$(prompt_password cfg_embed_api_key)"
+        CFG_EMBEDDING_API_KEY="$(prompt_password cfg_embed_api_key "${CFG_EMBEDDING_API_KEY:-}")" || return 1
     fi
 
     if [[ "$CFG_EMBEDDING_PROVIDER" == "custom" ]]; then
-        CFG_EMBEDDING_BASE_URL="$(prompt cfg_embed_base_url "" validate_url)"
+        CFG_EMBEDDING_BASE_URL="$(prompt cfg_embed_base_url "${CFG_EMBEDDING_BASE_URL:-}" validate_url)" || return 1
     else
         CFG_EMBEDDING_BASE_URL=""
     fi
@@ -309,23 +317,27 @@ ask_embedding_config() {
 
 
 # ─── Section: Reranker ───────────────────────────────────────────────────────
+# "none" is the default (first option) — most users testing the wizard won't
+# have a reranker API key on hand yet, and cohere requires one immediately
+# after selection. Cohere remains recommended in the intro text for whoever
+# does have a key.
 ask_reranker_config() {
     header "$(t cfg_section_reranker)"
     printf "  ${DIM}%s${RESET}\n\n" "$(t cfg_reranker_intro)"
 
     CFG_RERANKER_PROVIDER="$(select_one cfg_reranker_provider \
-        cohere custom none)"
+        none cohere custom)" || return 1
 
     case "$CFG_RERANKER_PROVIDER" in
         cohere)
-            CFG_RERANKER_MODEL="$(prompt cfg_reranker_model "rerank-multilingual-v3.0")"
-            CFG_RERANKER_API_KEY="$(prompt_password cfg_reranker_api_key)"
+            CFG_RERANKER_MODEL="$(prompt cfg_reranker_model "${CFG_RERANKER_MODEL:-rerank-multilingual-v3.0}")" || return 1
+            CFG_RERANKER_API_KEY="$(prompt_password cfg_reranker_api_key "${CFG_RERANKER_API_KEY:-}")" || return 1
             CFG_RERANKER_BASE_URL=""
             ;;
         custom)
-            CFG_RERANKER_MODEL="$(prompt cfg_reranker_model "")"
-            CFG_RERANKER_BASE_URL="$(prompt cfg_reranker_base_url "" validate_url)"
-            CFG_RERANKER_API_KEY="$(prompt_password cfg_reranker_api_key)"
+            CFG_RERANKER_MODEL="$(prompt cfg_reranker_model "${CFG_RERANKER_MODEL:-}")" || return 1
+            CFG_RERANKER_BASE_URL="$(prompt cfg_reranker_base_url "${CFG_RERANKER_BASE_URL:-}" validate_url)" || return 1
+            CFG_RERANKER_API_KEY="$(prompt_password cfg_reranker_api_key "${CFG_RERANKER_API_KEY:-}")" || return 1
             ;;
         none)
             CFG_RERANKER_MODEL=""
@@ -367,17 +379,39 @@ EOF
 }
 
 
+# Runs the ordered wizard sections starting at step index $1. Each ask_*
+# function returns 1 when the user typed "back"/"zurück" on one of its fields
+# (see common.sh WIZARD_BACK) — in that case we re-run the previous section
+# instead of advancing. Sections read their own CFG_* globals as defaults, so
+# nothing entered earlier is lost when stepping back and forward again.
+_wizard_step_loop() {
+    local i="$1"
+    local steps=(ask_course_info ask_profiles ask_llm_config ask_embedding_config ask_reranker_config)
+    local n=${#steps[@]}
+    while (( i < n )); do
+        if "${steps[$i]}"; then
+            i=$((i+1))
+        else
+            (( i > 0 )) && i=$((i-1))
+        fi
+    done
+}
+
 # ─── Master wizard ───────────────────────────────────────────────────────────
 run_config_wizard() {
     printf "%s\n\n" "$(t cfg_intro)"
-    ask_course_info
-    ask_profiles
-    ask_llm_config
-    ask_embedding_config
-    ask_reranker_config
+    info "$(t cfg_back_hint)"
 
-    show_config_summary
-    if ! confirm cfg_review_confirm "y"; then
-        die "$(t cfg_aborted)"
-    fi
+    _wizard_step_loop 0
+
+    while true; do
+        show_config_summary
+        if confirm cfg_review_confirm "y"; then
+            return 0
+        elif (( WIZARD_BACK )); then
+            _wizard_step_loop 4   # re-enter at the last section (reranker)
+        else
+            die "$(t cfg_aborted)"
+        fi
+    done
 }

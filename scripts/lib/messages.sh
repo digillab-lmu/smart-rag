@@ -89,6 +89,7 @@ declare -A MSG_EN=(
   ─ Values in [brackets] are the suggested default.
   ─ Press Enter on its own to accept the default.
   ─ To enter your own value: just type it, no quotes or brackets needed."
+    [cfg_back_hint]="Type 'back' at any question to return to the previous section and change an earlier answer."
     [cfg_env_exists_prompt]="An existing .env was found. What should we do?"
     [cfg_env_keep]="Keep existing .env (skip wizard, use saved values)"
     [cfg_env_backup_new]="Back up existing .env and create new one (recommended)"
@@ -135,7 +136,7 @@ declare -A MSG_EN=(
 
     # Reranker
     [cfg_section_reranker]="Reranker (optional)"
-    [cfg_reranker_intro]="The reranker improves retrieval quality. Cohere recommended."
+    [cfg_reranker_intro]="The reranker improves retrieval quality but is optional. Default: none. If you have a Cohere API key, it's recommended."
     [cfg_reranker_provider]="Choose your reranker"
     [cfg_reranker_model]="Reranker model"
     [cfg_reranker_api_key]="API key for reranker provider"
@@ -307,6 +308,7 @@ declare -A MSG_DE=(
   ─ Werte in [eckigen Klammern] sind die Standard-Vorschläge.
   ─ Drück einfach Enter, um den Standard zu übernehmen.
   ─ Für eigene Eingabe: einfach tippen — ohne Anführungszeichen oder Klammern."
+    [cfg_back_hint]="Tippe bei jeder Frage 'zurück' ein, um zum vorherigen Abschnitt zurückzugehen und eine frühere Antwort zu ändern."
     [cfg_env_exists_prompt]="Eine bestehende .env wurde gefunden. Was tun?"
     [cfg_env_keep]="Bestehende .env behalten (Assistent überspringen)"
     [cfg_env_backup_new]="Bestehende .env sichern und neu anlegen (empfohlen)"
@@ -353,7 +355,7 @@ declare -A MSG_DE=(
 
     # Reranker
     [cfg_section_reranker]="Reranker (optional)"
-    [cfg_reranker_intro]="Der Reranker verbessert die Retrieval-Qualität. Cohere empfohlen."
+    [cfg_reranker_intro]="Der Reranker verbessert die Retrieval-Qualität, ist aber optional. Standard: none. Falls du einen Cohere API-Key hast, ist er empfehlenswert."
     [cfg_reranker_provider]="Reranker wählen"
     [cfg_reranker_model]="Reranker-Modell"
     [cfg_reranker_api_key]="API-Key für Reranker-Anbieter"
