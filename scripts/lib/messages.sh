@@ -118,6 +118,7 @@ declare -A MSG_EN=(
     [cfg_llm_provider]="Choose your LLM provider"
     [cfg_llm_model_strong]="Strong model (complex reasoning)"
     [cfg_llm_model_fast]="Fast model (classification, summaries)"
+    [cfg_model_custom]="Custom (enter model name manually)"
     [cfg_llm_api_key]="API key for your LLM provider"
     [cfg_llm_base_url]="Base URL for your custom OpenAI-compatible endpoint"
 
@@ -335,6 +336,7 @@ declare -A MSG_DE=(
     [cfg_llm_provider]="LLM-Anbieter wählen"
     [cfg_llm_model_strong]="Starkes Modell (komplexes Reasoning)"
     [cfg_llm_model_fast]="Schnelles Modell (Klassifikation, Zusammenfassungen)"
+    [cfg_model_custom]="Benutzerdefiniert (Modellname manuell eingeben)"
     [cfg_llm_api_key]="API-Key deines LLM-Anbieters"
     [cfg_llm_base_url]="Basis-URL deines OpenAI-kompatiblen Endpoints"
 
