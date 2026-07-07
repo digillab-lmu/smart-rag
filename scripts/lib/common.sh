@@ -52,14 +52,35 @@ header() {
     _log_to_file "HEADER $*"
 }
 
+# Box width adapts to content so long lines (e.g. the license line) never
+# get clipped or need manual re-counting of ASCII art characters.
 banner() {
+    local lines=(
+        "S M A R T   R A G"
+        "Shared Memory Agent-Based Retrieval for Teaching"
+        ""
+        "Entwicklung: DigiLLab LMU München 2026"
+        "Lizenz: PolyForm Noncommercial 1.0.0"
+    )
+
+    local width=0 l
+    for l in "${lines[@]}"; do
+        (( ${#l} > width )) && width=${#l}
+    done
+    width=$((width + 4))   # 2 spaces padding on each side
+
+    local border; border="$(printf '─%.0s' $(seq 1 "$width"))"
+
     printf "\n${BOLD}${CYAN}"
-    cat <<'EOF'
-   ┌─────────────────────────────────────────────┐
-   │           S M A R T   R A G                 │
-   │   Multi-Agent AI Tutoring Setup Wizard      │
-   └─────────────────────────────────────────────┘
-EOF
+    printf "┌%s┐\n" "$border"
+    local pad_total pad_left pad_right
+    for l in "${lines[@]}"; do
+        pad_total=$((width - ${#l}))
+        pad_left=$((pad_total / 2))
+        pad_right=$((pad_total - pad_left))
+        printf "│%*s%s%*s│\n" "$pad_left" "" "$l" "$pad_right" ""
+    done
+    printf "└%s┘\n" "$border"
     printf "${RESET}\n"
 }
 
