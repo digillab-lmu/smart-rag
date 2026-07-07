@@ -250,6 +250,20 @@ require_command() {
     command -v "$cmd" >/dev/null 2>&1 || die "Required command not found: $cmd"
 }
 
+# Percent-encode a string for safe embedding in a URL (e.g. an SMTP password
+# that may contain ':', '@', '/'). ASCII-only — sufficient for SMTP passwords.
+url_encode() {
+    local s="$1" out="" c i hex
+    for (( i=0; i<${#s}; i++ )); do
+        c="${s:i:1}"
+        case "$c" in
+            [a-zA-Z0-9.~_-]) out+="$c" ;;
+            *) printf -v hex '%%%02X' "'$c"; out+="$hex" ;;
+        esac
+    done
+    printf '%s' "$out"
+}
+
 # ─── System snapshot ─────────────────────────────────────────────────────────
 # Captures the current state of nginx config, running Docker containers, and
 # listening ports — BEFORE we make any destructive changes. Stored at:

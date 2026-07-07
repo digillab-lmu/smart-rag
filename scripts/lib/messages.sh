@@ -52,7 +52,7 @@ declare -A MSG_EN=(
     [prereq_optional]="Optional (only if you plan to enable these):"
     [prereq_o1]="Cohere API key — only for reranking (default is 'none', safe to skip)"
     [prereq_o2]="Your LMS base URL — only if enabling LTI (Moodle / ILIAS / Canvas integration)"
-    [prereq_o3]="Outbound SMTP relay reachable on port 25 — only if Langfuse should send email notifications"
+    [prereq_o3]="Strongly recommended, not required: credentials for a mail relay (your institution's SMTP server, or any transactional provider). Without this, Flowise/n8n/Langfuse cannot send password-reset emails. The wizard can install and configure a local Postfix relay for you if you have a smarthost + credentials ready."
     [prereq_confirm]="Do you have all required items ready?"
     [prereq_declined]="No problem. Prepare the items above and re-run this script when ready. Full details: docs/requirements.md"
 
@@ -160,6 +160,23 @@ declare -A MSG_EN=(
     [cfg_reranker_api_key]="API key for reranker provider"
     [cfg_reranker_base_url]="Base URL for your custom reranker endpoint"
 
+    # mail relay (SMTP)
+    [cfg_section_mail]="Mail relay (SMTP)"
+    [cfg_mail_warning_bold]="Strongly recommended:"
+    [cfg_mail_intro]="Without a mail relay, Flowise/n8n/Langfuse cannot send password-reset or invite emails — locked-out users have no self-service way back in."
+    [cfg_mail_enable]="Configure a mail relay now?"
+    [cfg_mail_use_postfix]="Install a local Postfix relay (recommended — you only give Postfix your provider's credentials, apps never see them)?"
+    [cfg_mail_relay_host]="Your mail provider's SMTP relay host (e.g. smtp.your-university.edu or smtp.sendgrid.net)"
+    [cfg_mail_relay_port]="Relay port (587 = STARTTLS, typical for authenticated relays)"
+    [cfg_mail_relay_auth]="Does this relay require a username/password?"
+    [cfg_mail_relay_user]="Relay username"
+    [cfg_mail_relay_password]="Relay password"
+    [cfg_mail_host]="SMTP host"
+    [cfg_mail_port]="SMTP port"
+    [cfg_mail_secure]="Use implicit TLS (usually port 465)? Answer no for STARTTLS (587) or unencrypted (25)."
+    [cfg_mail_user]="SMTP username (leave empty if the relay needs no auth)"
+    [cfg_mail_password]="SMTP password"
+
     # confirmation
     [cfg_review_title]="Review your configuration:"
     [cfg_review_confirm]="Save this configuration?"
@@ -201,6 +218,21 @@ declare -A MSG_EN=(
     [pkg_installing]="Installing: %s"
     [pkg_done]="System packages ready"
     [pkg_already]="Already installed: %s"
+
+    # --- mail relay (postfix) -------------------------------------------------
+    [phase_postfix]="Mail Relay Setup (Postfix)"
+    [postfix_skip_disabled]="INSTALL_POSTFIX_RELAY is not enabled in .env — skipping. Password-reset emails stay disabled unless SMTP_HOST is set manually."
+    [postfix_missing_relay_host]="INSTALL_POSTFIX_RELAY=true but SMTP_RELAY_HOST is empty in .env — cannot configure Postfix. Fix .env and re-run."
+    [postfix_already_other]="Postfix is already installed on this server, but not by SMART RAG. Reconfiguring it will change its relay host and network-access rules (mynetworks) — this could affect mail for other services already using it."
+    [postfix_confirm_reconfigure]="Back up and reconfigure this existing Postfix installation?"
+    [postfix_declined]="Leaving the existing Postfix installation untouched. Point SMTP_HOST in .env at it manually if you want SMART RAG to use it, or set INSTALL_POSTFIX_RELAY=false to silence this check."
+    [postfix_backup]="Existing Postfix config backed up to: %s"
+    [postfix_installing]="Installing Postfix (non-interactive, relay-only satellite mode)…"
+    [postfix_installed]="Postfix installed"
+    [postfix_already_installed]="Postfix already installed — reconfiguring relay settings"
+    [postfix_configuring]="Configuring Postfix as a relay to %s…"
+    [postfix_configured]="Postfix configured — relays via %s, accepts mail only from localhost + %s"
+    [postfix_restart_failed]="Postfix installed but failed to start — check: systemctl status postfix"
 
     # --- phase 6 — SSL ------------------------------------------------------
     [phase_ssl]="Phase 6 · Obtaining SSL Certificates"
@@ -289,7 +321,7 @@ declare -A MSG_DE=(
     [prereq_optional]="Optional (nur falls du das aktivieren willst):"
     [prereq_o1]="Cohere API-Key — nur für Reranking (Standard ist 'none', kannst du überspringen)"
     [prereq_o2]="Deine LMS-Basis-URL — nur falls LTI aktiviert wird (Moodle/ILIAS/Canvas-Anbindung)"
-    [prereq_o3]="Ausgehender SMTP-Relay über Port 25 erreichbar — nur falls Langfuse E-Mail-Benachrichtigungen versenden soll"
+    [prereq_o3]="Dringend empfohlen, nicht zwingend: Zugangsdaten für einen Mail-Relay (SMTP-Server deiner Institution oder ein Transactional-Mail-Anbieter). Ohne das können Flowise/n8n/Langfuse keine Passwort-Reset-Mails verschicken. Der Assistent kann einen lokalen Postfix-Relay für dich einrichten, wenn du Smarthost + Zugangsdaten bereit hast."
     [prereq_confirm]="Hast du alle erforderlichen Punkte bereit?"
     [prereq_declined]="Kein Problem. Bereite die obigen Punkte vor und starte das Skript erneut. Details: docs/requirements.md"
 
@@ -397,6 +429,23 @@ declare -A MSG_DE=(
     [cfg_reranker_api_key]="API-Key für Reranker-Anbieter"
     [cfg_reranker_base_url]="Basis-URL deines Reranker-Endpoints"
 
+    # Mail-Relay (SMTP)
+    [cfg_section_mail]="Mail-Relay (SMTP)"
+    [cfg_mail_warning_bold]="Dringend empfohlen:"
+    [cfg_mail_intro]="Ohne Mail-Relay können Flowise/n8n/Langfuse keine Passwort-Reset- oder Einladungs-Mails verschicken — ausgesperrte Nutzer haben dann keinen Selbsthilfe-Weg zurück."
+    [cfg_mail_enable]="Jetzt ein Mail-Relay einrichten?"
+    [cfg_mail_use_postfix]="Lokalen Postfix-Relay installieren (empfohlen — nur Postfix bekommt die Zugangsdaten deines Providers, die Apps sehen sie nie)?"
+    [cfg_mail_relay_host]="SMTP-Relay-Host deines Mail-Providers (z.B. smtp.deine-uni.de oder smtp.sendgrid.net)"
+    [cfg_mail_relay_port]="Relay-Port (587 = STARTTLS, typisch für authentifizierte Relays)"
+    [cfg_mail_relay_auth]="Braucht dieser Relay Benutzername/Passwort?"
+    [cfg_mail_relay_user]="Relay-Benutzername"
+    [cfg_mail_relay_password]="Relay-Passwort"
+    [cfg_mail_host]="SMTP-Host"
+    [cfg_mail_port]="SMTP-Port"
+    [cfg_mail_secure]="Implizites TLS nutzen (meist Port 465)? Bei STARTTLS (587) oder unverschlüsselt (25) nein wählen."
+    [cfg_mail_user]="SMTP-Benutzername (leer lassen, falls der Relay keine Auth braucht)"
+    [cfg_mail_password]="SMTP-Passwort"
+
     # confirmation
     [cfg_review_title]="Konfiguration prüfen:"
     [cfg_review_confirm]="Konfiguration speichern?"
@@ -438,6 +487,21 @@ declare -A MSG_DE=(
     [pkg_installing]="Installiere: %s"
     [pkg_done]="System-Pakete bereit"
     [pkg_already]="Bereits installiert: %s"
+
+    # --- Mail-Relay (Postfix) --------------------------------------------------
+    [phase_postfix]="Mail-Relay-Einrichtung (Postfix)"
+    [postfix_skip_disabled]="INSTALL_POSTFIX_RELAY ist in .env nicht aktiviert — übersprungen. Passwort-Reset-Mails bleiben deaktiviert, außer SMTP_HOST wird manuell gesetzt."
+    [postfix_missing_relay_host]="INSTALL_POSTFIX_RELAY=true, aber SMTP_RELAY_HOST ist in .env leer — Postfix kann nicht konfiguriert werden. .env korrigieren und erneut ausführen."
+    [postfix_already_other]="Postfix ist auf diesem Server bereits installiert, aber nicht von SMART RAG. Eine Neukonfiguration ändert Relay-Host und Netzwerk-Zugriffsregeln (mynetworks) — das könnte Mail-Versand für andere Dienste beeinflussen, die diesen Postfix bereits nutzen."
+    [postfix_confirm_reconfigure]="Diese bestehende Postfix-Installation sichern und neu konfigurieren?"
+    [postfix_declined]="Bestehende Postfix-Installation bleibt unverändert. Setze SMTP_HOST in .env manuell darauf, falls SMART RAG sie nutzen soll, oder setze INSTALL_POSTFIX_RELAY=false, um diese Prüfung stumm zu schalten."
+    [postfix_backup]="Bestehende Postfix-Konfiguration gesichert nach: %s"
+    [postfix_installing]="Installiere Postfix (nicht-interaktiv, reiner Relay-Modus)…"
+    [postfix_installed]="Postfix installiert"
+    [postfix_already_installed]="Postfix bereits installiert — Relay-Einstellungen werden neu konfiguriert"
+    [postfix_configuring]="Konfiguriere Postfix als Relay zu %s…"
+    [postfix_configured]="Postfix konfiguriert — relayt über %s, akzeptiert Mail nur von localhost + %s"
+    [postfix_restart_failed]="Postfix installiert, aber Start fehlgeschlagen — prüfen: systemctl status postfix"
 
     # --- phase 6 — SSL ------------------------------------------------------
     [phase_ssl]="Phase 6 · SSL-Zertifikate beziehen"
