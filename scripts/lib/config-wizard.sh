@@ -123,6 +123,67 @@ default_llm_model_fast() {
         *)          echo "" ;;
     esac
 }
+# Curated model choices per provider ("|"-separated). Empty = no curated list
+# (falls straight through to free-text entry). Update periodically — this is
+# a convenience shortlist, not an exhaustive/live-fetched catalog (see
+# cfg_model_custom for manual override, always available).
+llm_model_choices_strong() {
+    case "$1" in
+        anthropic)  echo "claude-sonnet-4-5|claude-opus-4-8" ;;
+        openai)     echo "gpt-4o|gpt-4.1|o3" ;;
+        google)     echo "gemini-2.5-pro|gemini-2.5-flash" ;;
+        mistral)    echo "mistral-large-latest|mistral-medium-latest" ;;
+        cohere)     echo "command-r-plus|command-r" ;;
+        openrouter) echo "anthropic/claude-sonnet-4.5|openai/gpt-4o|google/gemini-2.5-pro" ;;
+        *)          echo "" ;;
+    esac
+}
+llm_model_choices_fast() {
+    case "$1" in
+        anthropic)  echo "claude-haiku-4-5" ;;
+        openai)     echo "gpt-4o-mini|gpt-4.1-mini" ;;
+        google)     echo "gemini-2.0-flash-lite|gemini-2.5-flash" ;;
+        mistral)    echo "mistral-small-latest" ;;
+        cohere)     echo "command-r" ;;
+        openrouter) echo "anthropic/claude-haiku-4.5|openai/gpt-4o-mini" ;;
+        *)          echo "" ;;
+    esac
+}
+
+# Ask for a model name: curated select-list (+ custom escape hatch) when we
+# have one for this provider/tier, otherwise straight free-text entry.
+# Args: $1=provider  $2=strong|fast  $3=message key (for prompt/header text)
+ask_model_choice() {
+    local provider="$1" tier="$2" msg_key="$3"
+    local choices default_model
+
+    if [[ "$tier" == "strong" ]]; then
+        choices="$(llm_model_choices_strong "$provider")"
+        default_model="$(default_llm_model_strong "$provider")"
+    else
+        choices="$(llm_model_choices_fast "$provider")"
+        default_model="$(default_llm_model_fast "$provider")"
+    fi
+
+    if [[ -z "$choices" ]]; then
+        prompt "$msg_key" "$default_model"
+        return
+    fi
+
+    local IFS='|'
+    local opts=($choices)
+    unset IFS
+    opts+=("$(t cfg_model_custom)")
+
+    local selected
+    selected="$(select_one "$msg_key" "${opts[@]}")"
+    if [[ "$selected" == "$(t cfg_model_custom)" ]]; then
+        prompt "$msg_key" "$default_model"
+    else
+        printf '%s' "$selected"
+    fi
+}
+
 default_embedding_model() {
     case "$1" in
         openai)   echo "text-embedding-3-small" ;;
@@ -195,12 +256,8 @@ ask_llm_config() {
     CFG_LLM_PROVIDER="$(select_one cfg_llm_provider \
         anthropic openai google mistral cohere openrouter custom)"
 
-    local d_strong d_fast
-    d_strong="$(default_llm_model_strong "$CFG_LLM_PROVIDER")"
-    d_fast="$(default_llm_model_fast "$CFG_LLM_PROVIDER")"
-
-    CFG_LLM_MODEL_STRONG="$(prompt cfg_llm_model_strong "$d_strong")"
-    CFG_LLM_MODEL_FAST="$(prompt cfg_llm_model_fast "$d_fast")"
+    CFG_LLM_MODEL_STRONG="$(ask_model_choice "$CFG_LLM_PROVIDER" strong cfg_llm_model_strong)"
+    CFG_LLM_MODEL_FAST="$(ask_model_choice "$CFG_LLM_PROVIDER" fast cfg_llm_model_fast)"
 
     CFG_LLM_API_KEY="$(prompt_password cfg_llm_api_key)"
 
