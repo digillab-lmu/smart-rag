@@ -32,7 +32,29 @@ declare -A MSG_EN=(
     [intro_step3]="  3. Generate cryptographically secure secrets"
     [intro_step4]="  4. Write .env file and substitute templates"
     [intro_step5]="  5. (next run) Start services, deploy schemas, set up APIs"
+    [intro_how_it_works]="How to use this wizard:"
+    [intro_how1]="  ─ Values shown in [brackets] are suggested defaults — press Enter to accept them."
+    [intro_how2]="  ─ To enter your own value: just type it, no quotes needed."
+    [intro_how3]="  ─ Type 'back' (or 'zurück') at any question to return to the previous section and change an earlier answer."
     [intro_continue]="Continue?"
+
+    # --- prerequisites checklist ---------------------------------------------
+    [prereq_title]="Prerequisites Checklist"
+    [prereq_intro]="Make sure you have everything below ready — this avoids having to stop partway through setup."
+    [prereq_mandatory]="Required:"
+    [prereq_m1]="Ubuntu 24.04 LTS server with root/sudo access"
+    [prereq_m2]="Docker Engine + Docker Compose v2 plugin already installed (this script does not install Docker itself)"
+    [prereq_m3]="A registered domain (public TLD) with DNS control — you can create A/AAAA records"
+    [prereq_m4]="This server reachable on ports 80 and 443 from the public internet (check firewall/router)"
+    [prereq_m5]="At least 20 GB free disk space (40+ GB recommended)"
+    [prereq_m6]="An API key for your chosen LLM provider (Anthropic, OpenAI, Google, Mistral, Cohere, OpenRouter — or a reachable OpenAI-compatible endpoint)"
+    [prereq_m7]="An API key for your chosen embedding provider (can reuse the LLM key if it's the same provider)"
+    [prereq_optional]="Optional (only if you plan to enable these):"
+    [prereq_o1]="Cohere API key — only for reranking (default is 'none', safe to skip)"
+    [prereq_o2]="Your LMS base URL — only if enabling LTI (Moodle / ILIAS / Canvas integration)"
+    [prereq_o3]="Outbound SMTP relay reachable on port 25 — only if Langfuse should send email notifications"
+    [prereq_confirm]="Do you have all required items ready?"
+    [prereq_declined]="No problem. Prepare the items above and re-run this script when ready. Full details: docs/requirements.md"
 
     # --- preflight ----------------------------------------------------------
     [phase_preflight]="Phase 1 · Pre-flight Checks"
@@ -84,12 +106,8 @@ declare -A MSG_EN=(
 
     # --- config wizard ------------------------------------------------------
     [phase_config]="Phase 2 · Configuration Wizard"
-    [cfg_intro]="A few questions about your deployment.
-
-  ─ Values in [brackets] are the suggested default.
-  ─ Press Enter on its own to accept the default.
-  ─ To enter your own value: just type it, no quotes or brackets needed."
-    [cfg_back_hint]="Type 'back' at any question to return to the previous section and change an earlier answer."
+    [cfg_intro]="A few questions about your deployment."
+    [cfg_back_hint]="Reminder: [brackets] = default (Enter accepts it), 'back' = previous section."
     [cfg_env_exists_prompt]="An existing .env was found. What should we do?"
     [cfg_env_keep]="Keep existing .env (skip wizard, use saved values)"
     [cfg_env_backup_new]="Back up existing .env and create new one (recommended)"
@@ -251,7 +269,29 @@ declare -A MSG_DE=(
     [intro_step3]="  3. Kryptografisch sichere Secrets erzeugen"
     [intro_step4]="  4. .env-Datei schreiben und Templates ersetzen"
     [intro_step5]="  5. (nächster Lauf) Services starten, Schemas deployen, APIs einrichten"
+    [intro_how_it_works]="So bedienst du diesen Assistenten:"
+    [intro_how1]="  ─ Werte in [eckigen Klammern] sind Standard-Vorschläge — Enter übernimmt sie."
+    [intro_how2]="  ─ Für eigene Eingabe: einfach tippen, keine Anführungszeichen nötig."
+    [intro_how3]="  ─ Tippe bei jeder Frage 'zurück' (oder 'back') ein, um zum vorherigen Abschnitt zurückzugehen und eine frühere Antwort zu ändern."
     [intro_continue]="Fortfahren?"
+
+    # --- prerequisites checklist ---------------------------------------------
+    [prereq_title]="Checkliste: Voraussetzungen"
+    [prereq_intro]="Stelle sicher, dass du alles Folgende bereit hast — so musst du das Setup nicht mittendrin abbrechen."
+    [prereq_mandatory]="Erforderlich:"
+    [prereq_m1]="Ubuntu 24.04 LTS-Server mit Root-/Sudo-Zugriff"
+    [prereq_m2]="Docker Engine + Docker Compose v2 Plugin bereits installiert (dieses Skript installiert Docker selbst nicht)"
+    [prereq_m3]="Eine registrierte Domain (öffentliche TLD) mit DNS-Kontrolle — du kannst A/AAAA-Records anlegen"
+    [prereq_m4]="Dieser Server über Port 80 und 443 aus dem öffentlichen Internet erreichbar (Firewall/Router prüfen)"
+    [prereq_m5]="Mindestens 20 GB freier Speicherplatz (40+ GB empfohlen)"
+    [prereq_m6]="Ein API-Key für deinen gewählten LLM-Anbieter (Anthropic, OpenAI, Google, Mistral, Cohere, OpenRouter — oder ein erreichbarer OpenAI-kompatibler Endpunkt)"
+    [prereq_m7]="Ein API-Key für deinen gewählten Embedding-Anbieter (kann der LLM-Key sein, falls gleicher Anbieter)"
+    [prereq_optional]="Optional (nur falls du das aktivieren willst):"
+    [prereq_o1]="Cohere API-Key — nur für Reranking (Standard ist 'none', kannst du überspringen)"
+    [prereq_o2]="Deine LMS-Basis-URL — nur falls LTI aktiviert wird (Moodle/ILIAS/Canvas-Anbindung)"
+    [prereq_o3]="Ausgehender SMTP-Relay über Port 25 erreichbar — nur falls Langfuse E-Mail-Benachrichtigungen versenden soll"
+    [prereq_confirm]="Hast du alle erforderlichen Punkte bereit?"
+    [prereq_declined]="Kein Problem. Bereite die obigen Punkte vor und starte das Skript erneut. Details: docs/requirements.md"
 
     # --- preflight ----------------------------------------------------------
     [phase_preflight]="Phase 1 · Vorab-Prüfungen"
@@ -303,12 +343,8 @@ declare -A MSG_DE=(
 
     # --- config wizard ------------------------------------------------------
     [phase_config]="Phase 2 · Konfigurations-Assistent"
-    [cfg_intro]="Ein paar Fragen zu deinem Deployment.
-
-  ─ Werte in [eckigen Klammern] sind die Standard-Vorschläge.
-  ─ Drück einfach Enter, um den Standard zu übernehmen.
-  ─ Für eigene Eingabe: einfach tippen — ohne Anführungszeichen oder Klammern."
-    [cfg_back_hint]="Tippe bei jeder Frage 'zurück' ein, um zum vorherigen Abschnitt zurückzugehen und eine frühere Antwort zu ändern."
+    [cfg_intro]="Ein paar Fragen zu deinem Deployment."
+    [cfg_back_hint]="Erinnerung: [Klammern] = Standard (Enter übernimmt ihn), 'zurück' = vorheriger Abschnitt."
     [cfg_env_exists_prompt]="Eine bestehende .env wurde gefunden. Was tun?"
     [cfg_env_keep]="Bestehende .env behalten (Assistent überspringen)"
     [cfg_env_backup_new]="Bestehende .env sichern und neu anlegen (empfohlen)"

@@ -60,12 +60,14 @@ separate repository: [`smart-rag-ingest`](https://github.com/) (planned).
 ## Quick start
 
 **Requirements**: Ubuntu 24.04 LTS, Docker, Docker Compose v2, a public domain
-with DNS pointing to your server, ports 80/443 reachable.
+with DNS pointing to your server, ports 80/443 reachable. Full checklist
+(including API keys and hardware sizing): [`docs/requirements.md`](docs/requirements.md).
+The wizard also shows this checklist interactively before it asks you anything.
 
 ```bash
 # On the server — clone into /srv/smart-rag (recommended)
 sudo mkdir -p /srv && sudo chown $USER /srv
-git clone <this-repo-url> /srv/smart-rag
+git clone https://github.com/digillab-lmu/smart-rag.git /srv/smart-rag
 cd /srv/smart-rag
 
 # Phase 1 — interactive wizard (≈ 5 min)
@@ -98,6 +100,20 @@ Initial admin credentials are in `credentials.txt` (chmod 600).
 
 - **Bilingual** — English or German (auto-detected from `$LANG`, override
   with `--lang en|de`).
+- **Prerequisites checklist** — shown before any question is asked, so you
+  find out you're missing an API key or DNS control up front, not halfway
+  through. Declining exits cleanly with a pointer to
+  [`docs/requirements.md`](docs/requirements.md) instead of leaving a
+  half-configured `.env`.
+- **Back-navigation** — type `back` (or `zurück`) at any prompt to return to
+  the previous section and fix an earlier answer. Everything you already
+  entered is kept as the new default.
+- **Curated model shortlists** — after picking an LLM provider, choose from
+  a short list of current models instead of typing a name from memory
+  (with a "custom" option to type your own).
+- **Domain auto-detection** — pre-fills the base-domain prompt from the
+  server's reverse DNS, if it resolves to something sensible. Always shown
+  as an editable default, never applied silently.
 - **Coexistence-safe** — designed to deploy on a server that already runs
   other web services. See [`docs/COEXISTENCE.md`](docs/COEXISTENCE.md) for
   the explicit contract of what we touch and (mostly) don't touch.

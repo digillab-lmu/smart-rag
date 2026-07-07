@@ -8,6 +8,36 @@
 
 PREFLIGHT_WARN=0
 
+# ─── 0. Prerequisites checklist (human, not automated) ──────────────────────
+# Shown once, right after the welcome intro and before any system checks.
+# Purpose: let the user bail out cleanly BEFORE investing time in the wizard
+# if they're missing something they can't check automatically (an API key,
+# DNS control, an already-installed Docker). A declined checklist exits 0 —
+# it's not an error, just "come back when ready".
+show_prerequisites_checklist() {
+    header "$(t prereq_title)"
+    printf "  %s\n\n" "$(t prereq_intro)"
+
+    printf "  ${BOLD}%s${RESET}\n" "$(t prereq_mandatory)"
+    printf "    • %s\n" "$(t prereq_m1)"
+    printf "    • %s\n" "$(t prereq_m2)"
+    printf "    • %s\n" "$(t prereq_m3)"
+    printf "    • %s\n" "$(t prereq_m4)"
+    printf "    • %s\n" "$(t prereq_m5)"
+    printf "    • %s\n" "$(t prereq_m6)"
+    printf "    • %s\n\n" "$(t prereq_m7)"
+
+    printf "  ${BOLD}%s${RESET}\n" "$(t prereq_optional)"
+    printf "    • %s\n" "$(t prereq_o1)"
+    printf "    • %s\n" "$(t prereq_o2)"
+    printf "    • %s\n\n" "$(t prereq_o3)"
+
+    if ! confirm prereq_confirm "y"; then
+        info "$(t prereq_declined)"
+        exit 0
+    fi
+}
+
 # ─── 1. Operating System ─────────────────────────────────────────────────────
 check_ubuntu() {
     local id="" version=""

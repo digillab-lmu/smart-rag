@@ -157,8 +157,18 @@ printf "%s\n" "$(t intro_step3)"
 printf "%s\n" "$(t intro_step4)"
 printf "%s\n\n" "$(t intro_step5)"
 
+printf "${BOLD}%s${RESET}\n" "$(t intro_how_it_works)"
+printf "%s\n" "$(t intro_how1)"
+printf "%s\n" "$(t intro_how2)"
+printf "%s\n\n" "$(t intro_how3)"
+
 if ! confirm intro_continue "y"; then
     exit 0
+fi
+
+# ─── Phase 0: Prerequisites checklist ────────────────────────────────────────
+if (( SKIP_PREFLIGHT == 0 )); then
+    show_prerequisites_checklist
 fi
 
 # ─── Phase 1: Pre-flight ─────────────────────────────────────────────────────
