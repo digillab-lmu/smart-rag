@@ -1,3 +1,5 @@
+# 🚧 UNDER CONSTRUCTION - USE AT YOUR WON RISK 🚧
+
 # SMART RAG
 
 **Shared Memory Agent-Based Retrieval for Teaching**
