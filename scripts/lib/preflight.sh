@@ -189,7 +189,7 @@ _forward_resolve_a() {
 # fails; callers should always let the user confirm/override the result.
 detect_base_domain() {
     local pub_ip ptr_record base_domain forward_ip
-    pub_ip="$(curl -sf --max-time 5 https://api.ipify.org 2>/dev/null || true)"
+    pub_ip="$(detect_public_ip)"
     [[ -z "$pub_ip" ]] && return 0
 
     if command -v dig &>/dev/null; then
@@ -235,7 +235,7 @@ check_dns() {
 
     local dns_ip server_ip
     dns_ip="$(dig +short A "$domain" 2>/dev/null | head -1)"
-    server_ip="$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || echo "")"
+    server_ip="$(detect_public_ip)"
 
     if [[ -z "$dns_ip" ]]; then
         warn "$(t pf_dns_nores "$domain")"

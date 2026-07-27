@@ -36,7 +36,9 @@ declare -A MSG_EN=(
     [intro_how1]="  ─ Values shown in [brackets] are suggested defaults — press Enter to accept them."
     [intro_how2]="  ─ To enter your own value: just type it, no quotes needed."
     [intro_how3]="  ─ Type 'back' (or 'zurück') at any question to return to the previous section and change an earlier answer."
+    [intro_how4]="  ─ Type 'exit' (or 'quit') at any question to cleanly stop the wizard — nothing written so far is touched."
     [intro_continue]="Continue?"
+    [wizard_exit]="Exited by user request. Nothing beyond what was already on disk before this run was changed. Re-run any time to pick up where you left off."
 
     # --- prerequisites checklist ---------------------------------------------
     [prereq_title]="Prerequisites Checklist"
@@ -112,7 +114,7 @@ declare -A MSG_EN=(
     # --- config wizard ------------------------------------------------------
     [phase_config]="Phase 2 · Configuration Wizard"
     [cfg_intro]="A few questions about your deployment."
-    [cfg_back_hint]="Reminder: [brackets] = default (Enter accepts it), 'back' = previous section."
+    [cfg_back_hint]="Reminder: [brackets] = default (Enter accepts it), 'back' = previous section, 'exit' = stop cleanly."
     [cfg_env_exists_prompt]="An existing .env was found. What should we do?"
     [cfg_env_keep]="Keep existing .env (skip wizard, use saved values)"
     [cfg_env_backup_new]="Back up existing .env and create new one (recommended)"
@@ -223,8 +225,12 @@ declare -A MSG_EN=(
     [summary_next]="Next steps:"
     [summary_next_review]="  1. Review the generated .env file (especially passwords)"
     [summary_next_dns]="  2. Set DNS to resolve to this server's IP (a wildcard A-record *.%s works, or individual records for each subdomain — see list below)"
-    [summary_next_ssl]="  3. Run: sudo bash scripts/get-ssl-certs.sh"
-    [summary_next_start]="  4. Run: sudo bash scripts/bootstrap.sh --continue"
+    [summary_next_dns_ip]="     This server's public IP: %s"
+    [summary_next_dns_howto]="     Log into your domain's DNS control panel and add either one wildcard A-record (*.%s → the IP above), or one A-record per subdomain listed below, each pointing at the same IP."
+    [summary_next_start]="  3. Once DNS has propagated, run: sudo bash scripts/bootstrap.sh --continue (this installs packages, gets the SSL certificate, and starts all Docker services — one command for the rest)"
+    [dns_all_ok_title]="All subdomains already resolve correctly to this server — DNS is ready."
+    [dns_auto_continue_confirm]="Continue straight into deployment now (phases 5–7: packages, SSL certificate, Docker services)?"
+    [dns_auto_continue_declined]="Okay — run 'sudo bash scripts/bootstrap.sh --continue' whenever you're ready. DNS won't need to be set again, it's already correct."
     [summary_creds_warn]="🔐 Keep %s safe — it contains all your credentials."
     [summary_creds_chmod]="Permissions set to 600 (owner read/write only)."
 
@@ -386,7 +392,9 @@ declare -A MSG_DE=(
     [intro_how1]="  ─ Werte in [eckigen Klammern] sind Standard-Vorschläge — Enter übernimmt sie."
     [intro_how2]="  ─ Für eigene Eingabe: einfach tippen, keine Anführungszeichen nötig."
     [intro_how3]="  ─ Tippe bei jeder Frage 'zurück' (oder 'back') ein, um zum vorherigen Abschnitt zurückzugehen und eine frühere Antwort zu ändern."
+    [intro_how4]="  ─ Tippe bei jeder Frage 'exit' (oder 'beenden') ein, um den Assistenten sauber zu stoppen — nichts bisher Geschriebenes wird angefasst."
     [intro_continue]="Fortfahren?"
+    [wizard_exit]="Auf Nutzerwunsch beendet. Es wurde nichts verändert, was nicht schon vor diesem Lauf auf der Platte lag. Jederzeit erneut ausführbar, um dort weiterzumachen."
 
     # --- prerequisites checklist ---------------------------------------------
     [prereq_title]="Checkliste: Voraussetzungen"
@@ -462,7 +470,7 @@ declare -A MSG_DE=(
     # --- config wizard ------------------------------------------------------
     [phase_config]="Phase 2 · Konfigurations-Assistent"
     [cfg_intro]="Ein paar Fragen zu deinem Deployment."
-    [cfg_back_hint]="Erinnerung: [Klammern] = Standard (Enter übernimmt ihn), 'zurück' = vorheriger Abschnitt."
+    [cfg_back_hint]="Erinnerung: [Klammern] = Standard (Enter übernimmt ihn), 'zurück' = vorheriger Abschnitt, 'exit' = sauber beenden."
     [cfg_env_exists_prompt]="Eine bestehende .env wurde gefunden. Was tun?"
     [cfg_env_keep]="Bestehende .env behalten (Assistent überspringen)"
     [cfg_env_backup_new]="Bestehende .env sichern und neu anlegen (empfohlen)"
@@ -573,8 +581,12 @@ declare -A MSG_DE=(
     [summary_next]="Nächste Schritte:"
     [summary_next_review]="  1. .env-Datei prüfen (besonders die Passwörter)"
     [summary_next_dns]="  2. DNS auf Server-IP zeigen lassen (ein Wildcard-A-Record *.%s reicht, oder einzelne Records pro Subdomain — Liste unten)"
-    [summary_next_ssl]="  3. Ausführen: sudo bash scripts/get-ssl-certs.sh"
-    [summary_next_start]="  4. Ausführen: sudo bash scripts/bootstrap.sh --continue"
+    [summary_next_dns_ip]="     Öffentliche IP dieses Servers: %s"
+    [summary_next_dns_howto]="     Im DNS-Control-Panel deiner Domain entweder einen Wildcard-A-Record anlegen (*.%s → obige IP), oder einen A-Record pro unten gelisteter Subdomain, jeweils auf dieselbe IP."
+    [summary_next_start]="  3. Sobald DNS propagiert ist, ausführen: sudo bash scripts/bootstrap.sh --continue (installiert Pakete, holt das SSL-Zertifikat und startet alle Docker-Services — ein Befehl für den Rest)"
+    [dns_all_ok_title]="Alle Subdomains zeigen bereits korrekt auf diesen Server — DNS ist bereit."
+    [dns_auto_continue_confirm]="Jetzt direkt mit dem Deployment fortfahren (Phasen 5–7: Pakete, SSL-Zertifikat, Docker-Services)?"
+    [dns_auto_continue_declined]="Okay — führe 'sudo bash scripts/bootstrap.sh --continue' aus, wann immer du bereit bist. DNS muss nicht nochmal gesetzt werden, es ist schon korrekt."
     [summary_creds_warn]="🔐 %s sicher aufbewahren — enthält alle Zugangsdaten."
     [summary_creds_chmod]="Berechtigungen auf 600 gesetzt (nur Besitzer kann lesen/schreiben)."
 
