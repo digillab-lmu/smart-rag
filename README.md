@@ -96,6 +96,19 @@ When `--continue` finishes, your stack is running at:
 
 Initial admin credentials are in `credentials.txt` (chmod 600).
 
+**Day-2 operations** (pulling updated images, viewing logs, restarting):
+use `scripts/compose.sh` instead of calling `docker compose` directly — it's
+a thin wrapper that always points at the right compose file and `.env`, no
+matter which directory you run it from (plain `docker compose` silently
+breaks if run from `docker/` without `--env-file`, see the header comment in
+[`docker/docker-compose.yml`](docker/docker-compose.yml) for why):
+
+```bash
+bash scripts/compose.sh pull && bash scripts/compose.sh up -d   # apply new image versions
+bash scripts/compose.sh logs -f smartrag-n8n                    # tail one service's logs
+bash scripts/compose.sh ps                                      # status
+```
+
 **Starting over / uninstalling**: `sudo bash scripts/uninstall.sh` removes SMART
 RAG's own footprint (containers, network, nginx configs) and leaves nginx,
 certbot, Docker, and Postfix themselves untouched (they may be shared with
@@ -208,7 +221,7 @@ smart-rag/
 │   ├── workflows/          # 3 core workflows (sync, summary, observability)
 │   └── workflows-ingest/   # Document ingest workflows (→ moving to smart-rag-ingest)
 ├── lti-middleware/         # Flask app for LTI 1.3
-├── scripts/                # bootstrap.sh, uninstall.sh, lib/, standalone phase scripts
+├── scripts/                # bootstrap.sh, uninstall.sh, compose.sh, lib/, standalone phase scripts
 └── docs/                   # COEXISTENCE.md, requirements.md
 ```
 
