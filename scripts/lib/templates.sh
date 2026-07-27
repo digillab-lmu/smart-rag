@@ -182,6 +182,27 @@ write_nginx_config() {
     # DOUBLED backslash here: sed's own replacement-string parsing consumes
     # one level of backslash-escaping, so "\\." survives as "\." in the file.
     local n8n_host_escaped="${n8n_host/./\\\\.}"
+
+    # __XXX_PORT__ placeholders must resolve to the ACTUAL host ports Docker
+    # will bind — i.e. RESOLVED_PORTS from preflight.sh's resolve_ports(),
+    # which may differ from the .env.example defaults if the wizard moved a
+    # port to avoid a conflict with something already on this host. Getting
+    # this wrong means nginx silently proxies to the wrong port (or to
+    # whatever unrelated thing already occupied the default one) — exactly
+    # the port-conflict-resolution feature failing at the one layer that's
+    # actually internet-facing. Falls back to defaults if RESOLVED_PORTS
+    # isn't set (e.g. this function called outside the normal wizard flow).
+    local flowise_port=3000 n8n_port=5678 langfuse_port=3001
+    local minio_console_port=9001 minio_api_port=9000 lti_port=10088
+    if declare -p RESOLVED_PORTS >/dev/null 2>&1; then
+        [[ -n "${RESOLVED_PORTS[FLOWISE_PORT]:-}" ]]        && flowise_port="${RESOLVED_PORTS[FLOWISE_PORT]}"
+        [[ -n "${RESOLVED_PORTS[N8N_PORT]:-}" ]]             && n8n_port="${RESOLVED_PORTS[N8N_PORT]}"
+        [[ -n "${RESOLVED_PORTS[LANGFUSE_PORT]:-}" ]]        && langfuse_port="${RESOLVED_PORTS[LANGFUSE_PORT]}"
+        [[ -n "${RESOLVED_PORTS[MINIO_CONSOLE_PORT]:-}" ]]   && minio_console_port="${RESOLVED_PORTS[MINIO_CONSOLE_PORT]}"
+        [[ -n "${RESOLVED_PORTS[MINIO_API_PORT]:-}" ]]       && minio_api_port="${RESOLVED_PORTS[MINIO_API_PORT]}"
+        [[ -n "${RESOLVED_PORTS[LTI_PORT]:-}" ]]             && lti_port="${RESOLVED_PORTS[LTI_PORT]}"
+    fi
+
     sed -e "s|smart-rag\.YOUR_DOMAIN|$(subdomain_host smart-rag "$CFG_DOMAIN" "$prefix")|g" \
         -e "s|n8n\.YOUR_DOMAIN|$n8n_host|g" \
         -e "s|n8n\\\\\.YOUR_DOMAIN|$n8n_host_escaped|g" \
@@ -191,6 +212,12 @@ write_nginx_config() {
         -e "s|lti\.YOUR_DOMAIN|$(subdomain_host lti "$CFG_DOMAIN" "$prefix")|g" \
         -e "s|YOUR_DOMAIN|$CFG_DOMAIN|g" \
         -e "s|YOUR_LMS_DOMAIN|$lms_domain|g" \
+        -e "s|__FLOWISE_PORT__|$flowise_port|g" \
+        -e "s|__N8N_PORT__|$n8n_port|g" \
+        -e "s|__LANGFUSE_PORT__|$langfuse_port|g" \
+        -e "s|__MINIO_CONSOLE_PORT__|$minio_console_port|g" \
+        -e "s|__MINIO_API_PORT__|$minio_api_port|g" \
+        -e "s|__LTI_PORT__|$lti_port|g" \
         "$src" > "$out"
 
     ok "nginx config written to $out"

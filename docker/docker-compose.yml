@@ -408,6 +408,16 @@ services:
     env_file: ../.env
     environment:
       N8N_HOST: "${N8N_HOSTNAME}"
+      # PINNED, not ${N8N_PORT} — n8n's own app reads this exact variable
+      # name to choose its INTERNAL listen port. N8N_PORT in .env is a
+      # completely different thing (the HOST-side port binding below, which
+      # the wizard may resolve away from 5678 on a port conflict) — but
+      # since this service uses env_file: ../.env, that HOST-side value
+      # would otherwise leak in and make n8n listen on the wrong port
+      # internally, breaking both the Docker port mapping's container-side
+      # target and this container's own healthcheck. Keep this fixed at
+      # 5678 to match the container-side target in `ports:` below.
+      N8N_PORT: "5678"
       N8N_PROTOCOL: "https"
       N8N_TRUST_PROXY: "true"
       WEBHOOK_URL: "${N8N_WEBHOOK_URL}"
