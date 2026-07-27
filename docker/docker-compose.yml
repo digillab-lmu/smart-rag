@@ -4,18 +4,28 @@
 #
 # All configuration is read from the root .env file (one level up from this
 # file). Docker Compose only auto-loads a ".env" from your CURRENT WORKING
-# DIRECTORY — it does NOT resolve one relative to this compose file. Run from
-# the project root, where the real .env lives:
+# DIRECTORY — it does NOT resolve one relative to this compose file, so plain
+# `docker compose` invocations are easy to get wrong from either directory.
+#
+# ✅  Easiest: use the wrapper, which always supplies both required flags
+#     no matter where you run it from:
+#
+#   bash scripts/compose.sh pull
+#   bash scripts/compose.sh up -d
+#   bash scripts/compose.sh logs -f smartrag-n8n
+#
+# If you'd rather call `docker compose` directly, run it from the project
+# root, where the real .env lives:
 #
 #   cd /srv/smart-rag
-#   docker compose -f docker/docker-compose.yml up -d
+#   docker compose -f docker/docker-compose.yml --env-file .env up -d
 #
-# ⚠️  If you `cd docker/` first (e.g. to poke around), Compose will NOT find
-#     ../.env automatically — every variable silently defaults to an empty
-#     string ("BASE_DATA_PATH variable is not set" etc.), which can then fail
-#     in confusing ways (e.g. `down` erroring on an empty port mapping) or,
-#     worse, target the wrong things. From inside docker/, always pass the
-#     env file explicitly:
+# ⚠️  If you `cd docker/` first (e.g. to poke around) and forget --env-file,
+#     Compose will NOT find ../.env automatically — every variable silently
+#     defaults to an empty string ("BASE_DATA_PATH variable is not set" etc.),
+#     which then fails in confusing ways (e.g. "no port specified:
+#     127.0.0.1::") or, worse, targets the wrong things. From inside docker/,
+#     always pass the env file explicitly:
 #
 #   cd /srv/smart-rag/docker
 #   docker compose --env-file ../.env up -d
