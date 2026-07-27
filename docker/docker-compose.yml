@@ -255,6 +255,17 @@ services:
       - "127.0.0.1:${MINIO_API_PORT}:9000"
       - "127.0.0.1:${MINIO_CONSOLE_PORT}:9001"
     networks: [smart-rag-network]
+    # This whole block re-runs on every container start, chained with `&&`.
+    # If ANY step fails without its own `|| true`, the chain stops before
+    # ever reaching `wait $$MINIO_PID` — the shell (PID 1) then exits even
+    # though the actual `minio server` background process is still healthy,
+    # and `restart: always` crash-loops the container forever on a failure
+    # that was really just a harmless "already configured" no-op. Live-hit
+    # this on a MinIO version bump: `mc event add` for a notification rule
+    # that already existed (from a previous run, persisted in the data
+    # volume) started failing with "overlapping prefixes/suffixes" instead
+    # of silently succeeding — hence the `|| true` on that line too, same
+    # as the `mc admin user add`/`policy attach` lines already had.
     entrypoint: >
       /bin/sh -c "
       minio server /data --console-address ':9001' &
@@ -272,7 +283,7 @@ services:
       mc admin policy attach smartrag readwrite --user=$$MINIO_LANGFUSE_ACCESS_KEY 2>/dev/null || true &&
 
       mc event remove smartrag/$$COURSE_ID-rag arn:minio:sqs::PRIMARY:webhook 2>/dev/null || true &&
-      mc event add    smartrag/$$COURSE_ID-rag arn:minio:sqs::PRIMARY:webhook --event put &&
+      mc event add    smartrag/$$COURSE_ID-rag arn:minio:sqs::PRIMARY:webhook --event put 2>/dev/null || true &&
 
       wait $$MINIO_PID
       "
