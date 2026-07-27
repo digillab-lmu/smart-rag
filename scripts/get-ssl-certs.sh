@@ -68,6 +68,7 @@ require_command nginx
 require_command certbot
 require_command dig
 require_command curl
+require_command openssl
 
 header "$(t phase_ssl)"
 
@@ -197,6 +198,35 @@ if certbot "${CERTBOT_ARGS[@]}"; then
     fi
 else
     die "certbot failed — see output above for details"
+fi
+
+# ─── Step 2b: Ensure certbot's standard nginx TLS snippets exist ─────────────
+# Our nginx template references /etc/letsencrypt/options-ssl-nginx.conf and
+# ssl-dhparams.pem. Certbot only auto-creates these when its NGINX PLUGIN
+# manages the config directly — we deliberately use `certonly --webroot`
+# instead (no nginx downtime during the challenge, see header comment), so
+# certbot never creates them. Write them ourselves if missing — idempotent,
+# safe to skip on re-runs.
+if [[ "$DRY_RUN" -eq 0 && -f "$CERT_DIR/fullchain.pem" ]]; then
+    if [[ ! -f /etc/letsencrypt/options-ssl-nginx.conf ]]; then
+        info "$(t ssl_writing_tls_options)"
+        cat > /etc/letsencrypt/options-ssl-nginx.conf <<'EOF'
+# Standard TLS parameters (mirrors what certbot's nginx plugin would write)
+ssl_session_cache shared:le_nginx_SSL:10m;
+ssl_session_timeout 1440m;
+ssl_session_tickets off;
+
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_prefer_server_ciphers off;
+
+ssl_ciphers "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384";
+EOF
+    fi
+
+    if [[ ! -f /etc/letsencrypt/ssl-dhparams.pem ]]; then
+        info "$(t ssl_generating_dhparams)"
+        openssl dhparam -out /etc/letsencrypt/ssl-dhparams.pem 2048
+    fi
 fi
 
 # ─── Step 3: Swap to full nginx config (only if cert exists now) ─────────────
