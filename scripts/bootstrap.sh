@@ -119,6 +119,32 @@ banner
 select_language
 check_translations >/dev/null 2>&1 || true
 
+# ─── Detect a previous run ────────────────────────────────────────────────────
+# Only relevant if --continue wasn't explicitly passed — if it was, the user
+# already knows what they want and we respect that as before. Otherwise,
+# running plain `bootstrap.sh` a second time on an already-configured (or
+# already-running) deployment used to silently restart the full wizard —
+# ask instead.
+if [[ "$MODE" == "phase1" ]]; then
+    PREV_STATE="$(detect_bootstrap_state "$REPO_ROOT")"
+    if [[ "$PREV_STATE" != "none" ]]; then
+        header "$(t prevrun_title)"
+        case "$PREV_STATE" in
+            configured) info "$(t prevrun_configured)" ;;
+            running)    info "$(t prevrun_running)" ;;
+        esac
+        prevrun_choice="$(select_one_index prevrun_choice \
+            "$(t prevrun_continue)" \
+            "$(t prevrun_fresh)" \
+            "$(t prevrun_abort)")" || exit 0
+        case "$prevrun_choice" in
+            1) MODE="continue" ;;
+            2) info "$(t prevrun_fresh_note)" ;;   # falls through to the normal phase1 flow below
+            3) exit 0 ;;
+        esac
+    fi
+fi
+
 # ─── --continue branch: orchestrate phases 5–7 ───────────────────────────────
 if [[ "$MODE" == "continue" ]]; then
     info "$(t orch_continue_intro)"
