@@ -228,12 +228,15 @@ services:
   # which triggers the ingest pipeline.
   smartrag-minio:
     profiles: [core]
-    # RELEASE.2025-10-15 is the last release MinIO ever published to this
-    # repo — minio/minio was archived on GitHub 2026-04-25 ("point to
-    # source-only releases"); the community/OSS Docker image is frozen here
+    # RELEASE.2025-09-07T16-13-09Z is the last release MinIO ever actually
+    # PUBLISHED AS A DOCKER IMAGE. There's one later git tag on GitHub
+    # (RELEASE.2025-10-15, "point to source-only releases") but it was
+    # docs-only — no image was ever pushed to Docker Hub for it (confirmed:
+    # that tag 404s on Docker Hub's registry API). minio/minio was archived
+    # on GitHub 2026-04-25; the community/OSS Docker image is frozen here
     # permanently, no further security patches will come. Consider an
     # alternative (Garage, SeaweedFS) if that becomes a concern.
-    image: minio/minio:RELEASE.2025-10-15T17-29-55Z
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: smartrag-minio
     restart: always
     env_file: ../.env
@@ -326,7 +329,7 @@ services:
   #   Set ENABLE_MODULES="" to disable reranking entirely.
   smartrag-weaviate:
     profiles: [core]
-    image: cr.weaviate.io/semitechnologies/weaviate:1.38.7
+    image: cr.weaviate.io/semitechnologies/weaviate:1.38.6
     container_name: smartrag-weaviate
     restart: always
     env_file: ../.env
