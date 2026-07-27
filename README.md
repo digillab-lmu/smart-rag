@@ -108,24 +108,37 @@ Initial admin credentials are in `credentials.txt` (chmod 600).
 - **Back-navigation** — type `back` (or `zurück`) at any prompt to return to
   the previous section and fix an earlier answer. Everything you already
   entered is kept as the new default.
-- **Curated model shortlists** — after picking an LLM provider, choose from
-  a short list of current models instead of typing a name from memory
-  (with a "custom" option to type your own).
-- **Domain auto-detection** — pre-fills the base-domain prompt from the
-  server's reverse DNS, if it resolves to something sensible. Always shown
-  as an editable default, never applied silently.
-- **Mail relay setup** — Flowise/n8n/Langfuse all need SMTP for password-reset
-  and invite emails. The wizard can install and configure a local Postfix
-  relay for you (`scripts/install-postfix.sh`) — apps talk to it
-  unauthenticated over the internal Docker network, so your real mail
-  provider's password only ever lives in Postfix's config, not in three
-  separate app credentials.
+- **Curated model shortlists with live validation** — after picking an LLM
+  provider, choose from a short list of current models, or type your own —
+  custom entries are checked against the provider's live `/models` API
+  (needs the API key, which is why it's now asked before model selection)
+  so a typo like `GPT-5.2` gets caught immediately instead of failing later
+  inside Flowise.
+- **Domain auto-detection with round-trip check** — pre-fills the
+  base-domain prompt from the server's reverse DNS, but only if that
+  domain's own DNS record actually points back to this server. Cloud
+  providers (IONOS, AWS, ...) set generic PTR records unrelated to your
+  actual domain — a naive reverse-DNS guess would suggest those; the
+  round-trip check filters them out. Always shown as an editable default,
+  never applied silently.
+- **Mail relay setup with existing-relay detection** — Flowise/n8n/Langfuse
+  all need SMTP for password-reset and invite emails. Before offering to
+  set anything up, the wizard checks whether Postfix/Exim/Sendmail/msmtp is
+  already installed or something's already listening on port 25, and lets
+  you keep it, reconfigure, or skip. Otherwise it can install and configure
+  a local Postfix relay for you (`scripts/install-postfix.sh`) — apps talk
+  to it unauthenticated over the internal Docker network, so your real mail
+  provider's password only ever lives in Postfix's config — followed by an
+  actual test email to confirm the relay works end to end, not just that it
+  installed.
 - **Coexistence-safe** — designed to deploy on a server that already runs
   other web services. See [`docs/COEXISTENCE.md`](docs/COEXISTENCE.md) for
   the explicit contract of what we touch and (mostly) don't touch.
-- **Auto-resolves port conflicts** — if port 9000 is already taken on the
-  host, the wizard proposes a free alternative (e.g. 9100) and writes the
-  override into `.env`. No manual intervention needed.
+- **Auto-resolves port *and* subdomain conflicts** — if port 9000 or a
+  subdomain like `n8n.yourdomain.example` is already taken on the host
+  (e.g. a standalone n8n running separately), the wizard proposes a free
+  port alternative or a shared subdomain prefix (`smartrag-n8n.…`) and
+  writes the resolution into `.env`. No manual intervention needed.
 - **Pre-flight checks** — Ubuntu version, Docker, disk space, DNS resolution,
   nginx server-name collisions, existing certificates, base data path.
 - **Safety snapshot** — before any destructive action, the script captures

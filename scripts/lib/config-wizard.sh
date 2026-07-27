@@ -21,13 +21,56 @@
 
 # ─── Validators ──────────────────────────────────────────────────────────────
 
+_is_slug() {
+    [[ "$1" =~ ^[a-z0-9][a-z0-9-]*[a-z0-9]$ ]]
+}
+
 validate_slug() {
     local s="$1"
-    if [[ "$s" =~ ^[a-z0-9][a-z0-9-]*[a-z0-9]$ ]]; then
+    if _is_slug "$s"; then
         return 0
     fi
     err "$(t cfg_course_id_invalid)"
     return 1
+}
+
+# German-friendly transliteration for slugs: ä/ö/ü/ß, lowercase, spaces and
+# anything else non-slug-safe collapsed to single hyphens.
+transliterate_slug() {
+    local s="$1"
+    s="${s//ä/ae}"; s="${s//ö/oe}"; s="${s//ü/ue}"; s="${s//ß/ss}"
+    s="${s//Ä/Ae}"; s="${s//Ö/Oe}"; s="${s//Ü/Ue}"
+    s="${s,,}"
+    s="$(printf '%s' "$s" | tr -c 'a-z0-9' '-')"
+    while [[ "$s" == *--* ]]; do s="${s//--/-}"; done
+    s="${s#-}"; s="${s%-}"
+    printf '%s' "$s"
+}
+
+# Prompts for a slug value (course-id). If the raw input isn't already a
+# valid slug, offers an auto-transliterated suggestion (ä→ae etc.) instead
+# of just failing — most invalid input here is German Umlaute, not typos.
+prompt_slug() {
+    local key="$1" default="$2"
+    local input suggestion
+    while true; do
+        input="$(prompt "$key" "$default")" || return 1
+        if _is_slug "$input"; then
+            printf '%s' "$input"
+            return 0
+        fi
+        suggestion="$(transliterate_slug "$input")"
+        if [[ -n "$suggestion" ]] && _is_slug "$suggestion"; then
+            info "$(t cfg_course_id_suggest "$suggestion")" >&2
+            if confirm cfg_course_id_use_suggestion "y"; then
+                printf '%s' "$suggestion"
+                return 0
+            fi
+            (( WIZARD_BACK )) && return 1
+        else
+            err "$(t cfg_course_id_invalid)"
+        fi
+    done
 }
 
 validate_fqdn() {
@@ -150,11 +193,122 @@ llm_model_choices_fast() {
     esac
 }
 
+# Checks whether model_id appears in the provider's live /models list.
+# Returns: 0 = found, 1 = not found (genuine mismatch), 2 = couldn't check
+# (network/API error, missing jq, unsupported provider — never block on this,
+# just skip validation). Never prints anything — pure exit-code contract, safe
+# to call from functions whose stdout is captured via command substitution.
+# The API key travels via header/Authorization everywhere, never a URL query
+# param, so it never ends up visible in `ps aux` output.
+validate_model_id() {
+    local provider="$1" api_key="$2" model_id="$3"
+    local resp found=1
+
+    # NOTE: every jq call below is the condition of an `if` — bootstrap.sh
+    # runs under `set -e`, and a bare `jq -e ...` statement returning 1 (the
+    # normal, expected outcome for "model not found") would otherwise abort
+    # the entire script. `if jq ...; then` is exempt from errexit regardless
+    # of the command's exit status, which is exactly what we need here.
+    case "$provider" in
+        anthropic)
+            resp="$(curl -sf --max-time 8 -H "x-api-key: $api_key" -H "anthropic-version: 2023-06-01" \
+                "https://api.anthropic.com/v1/models?limit=1000" 2>/dev/null)" || return 2
+            if jq -e --arg m "$model_id" 'any(.data[]?; .id == $m)' >/dev/null 2>&1 <<<"$resp"; then
+                found=0
+            fi
+            ;;
+        openai)
+            resp="$(curl -sf --max-time 8 -H "Authorization: Bearer $api_key" \
+                "https://api.openai.com/v1/models" 2>/dev/null)" || return 2
+            if jq -e --arg m "$model_id" 'any(.data[]?; .id == $m)' >/dev/null 2>&1 <<<"$resp"; then
+                found=0
+            fi
+            ;;
+        google)
+            resp="$(curl -sf --max-time 8 -H "x-goog-api-key: $api_key" \
+                "https://generativelanguage.googleapis.com/v1beta/models" 2>/dev/null)" || return 2
+            if jq -e --arg m "models/$model_id" 'any(.models[]?; .name == $m)' >/dev/null 2>&1 <<<"$resp"; then
+                found=0
+            fi
+            ;;
+        mistral)
+            resp="$(curl -sf --max-time 8 -H "Authorization: Bearer $api_key" \
+                "https://api.mistral.ai/v1/models" 2>/dev/null)" || return 2
+            if jq -e --arg m "$model_id" 'any(.data[]?; .id == $m)' >/dev/null 2>&1 <<<"$resp"; then
+                found=0
+            fi
+            ;;
+        cohere)
+            resp="$(curl -sf --max-time 8 -H "Authorization: Bearer $api_key" \
+                "https://api.cohere.com/v1/models" 2>/dev/null)" || return 2
+            if jq -e --arg m "$model_id" 'any(.models[]?; .name == $m)' >/dev/null 2>&1 <<<"$resp"; then
+                found=0
+            fi
+            ;;
+        openrouter)
+            # Public endpoint, no auth needed.
+            resp="$(curl -sf --max-time 8 "https://openrouter.ai/api/v1/models" 2>/dev/null)" || return 2
+            if jq -e --arg m "$model_id" 'any(.data[]?; .id == $m)' >/dev/null 2>&1 <<<"$resp"; then
+                found=0
+            fi
+            ;;
+        *)
+            return 2   # custom / unknown provider — cannot validate
+            ;;
+    esac
+
+    (( found == 0 )) && return 0
+    return 1
+}
+
+# Prompts for a model name and validates it against the provider's live model
+# list (skips validation entirely for provider=custom, or if no API key is
+# available yet). Loops until the user either enters a model the provider
+# actually recognizes, or explicitly confirms using an unrecognized one
+# (covers brand-new/preview models not yet reflected in the list endpoint).
+prompt_and_validate_model() {
+    local msg_key="$1" default_model="$2" provider="$3" api_key="$4"
+    local model_id vstatus
+    while true; do
+        model_id="$(prompt "$msg_key" "$default_model")" || return 1
+        if [[ "$provider" == "custom" || -z "$api_key" ]]; then
+            printf '%s' "$model_id"
+            return 0
+        fi
+        # `if fn; then vstatus=0; else vstatus=$?; fi` (not a bare call) so
+        # set -e never triggers on the expected "not found" (1) outcome.
+        if validate_model_id "$provider" "$api_key" "$model_id"; then
+            vstatus=0
+        else
+            vstatus=$?
+        fi
+        if (( vstatus == 0 )); then
+            ok "$(t cfg_model_validated "$model_id")" >&2
+            printf '%s' "$model_id"
+            return 0
+        elif (( vstatus == 2 )); then
+            warn "$(t cfg_model_validate_unreachable)" >&2
+            printf '%s' "$model_id"
+            return 0
+        else
+            warn "$(t cfg_model_validate_notfound "$model_id")" >&2
+            if confirm cfg_model_validate_use_anyway "n"; then
+                printf '%s' "$model_id"
+                return 0
+            fi
+            (( WIZARD_BACK )) && return 1
+            # loop — re-prompt
+        fi
+    done
+}
+
 # Ask for a model name: curated select-list (+ custom escape hatch) when we
-# have one for this provider/tier, otherwise straight free-text entry.
-# Args: $1=provider  $2=strong|fast  $3=message key (for prompt/header text)
+# have one for this provider/tier, otherwise straight free-text entry (which
+# then goes through prompt_and_validate_model). Curated entries are never
+# validated — they're our own hardcoded strings, no typo risk from the user.
+# Args: $1=provider  $2=strong|fast  $3=message key  $4=api_key
 ask_model_choice() {
-    local provider="$1" tier="$2" msg_key="$3"
+    local provider="$1" tier="$2" msg_key="$3" api_key="$4"
     local choices default_model
 
     if [[ "$tier" == "strong" ]]; then
@@ -166,7 +320,7 @@ ask_model_choice() {
     fi
 
     if [[ -z "$choices" ]]; then
-        prompt "$msg_key" "$default_model"
+        prompt_and_validate_model "$msg_key" "$default_model" "$provider" "$api_key"
         return
     fi
 
@@ -178,7 +332,7 @@ ask_model_choice() {
     local selected
     selected="$(select_one "$msg_key" "${opts[@]}")" || return 1
     if [[ "$selected" == "$(t cfg_model_custom)" ]]; then
-        prompt "$msg_key" "$default_model"
+        prompt_and_validate_model "$msg_key" "$default_model" "$provider" "$api_key"
     else
         printf '%s' "$selected"
     fi
@@ -205,7 +359,7 @@ ask_course_info() {
     header "$(t cfg_section_course)"
 
     CFG_COURSE_NAME="$(prompt cfg_course_name "${CFG_COURSE_NAME:-My Course}")" || return 1
-    CFG_COURSE_ID="$(prompt cfg_course_id "${CFG_COURSE_ID:-my-course}" validate_slug)" || return 1
+    CFG_COURSE_ID="$(prompt_slug cfg_course_id "${CFG_COURSE_ID:-my-course}")" || return 1
 
     # Try to pre-fill domain from reverse DNS — user always confirms
     local domain_default="${CFG_DOMAIN:-example.com}"
@@ -220,6 +374,7 @@ ask_course_info() {
     CFG_DOMAIN="$(prompt cfg_domain "$domain_default" validate_fqdn)" || return 1
 
     CFG_ADMIN_EMAIL="$(prompt cfg_admin_email "${CFG_ADMIN_EMAIL:-}" validate_email)" || return 1
+    info "$(t cfg_base_data_path_explain)"
     CFG_BASE_DATA_PATH="$(prompt cfg_base_data_path "${CFG_BASE_DATA_PATH:-/srv/smart-rag/data}")" || return 1
     CFG_TZ="$(prompt cfg_tz "${CFG_TZ:-Europe/Berlin}")" || return 1
 
@@ -258,14 +413,15 @@ ask_profiles() {
 
 
 # ─── Section: LLM ────────────────────────────────────────────────────────────
+# API key is asked BEFORE the model name (not after, as it used to be) — model
+# selection now validates custom-typed entries against the provider's live
+# /models list, which needs the key. Curated shortlist entries skip
+# validation (they're our own strings, no typo risk).
 ask_llm_config() {
     header "$(t cfg_section_llm)"
 
     CFG_LLM_PROVIDER="$(select_one cfg_llm_provider \
         anthropic openai google mistral cohere openrouter custom)" || return 1
-
-    CFG_LLM_MODEL_STRONG="$(ask_model_choice "$CFG_LLM_PROVIDER" strong cfg_llm_model_strong)" || return 1
-    CFG_LLM_MODEL_FAST="$(ask_model_choice "$CFG_LLM_PROVIDER" fast cfg_llm_model_fast)" || return 1
 
     CFG_LLM_API_KEY="$(prompt_password cfg_llm_api_key "${CFG_LLM_API_KEY:-}")" || return 1
 
@@ -274,10 +430,17 @@ ask_llm_config() {
     else
         CFG_LLM_BASE_URL=""
     fi
+
+    printf "  ${BOLD}%s${RESET}\n" "$(t cfg_llm_tiers_explain)"
+    CFG_LLM_MODEL_STRONG="$(ask_model_choice "$CFG_LLM_PROVIDER" strong cfg_llm_model_strong "$CFG_LLM_API_KEY")" || return 1
+    CFG_LLM_MODEL_FAST="$(ask_model_choice "$CFG_LLM_PROVIDER" fast cfg_llm_model_fast "$CFG_LLM_API_KEY")" || return 1
 }
 
 
 # ─── Section: Embedding ──────────────────────────────────────────────────────
+# API key now comes before the model name for the same reason as in
+# ask_llm_config(): the model name gets validated against the provider's live
+# /models list, which needs the key already in hand.
 ask_embedding_config() {
     header "$(t cfg_section_embedding)"
     printf "  ${YELLOW}${BOLD}%s${RESET}\n" "$(t cfg_embed_warning_bold)"
@@ -285,20 +448,6 @@ ask_embedding_config() {
 
     CFG_EMBEDDING_PROVIDER="$(select_one cfg_embed_provider \
         openai cohere google mistral custom)" || return 1
-
-    local d_model
-    d_model="$(default_embedding_model "$CFG_EMBEDDING_PROVIDER")"
-    CFG_EMBEDDING_MODEL="$(prompt cfg_embed_model "${CFG_EMBEDDING_MODEL:-$d_model}")" || return 1
-
-    # Auto-suggest dimensions if model is known
-    local known_dims
-    known_dims="$(known_embedding_dimensions "$CFG_EMBEDDING_MODEL")"
-    if [[ -n "$known_dims" ]]; then
-        info "$(t cfg_embed_dims_known "$known_dims")"
-        CFG_EMBEDDING_DIMENSIONS="$(prompt cfg_embed_dimensions "$known_dims" validate_positive_int)" || return 1
-    else
-        CFG_EMBEDDING_DIMENSIONS="$(prompt cfg_embed_dimensions "${CFG_EMBEDDING_DIMENSIONS:-1536}" validate_positive_int)" || return 1
-    fi
 
     # If same provider as LLM, offer to reuse the API key
     if [[ "$CFG_EMBEDDING_PROVIDER" == "$CFG_LLM_PROVIDER" ]]; then
@@ -312,6 +461,21 @@ ask_embedding_config() {
         CFG_EMBEDDING_BASE_URL="$(prompt cfg_embed_base_url "${CFG_EMBEDDING_BASE_URL:-}" validate_url)" || return 1
     else
         CFG_EMBEDDING_BASE_URL=""
+    fi
+
+    local d_model
+    d_model="$(default_embedding_model "$CFG_EMBEDDING_PROVIDER")"
+    CFG_EMBEDDING_MODEL="$(prompt_and_validate_model cfg_embed_model "${CFG_EMBEDDING_MODEL:-$d_model}" \
+        "$CFG_EMBEDDING_PROVIDER" "$CFG_EMBEDDING_API_KEY")" || return 1
+
+    # Auto-suggest dimensions if model is known
+    local known_dims
+    known_dims="$(known_embedding_dimensions "$CFG_EMBEDDING_MODEL")"
+    if [[ -n "$known_dims" ]]; then
+        info "$(t cfg_embed_dims_known "$known_dims")"
+        CFG_EMBEDDING_DIMENSIONS="$(prompt cfg_embed_dimensions "$known_dims" validate_positive_int)" || return 1
+    else
+        CFG_EMBEDDING_DIMENSIONS="$(prompt cfg_embed_dimensions "${CFG_EMBEDDING_DIMENSIONS:-1536}" validate_positive_int)" || return 1
     fi
 }
 
@@ -362,25 +526,63 @@ ask_reranker_config() {
 # Must match the pinned subnet/gateway in docker/docker-compose.yml exactly.
 readonly SMARTRAG_DOCKER_GATEWAY="172.28.92.1"
 
+_reset_mail_config_disabled() {
+    CFG_INSTALL_POSTFIX="false"
+    CFG_SMTP_RELAY_HOST=""
+    CFG_SMTP_RELAY_PORT="587"
+    CFG_SMTP_RELAY_USER=""
+    CFG_SMTP_RELAY_PASSWORD=""
+    CFG_SMTP_HOST=""
+    CFG_SMTP_PORT="25"
+    CFG_SMTP_SECURE="false"
+    CFG_SMTP_USER=""
+    CFG_SMTP_PASSWORD=""
+    CFG_N8N_EMAIL_MODE=""
+    CFG_SMTP_CONNECTION_URL=""
+}
+
 ask_mail_config() {
     header "$(t cfg_section_mail)"
     printf "  ${YELLOW}${BOLD}%s${RESET}\n" "$(t cfg_mail_warning_bold)"
     printf "  ${DIM}%s${RESET}\n\n" "$(t cfg_mail_intro)"
 
+    # Check BEFORE offering to install anything — a server may already run
+    # Postfix/Exim/etc. for unrelated reasons (see detect_existing_mail_relay
+    # in preflight.sh).
+    local detection mta port_listening
+    detection="$(detect_existing_mail_relay)"
+    mta="${detection%%:*}"
+    port_listening="${detection##*:}"
+
+    if [[ "$mta" != "none" ]]; then
+        warn "$(t cfg_mail_detected_mta "$mta")"
+    elif [[ "$port_listening" == "1" ]]; then
+        warn "$(t cfg_mail_detected_port25)"
+    fi
+
+    if [[ "$mta" != "none" || "$port_listening" == "1" ]]; then
+        local existing_choice
+        existing_choice="$(select_one_index cfg_mail_existing_choice \
+            "$(t cfg_mail_existing_keep)" \
+            "$(t cfg_mail_existing_reconfigure)" \
+            "$(t cfg_mail_existing_skip)")" || return 1
+        case "$existing_choice" in
+            1)
+                _reset_mail_config_disabled
+                info "$(t cfg_mail_existing_keep_note)"
+                return 0
+                ;;
+            3)
+                _reset_mail_config_disabled
+                return 0
+                ;;
+            2) : ;;  # fall through to the normal flow below
+        esac
+    fi
+
     if ! confirm cfg_mail_enable "y"; then
         (( WIZARD_BACK )) && return 1
-        CFG_INSTALL_POSTFIX="false"
-        CFG_SMTP_RELAY_HOST=""
-        CFG_SMTP_RELAY_PORT="587"
-        CFG_SMTP_RELAY_USER=""
-        CFG_SMTP_RELAY_PASSWORD=""
-        CFG_SMTP_HOST=""
-        CFG_SMTP_PORT="25"
-        CFG_SMTP_SECURE="false"
-        CFG_SMTP_USER=""
-        CFG_SMTP_PASSWORD=""
-        CFG_N8N_EMAIL_MODE=""
-        CFG_SMTP_CONNECTION_URL=""
+        _reset_mail_config_disabled
         return 0
     fi
 

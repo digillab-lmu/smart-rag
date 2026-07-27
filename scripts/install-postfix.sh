@@ -162,3 +162,53 @@ if systemctl is-active --quiet postfix; then
 else
     die "$(t postfix_restart_failed)"
 fi
+
+# ─── Test email — actually prove the relay works end to end ──────────────────
+# Prefer /var/log/mail.log (standard on Ubuntu with rsyslog); fall back to
+# journald in case rsyslog isn't installed on this box.
+_mail_log_tail() {
+    if [[ -f /var/log/mail.log ]]; then
+        tail -n 200 /var/log/mail.log 2>/dev/null
+    else
+        journalctl -u postfix --no-pager -n 200 2>/dev/null
+    fi
+}
+
+if ! command -v mail >/dev/null 2>&1; then
+    warn "$(t postfix_test_no_mailutils)"
+elif [[ -z "${ADMIN_EMAIL:-}" ]]; then
+    warn "$(t postfix_test_no_admin_email)"
+else
+    info "$(t postfix_test_sending "$ADMIN_EMAIL")"
+    marker="smartrag-postfix-test-$(date +%s)-$$"
+    {
+        echo "This is an automated test message from scripts/install-postfix.sh."
+        echo "If you received this, the SMART RAG mail relay is working end to end."
+        echo "Marker: $marker"
+    } | mail -s "SMART RAG mail relay test ($marker)" "$ADMIN_EMAIL"
+
+    # Find the Postfix queue ID just assigned to our message, then poll the
+    # log for its final delivery status (sent/bounced/deferred).
+    sleep 2
+    qid="$(_mail_log_tail | grep 'postfix/pickup' | tail -1 | awk -F': ' '{print $2}')"
+
+    if [[ -z "$qid" ]]; then
+        warn "$(t postfix_test_unknown)"
+    else
+        status_line=""
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+            status_line="$(_mail_log_tail | grep "$qid" | grep -E 'status=(sent|bounced|deferred)' | tail -1)"
+            [[ -n "$status_line" ]] && break
+            sleep 2
+        done
+
+        if [[ -z "$status_line" ]]; then
+            warn "$(t postfix_test_timeout)"
+        elif [[ "$status_line" == *"status=sent"* ]]; then
+            ok "$(t postfix_test_success "$ADMIN_EMAIL")"
+        else
+            warn "$(t postfix_test_failed)"
+            printf '    %s\n' "$status_line"
+        fi
+    fi
+fi

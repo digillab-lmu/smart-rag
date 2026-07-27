@@ -108,6 +108,24 @@ check_docker_compose() {
     ok "$(t pf_compose_ok)"
 }
 
+# ─── 5b. jq (needed early — the wizard validates model names against
+#          provider APIs before install-system-packages.sh would install it) ──
+ensure_jq_installed() {
+    if command -v jq >/dev/null 2>&1; then
+        ok "$(t pf_jq_ok)"
+        return 0
+    fi
+    info "$(t pf_jq_installing)"
+    DEBIAN_FRONTEND=noninteractive apt-get update -q >/dev/null 2>&1 || true
+    DEBIAN_FRONTEND=noninteractive apt-get install -y jq >/dev/null 2>&1
+    if command -v jq >/dev/null 2>&1; then
+        ok "$(t pf_jq_ok)"
+    else
+        warn "$(t pf_jq_failed)"
+        PREFLIGHT_WARN=$((PREFLIGHT_WARN+1))
+    fi
+}
+
 # ─── 6. Disk space (warning only) ────────────────────────────────────────────
 # Args: $1 = path to check (e.g. /srv). If empty: defaults to /.
 check_disk_space() {
@@ -128,12 +146,30 @@ check_disk_space() {
     fi
 }
 
+# Forward-resolve a domain's A record to an IP. Tries dig → host → python3,
+# same fallback chain as the PTR lookup below, for consistency.
+_forward_resolve_a() {
+    local domain="$1"
+    if command -v dig &>/dev/null; then
+        dig +short A "$domain" 2>/dev/null | head -1
+    elif command -v host &>/dev/null; then
+        host -t A "$domain" 2>/dev/null | awk '/has address/ {print $NF; exit}'
+    elif command -v python3 &>/dev/null; then
+        python3 -c "import socket; print(socket.gethostbyname('$domain'))" 2>/dev/null || true
+    fi
+}
+
 # ─── 7a. Detect base domain from reverse DNS ─────────────────────────────────
 # Returns the PTR record for the server's public IP, stripped to the registrable
-# base domain (last two labels). Falls back to empty string if detection fails.
-# Callers should always let the user confirm the result.
+# base domain (last two labels) — but ONLY if that base domain's own A record
+# round-trips back to this server's IP. Cloud/VPS providers almost always set
+# a generic PTR (e.g. "pbiaas.com" for IONOS, "compute.amazonaws.com" for AWS)
+# that has nothing to do with the domain actually being used for this
+# deployment — suggesting it unconditionally is actively misleading. Falls
+# back to empty string (no suggestion) whenever detection or verification
+# fails; callers should always let the user confirm/override the result.
 detect_base_domain() {
-    local pub_ip ptr_record base_domain
+    local pub_ip ptr_record base_domain forward_ip
     pub_ip="$(curl -sf --max-time 5 https://api.ipify.org 2>/dev/null || true)"
     [[ -z "$pub_ip" ]] && return 0
 
@@ -152,7 +188,13 @@ detect_base_domain() {
     if [[ "$ptr_record" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]+\.[a-zA-Z]{2,}$ ]]; then
         # Strip to last two labels — e.g. "static.123.duenn-mit-pfiff.de" → "duenn-mit-pfiff.de"
         base_domain="$(echo "$ptr_record" | awk -F'.' '{print $(NF-1)"."$NF}')"
-        echo "$base_domain"
+
+        # Round-trip check: only suggest it if the base domain's own A record
+        # actually points back at this server's public IP.
+        forward_ip="$(_forward_resolve_a "$base_domain")"
+        if [[ -n "$forward_ip" && "$forward_ip" == "$pub_ip" ]]; then
+            echo "$base_domain"
+        fi
     fi
 }
 
@@ -341,19 +383,20 @@ confirm_port_resolutions() {
     die "$(t pf_port_cancelled)"
 }
 
-# ─── 9. nginx subdomain collision (CRITICAL) ─────────────────────────────────
+# ─── 9. nginx subdomain collision (non-fatal — caller decides) ──────────────
 # Scans all enabled nginx sites for `server_name` directives that overlap with
-# the subdomains we plan to use. Aborts on conflict.
+# the subdomains we plan to use. Returns 1 on conflict instead of dying —
+# resolve_subdomain_prefix() below is the caller that decides what to do
+# about it (offer a shared prefix and retry, or give up and abort).
 # Args: $@ = list of FQDNs we plan to claim (e.g. smart-rag.example.com)
 check_nginx_subdomains() {
     local subdomains=("$@")
-    local sites_dir="/etc/nginx/sites-enabled"
+    local sites_dir="${NGINX_SITES_DIR:-/etc/nginx/sites-enabled}"
 
     if [[ ! -d "$sites_dir" ]]; then
         # nginx not yet installed → no conflict possible
         return 0
     fi
-    info "$(t pf_subdom_check)"
 
     local conflicts=0
     local site sub
@@ -385,10 +428,71 @@ check_nginx_subdomains() {
         done
     done
 
-    if (( conflicts > 0 )); then
-        die "$(t pf_subdom_abort)"
+    (( conflicts > 0 )) && return 1
+    return 0
+}
+
+# Determines the final subdomain prefix (possibly empty) for this deployment.
+# Tries with no prefix first — the common case on a dedicated/clean server,
+# and backward-compatible with existing deployments. If any of our subdomains
+# collide with something already configured in nginx (e.g. a standalone n8n
+# already running on this host), offers ONE shared prefix applied to every
+# one of our subdomains — mirrors resolve_ports()'s auto-resolve-on-conflict
+# approach — and retries, up to a few attempts before giving up.
+# Args: $1=domain  $2...=service labels (e.g. smart-rag n8n minio s3 [langfuse] [lti])
+# Echoes the final prefix (possibly "").
+resolve_subdomain_prefix() {
+    local domain="$1"; shift
+    local services=("$@")
+    local prefix="" attempt subdomains s
+
+    # This function's stdout IS the return value (captured by the caller via
+    # command substitution) — every status message must go to stderr, or it
+    # ends up concatenated into CFG_SUBDOMAIN_PREFIX.
+    info "$(t pf_subdom_check)" >&2
+    for attempt in 1 2 3; do
+        subdomains=()
+        for s in "${services[@]}"; do
+            subdomains+=("$(subdomain_host "$s" "$domain" "$prefix")")
+        done
+
+        if check_nginx_subdomains "${subdomains[@]}"; then
+            ok "$(t pf_subdom_ok)" >&2
+            printf '%s' "$prefix"
+            return 0
+        fi
+
+        if (( attempt == 3 )); then
+            die "$(t pf_subdom_abort)"
+        fi
+
+        warn "$(t pf_subdom_prefix_needed)" >&2
+        prefix="$(prompt pf_subdom_prefix_prompt "${prefix:-smartrag}" validate_slug)" \
+            || die "$(t cfg_aborted)"
+    done
+}
+
+# ─── 9b. Existing mail relay detection ───────────────────────────────────────
+# Called from ask_mail_config() (config-wizard.sh) BEFORE offering to set up
+# a new relay — a server may already run Postfix/Exim/etc. for unrelated
+# reasons, and blindly offering a fresh Postfix install ignores that.
+# Echoes "MTA_PACKAGE:PORT25_LISTENING" — MTA_PACKAGE is "none" if no known
+# MTA package is installed, PORT25_LISTENING is 1/0.
+detect_existing_mail_relay() {
+    local mta="none" pkg
+    for pkg in postfix exim4 sendmail msmtp ssmtp; do
+        if dpkg -s "$pkg" >/dev/null 2>&1; then
+            mta="$pkg"
+            break
+        fi
+    done
+
+    local port_listening=0
+    if ! is_port_free 25 2>/dev/null; then
+        port_listening=1
     fi
-    ok "$(t pf_subdom_ok)"
+
+    printf '%s:%s' "$mta" "$port_listening"
 }
 
 # ─── 10. Let's Encrypt existing-cert check (warning only) ────────────────────
@@ -476,6 +580,7 @@ run_preflight() {
     check_docker
     check_docker_compose
     check_disk_space "/"
+    ensure_jq_installed
 }
 
 # ─── Master runner — phase 2 (coexistence checks) ────────────────────────────
@@ -490,15 +595,12 @@ run_preflight() {
 run_coexistence_preflight() {
     header "$(t pf_section_coexist)"
 
-    # Build subdomain list based on enabled profiles
-    local subdomains=(
-        "smart-rag.$DOMAIN"
-        "n8n.$DOMAIN"
-        "minio.$DOMAIN"
-        "s3.$DOMAIN"
-    )
-    [[ "${COMPOSE_PROFILES:-core}" == *observability* ]] && subdomains+=("langfuse.$DOMAIN")
-    [[ "${COMPOSE_PROFILES:-core}" == *lti*           ]] && subdomains+=("lti.$DOMAIN")
+    # Build the list of SERVICE LABELS (not yet combined with domain/prefix —
+    # resolve_subdomain_prefix() does that, retrying with a shared prefix if
+    # the unprefixed names collide with something already on this host).
+    local services=(smart-rag n8n minio s3)
+    [[ "${COMPOSE_PROFILES:-core}" == *observability* ]] && services+=(langfuse)
+    [[ "${COMPOSE_PROFILES:-core}" == *lti*           ]] && services+=(lti)
 
     # Build host-port list — only the ones we actually bind to the host.
     # Format: VARNAME=DEFAULT_PORT:LABEL
@@ -522,7 +624,8 @@ run_coexistence_preflight() {
     confirm_port_resolutions
 
     check_nginx_config_valid
-    check_nginx_subdomains  "${subdomains[@]}"
+    CFG_SUBDOMAIN_PREFIX="$(resolve_subdomain_prefix "$DOMAIN" "${services[@]}")"
+    export CFG_SUBDOMAIN_PREFIX
     check_existing_certs    "smartrag-$DOMAIN"
     check_base_data_path    "${BASE_DATA_PATH:-/srv/smart-rag}"
 }

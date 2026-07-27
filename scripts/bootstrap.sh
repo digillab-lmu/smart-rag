@@ -142,7 +142,7 @@ if [[ "$MODE" == "continue" ]]; then
     bash "$SCRIPT_DIR/start-services.sh"          --lang "$LANG_CHOICE"
 
     header "$(t orch_complete)"
-    echo "  $(t orch_next_visit "$DOMAIN")"
+    echo "  $(t orch_next_visit "$(subdomain_host smart-rag "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")")"
     echo "  $(t orch_next_login)"
     echo
     echo "  $(t orch_next_finalize)"
@@ -231,11 +231,11 @@ run_coexistence_preflight
 # We check the actual subdomains, not the base domain (which we don't host).
 if command -v dig >/dev/null 2>&1; then
     info "Checking DNS for required subdomains of $CFG_DOMAIN..."
-    check_dns "smart-rag.$CFG_DOMAIN"
-    check_dns "n8n.$CFG_DOMAIN"
-    check_dns "minio.$CFG_DOMAIN"
-    [[ "$CFG_ENABLE_OBSERVABILITY" == "yes" ]] && check_dns "langfuse.$CFG_DOMAIN"
-    [[ "$CFG_ENABLE_LTI" == "yes" ]]           && check_dns "lti.$CFG_DOMAIN"
+    check_dns "$(subdomain_host smart-rag "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
+    check_dns "$(subdomain_host n8n       "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
+    check_dns "$(subdomain_host minio     "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
+    [[ "$CFG_ENABLE_OBSERVABILITY" == "yes" ]] && check_dns "$(subdomain_host langfuse "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
+    [[ "$CFG_ENABLE_LTI" == "yes" ]]           && check_dns "$(subdomain_host lti       "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
 fi
 
 # ─── Phase 3: Generate secrets ───────────────────────────────────────────────
@@ -305,9 +305,9 @@ fi
 echo
 
 # Compose list of subdomains for DNS hint
-SUBDOMAINS="smart-rag.$CFG_DOMAIN  n8n.$CFG_DOMAIN  minio.$CFG_DOMAIN  s3.$CFG_DOMAIN"
-[[ "$CFG_ENABLE_OBSERVABILITY" == "yes" ]] && SUBDOMAINS="$SUBDOMAINS  langfuse.$CFG_DOMAIN"
-[[ "$CFG_ENABLE_LTI" == "yes" ]] && SUBDOMAINS="$SUBDOMAINS  lti.$CFG_DOMAIN"
+SUBDOMAINS="$(subdomain_host smart-rag "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")  $(subdomain_host n8n "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")  $(subdomain_host minio "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")  $(subdomain_host s3 "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
+[[ "$CFG_ENABLE_OBSERVABILITY" == "yes" ]] && SUBDOMAINS="$SUBDOMAINS  $(subdomain_host langfuse "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
+[[ "$CFG_ENABLE_LTI" == "yes" ]] && SUBDOMAINS="$SUBDOMAINS  $(subdomain_host lti "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
 
 printf "${BOLD}%s${RESET}\n" "$(t summary_next)"
 echo "$(t summary_next_review)"

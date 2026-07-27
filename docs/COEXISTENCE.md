@@ -83,8 +83,11 @@ A hard, audited list. If you see the bootstrap scripts touching any of these,
 
 2. **nginx server_name collisions** — scan all `/etc/nginx/sites-enabled/*`
    (except our own `smartrag-*` files) for `server_name` directives that
-   overlap with our planned subdomains (e.g. `smart-rag.<DOMAIN>`). Abort if
-   any of our subdomains is already claimed.
+   overlap with our planned subdomains (e.g. `smart-rag.<DOMAIN>`). If any of
+   our subdomains is already claimed — e.g. a standalone `n8n` already
+   running on this host — the wizard offers a shared prefix for all our
+   subdomains instead (`smartrag-n8n.<DOMAIN>` etc.) and retries, up to a
+   few attempts, before giving up and asking you to resolve it manually.
 
 3. **nginx config validity** — runs `nginx -t` against the existing
    configuration. If it's already broken, we refuse to reload it later (which
