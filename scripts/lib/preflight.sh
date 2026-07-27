@@ -8,6 +8,25 @@
 
 PREFLIGHT_WARN=0
 
+# ─── Previous-run detection ──────────────────────────────────────────────────
+# Called from bootstrap.sh before deciding whether to show the full wizard or
+# offer to continue/redo an existing deployment. Echoes one of:
+#   none       — no .env, this is genuinely the first run
+#   configured — .env exists, but no smartrag-* containers are currently up
+#   running    — .env exists AND smartrag-* containers are running
+detect_bootstrap_state() {
+    local repo_root="$1"
+    if [[ ! -f "$repo_root/.env" ]]; then
+        echo "none"
+        return 0
+    fi
+    if command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^smartrag-'; then
+        echo "running"
+    else
+        echo "configured"
+    fi
+}
+
 # ─── 0. Prerequisites checklist (human, not automated) ──────────────────────
 # Shown once, right after the welcome intro and before any system checks.
 # Purpose: let the user bail out cleanly BEFORE investing time in the wizard

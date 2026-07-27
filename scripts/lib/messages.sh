@@ -293,6 +293,16 @@ declare -A MSG_EN=(
     [svc_status]="Service status:"
     [svc_done]="Services are running."
 
+    # --- previous-run detection ----------------------------------------------
+    [prevrun_title]="Previous Run Detected"
+    [prevrun_configured]=".env found — phases 1–4 already completed, but no SMART RAG containers are currently running."
+    [prevrun_running]=".env found AND SMART RAG containers are already running on this server."
+    [prevrun_choice]="What do you want to do?"
+    [prevrun_continue]="Continue deployment (phases 5–7: packages, SSL, Docker services — same as --continue)"
+    [prevrun_fresh]="Reconfigure from scratch (run the wizard again)"
+    [prevrun_abort]="Abort, do nothing"
+    [prevrun_fresh_note]="Continuing to the configuration wizard. Your existing .env will be kept/backed up/overwritten based on your next answer."
+
     # --- bootstrap orchestration --------------------------------------------
     [orch_continue_intro]="Continuing bootstrap (phases 5–7)…"
     [snap_creating]="Creating safety snapshot of current system state…"
@@ -591,6 +601,16 @@ declare -A MSG_DE=(
     [svc_all_healthy]="Alle benötigten Services sind healthy"
     [svc_status]="Service-Status:"
     [svc_done]="Services laufen."
+
+    # --- previous-run detection ----------------------------------------------
+    [prevrun_title]="Vorheriger Lauf erkannt"
+    [prevrun_configured]=".env gefunden — Phasen 1–4 wurden bereits abgeschlossen, aber es laufen aktuell keine SMART-RAG-Container."
+    [prevrun_running]=".env gefunden UND SMART-RAG-Container laufen bereits auf diesem Server."
+    [prevrun_choice]="Was möchtest du tun?"
+    [prevrun_continue]="Deployment fortsetzen (Phasen 5–7: Pakete, SSL, Docker-Services — wie --continue)"
+    [prevrun_fresh]="Komplett neu konfigurieren (Assistent erneut durchlaufen)"
+    [prevrun_abort]="Abbrechen, nichts tun"
+    [prevrun_fresh_note]="Weiter zum Konfigurations-Assistenten. Deine bestehende .env wird je nach nächster Antwort behalten/gesichert/überschrieben."
 
     # --- bootstrap orchestration --------------------------------------------
     [orch_continue_intro]="Bootstrap wird fortgesetzt (Phasen 5–7)…"
