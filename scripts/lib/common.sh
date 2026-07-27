@@ -250,6 +250,20 @@ require_command() {
     command -v "$cmd" >/dev/null 2>&1 || die "Required command not found: $cmd"
 }
 
+# Computes the actual hostname for one of our services, honoring an optional
+# shared subdomain prefix (see resolve_subdomain_prefix() in preflight.sh —
+# only set to non-empty when the default unprefixed names collided with
+# something already on the host, e.g. an existing standalone n8n).
+# Args: $1=service label (e.g. "smart-rag", "n8n")  $2=base domain  $3=prefix (may be empty)
+subdomain_host() {
+    local service="$1" domain="$2" prefix="$3"
+    if [[ -n "$prefix" ]]; then
+        printf '%s-%s.%s' "$prefix" "$service" "$domain"
+    else
+        printf '%s.%s' "$service" "$domain"
+    fi
+}
+
 # Percent-encode a string for safe embedding in a URL (e.g. an SMTP password
 # that may contain ':', '@', '/'). ASCII-only — sufficient for SMTP passwords.
 url_encode() {

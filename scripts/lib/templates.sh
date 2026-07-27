@@ -31,6 +31,17 @@ write_env_file() {
     REPL[ADMIN_PASSWORD]="$SECRET_ADMIN_PASSWORD"
     REPL[TZ]="$CFG_TZ"
 
+    # Subdomain prefix (set by resolve_subdomain_prefix() in preflight.sh,
+    # only non-empty if the plain names collided with something already in
+    # nginx). Every URL below that embeds a subdomain is computed fully
+    # resolved here — not left as `${DOMAIN}`-style interpolation in .env —
+    # so it doesn't depend on Docker Compose's env_file interpolation
+    # supporting the conditional prefix logic.
+    REPL[SUBDOMAIN_PREFIX]="${CFG_SUBDOMAIN_PREFIX:-}"
+    REPL[N8N_WEBHOOK_URL]="https://$(subdomain_host n8n "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
+    REPL[NEXTAUTH_URL]="https://$(subdomain_host langfuse "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
+    REPL[LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT]="https://$(subdomain_host minio "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
+
     # Compose profiles
     REPL[COMPOSE_PROFILES]="$CFG_COMPOSE_PROFILES"
 
@@ -158,7 +169,26 @@ write_nginx_config() {
     lms_domain="${lms_domain#http://}"
     lms_domain="${lms_domain%%/*}"
 
-    sed -e "s|YOUR_DOMAIN|$CFG_DOMAIN|g" \
+    # Each of the template's 6 fixed "<service>.YOUR_DOMAIN" patterns is
+    # replaced with its fully-resolved (prefix-aware) hostname FIRST, before
+    # the generic YOUR_DOMAIN substitution runs — otherwise the later pass
+    # would just re-append the bare domain to whatever these left behind.
+    local prefix="${CFG_SUBDOMAIN_PREFIX:-}"
+    local n8n_host; n8n_host="$(subdomain_host n8n "$CFG_DOMAIN" "$prefix")"
+    # The CORS map's regex alternation escapes its dot ("n8n\.YOUR_DOMAIN")
+    # on purpose — an unescaped dot in that context matches any character,
+    # not just ".". Preserve the escape in the substituted value too. Needs a
+    # DOUBLED backslash here: sed's own replacement-string parsing consumes
+    # one level of backslash-escaping, so "\\." survives as "\." in the file.
+    local n8n_host_escaped="${n8n_host/./\\\\.}"
+    sed -e "s|smart-rag\.YOUR_DOMAIN|$(subdomain_host smart-rag "$CFG_DOMAIN" "$prefix")|g" \
+        -e "s|n8n\.YOUR_DOMAIN|$n8n_host|g" \
+        -e "s|n8n\\\\\.YOUR_DOMAIN|$n8n_host_escaped|g" \
+        -e "s|langfuse\.YOUR_DOMAIN|$(subdomain_host langfuse "$CFG_DOMAIN" "$prefix")|g" \
+        -e "s|minio\.YOUR_DOMAIN|$(subdomain_host minio "$CFG_DOMAIN" "$prefix")|g" \
+        -e "s|s3\.YOUR_DOMAIN|$(subdomain_host s3 "$CFG_DOMAIN" "$prefix")|g" \
+        -e "s|lti\.YOUR_DOMAIN|$(subdomain_host lti "$CFG_DOMAIN" "$prefix")|g" \
+        -e "s|YOUR_DOMAIN|$CFG_DOMAIN|g" \
         -e "s|YOUR_LMS_DOMAIN|$lms_domain|g" \
         "$src" > "$out"
 

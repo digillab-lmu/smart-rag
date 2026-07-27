@@ -72,14 +72,18 @@ require_command curl
 header "$(t phase_ssl)"
 
 # ─── Build subdomain list from profiles ──────────────────────────────────────
+# SUBDOMAIN_PREFIX (from .env, set by the wizard's resolve_subdomain_prefix()
+# in preflight.sh) must match exactly what write_nginx_config() already baked
+# into the nginx config — otherwise this SAN cert wouldn't cover what nginx
+# actually serves.
 SUBDOMAINS=(
-    "smart-rag.$DOMAIN"
-    "n8n.$DOMAIN"
-    "minio.$DOMAIN"
-    "s3.$DOMAIN"
+    "$(subdomain_host smart-rag "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")"
+    "$(subdomain_host n8n       "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")"
+    "$(subdomain_host minio     "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")"
+    "$(subdomain_host s3        "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")"
 )
-[[ "${COMPOSE_PROFILES:-core}" == *observability* ]] && SUBDOMAINS+=("langfuse.$DOMAIN")
-[[ "${COMPOSE_PROFILES:-core}" == *lti*           ]] && SUBDOMAINS+=("lti.$DOMAIN")
+[[ "${COMPOSE_PROFILES:-core}" == *observability* ]] && SUBDOMAINS+=("$(subdomain_host langfuse "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")")
+[[ "${COMPOSE_PROFILES:-core}" == *lti*           ]] && SUBDOMAINS+=("$(subdomain_host lti       "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")")
 
 info "$(t ssl_subdomain_list "${SUBDOMAINS[*]}")"
 
