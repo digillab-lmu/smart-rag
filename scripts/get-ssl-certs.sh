@@ -90,7 +90,7 @@ info "$(t ssl_subdomain_list "${SUBDOMAINS[*]}")"
 
 # ─── Detect server's public IP ───────────────────────────────────────────────
 info "$(t ssl_resolving_server_ip)"
-SERVER_IP="$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || echo "")"
+SERVER_IP="$(detect_public_ip)"
 [[ -n "$SERVER_IP" ]] || die "Could not detect public IP. Are you on the actual server?"
 ok "$(t ssl_server_ip "$SERVER_IP")"
 

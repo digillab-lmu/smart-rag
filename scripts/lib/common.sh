@@ -101,6 +101,18 @@ _is_back_input() {
     esac
 }
 
+# Clean-exit-from-anywhere: "exit"/"quit"/"beenden"/"abbrechen" at any prompt
+# terminates the whole script immediately via die() — unlike back-navigation,
+# this needs no propagation through callers (die() never returns), so it's
+# checked and handled entirely inside the 4 primitives below, no other file
+# needs to know about it.
+_is_exit_input() {
+    case "${1,,}" in
+        exit|quit|beenden|abbrechen) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # prompt KEY DEFAULT [VALIDATOR]  →  echoes user input
 # KEY:        i18n message key (the question)
 # DEFAULT:    default value if user just hits enter (may be empty)
@@ -120,6 +132,7 @@ prompt() {
             printf "  %s: " "$question" >&2
         fi
         IFS= read -r input
+        _is_exit_input "$input" && die "$(t wizard_exit)"
         if _is_back_input "$input"; then
             WIZARD_BACK=1
             return 1
@@ -150,6 +163,7 @@ prompt_password() {
     fi
     IFS= read -rs input
     printf "\n" >&2
+    _is_exit_input "$input" && die "$(t wizard_exit)"
     if _is_back_input "$input"; then
         WIZARD_BACK=1
         return 1
@@ -169,6 +183,7 @@ confirm() {
     while true; do
         printf "  %s [%s]: " "$question" "$suffix" >&2
         IFS= read -r input
+        _is_exit_input "$input" && die "$(t wizard_exit)"
         if _is_back_input "$input"; then
             WIZARD_BACK=1
             return 1
@@ -197,6 +212,7 @@ select_one_index() {
     while true; do
         printf "  ${DIM}%s${RESET} ${BOLD}[1]${RESET}: " "$(t enter_choice)" >&2
         IFS= read -r input
+        _is_exit_input "$input" && die "$(t wizard_exit)"
         if _is_back_input "$input"; then
             WIZARD_BACK=1
             return 1
@@ -262,6 +278,14 @@ subdomain_host() {
     else
         printf '%s.%s' "$service" "$domain"
     fi
+}
+
+# Detects this machine's public IP via api.ipify.org. Echoes the IP, or
+# nothing on failure (network down, service unreachable) — callers should
+# treat an empty result as "couldn't detect", not as an error to die() on
+# except where the IP is genuinely required (e.g. get-ssl-certs.sh).
+detect_public_ip() {
+    curl -sf --max-time 5 https://api.ipify.org 2>/dev/null || true
 }
 
 # Percent-encode a string for safe embedding in a URL (e.g. an SMTP password

@@ -145,8 +145,11 @@ if [[ "$MODE" == "phase1" ]]; then
     fi
 fi
 
-# ─── --continue branch: orchestrate phases 5–7 ───────────────────────────────
-if [[ "$MODE" == "continue" ]]; then
+# ─── Phases 5–7 (deployment half) — reusable, called from two places ────────
+# 1. The --continue CLI flag (explicit, always respected as-is).
+# 2. The end of phase 1 below, when DNS for every subdomain ALREADY resolves
+#    correctly — no reason to make the user type a second command and wait.
+run_deployment_phases() {
     info "$(t orch_continue_intro)"
 
     # Phase 1 must have run — .env is required
@@ -172,6 +175,11 @@ if [[ "$MODE" == "continue" ]]; then
     echo "  $(t orch_next_login)"
     echo
     echo "  $(t orch_next_finalize)"
+}
+
+# ─── --continue branch ────────────────────────────────────────────────────────
+if [[ "$MODE" == "continue" ]]; then
+    run_deployment_phases
     exit 0
 fi
 
@@ -187,7 +195,8 @@ printf "%s\n\n" "$(t intro_step5)"
 printf "${BOLD}%s${RESET}\n" "$(t intro_how_it_works)"
 printf "%s\n" "$(t intro_how1)"
 printf "%s\n" "$(t intro_how2)"
-printf "%s\n\n" "$(t intro_how3)"
+printf "%s\n" "$(t intro_how3)"
+printf "%s\n\n" "$(t intro_how4)"
 
 if ! confirm intro_continue "y"; then
     exit 0
@@ -255,13 +264,19 @@ run_coexistence_preflight
 
 # Re-run DNS check now that we have a domain (warning only).
 # We check the actual subdomains, not the base domain (which we don't host).
+# Snapshot PREFLIGHT_WARN before/after: if it didn't move, every check_dns()
+# call below found a correct match — used further down to offer skipping
+# straight into --continue instead of making the user run a second command.
+DNS_ALL_OK=0
 if command -v dig >/dev/null 2>&1; then
     info "Checking DNS for required subdomains of $CFG_DOMAIN..."
+    _warn_before_dns=$PREFLIGHT_WARN
     check_dns "$(subdomain_host smart-rag "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
     check_dns "$(subdomain_host n8n       "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
     check_dns "$(subdomain_host minio     "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
     [[ "$CFG_ENABLE_OBSERVABILITY" == "yes" ]] && check_dns "$(subdomain_host langfuse "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
     [[ "$CFG_ENABLE_LTI" == "yes" ]]           && check_dns "$(subdomain_host lti       "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
+    [[ "$PREFLIGHT_WARN" -eq "$_warn_before_dns" ]] && DNS_ALL_OK=1
 fi
 
 # ─── Phase 3: Generate secrets ───────────────────────────────────────────────
@@ -335,15 +350,33 @@ SUBDOMAINS="$(subdomain_host smart-rag "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")  $
 [[ "$CFG_ENABLE_OBSERVABILITY" == "yes" ]] && SUBDOMAINS="$SUBDOMAINS  $(subdomain_host langfuse "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
 [[ "$CFG_ENABLE_LTI" == "yes" ]] && SUBDOMAINS="$SUBDOMAINS  $(subdomain_host lti "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
 
-printf "${BOLD}%s${RESET}\n" "$(t summary_next)"
-echo "$(t summary_next_review)"
-echo "$(t summary_next_dns "$CFG_DOMAIN")"
-echo "      Subdomains used: $SUBDOMAINS"
-echo "$(t summary_next_ssl)"
-echo "$(t summary_next_start)"
-echo
-
+# Shown before the DNS/auto-continue branch below so it's never missed —
+# some branches exit straight into deployment and never reach the old
+# end-of-script position this used to have.
 printf "${YELLOW}${BOLD}%s${RESET}\n" "$(t summary_creds_warn "$CREDS_FILE")"
 printf "${DIM}%s${RESET}\n\n" "$(t summary_creds_chmod)"
+
+printf "${BOLD}%s${RESET}\n" "$(t summary_next)"
+echo "$(t summary_next_review)"
+
+if (( DNS_ALL_OK )); then
+    echo
+    ok "$(t dns_all_ok_title)"
+    if confirm dns_auto_continue_confirm "y"; then
+        echo
+        _log_to_file "─── bootstrap.sh finished (phase 1) — auto-continuing into phases 5–7 ───"
+        run_deployment_phases
+        exit 0
+    else
+        echo "$(t dns_auto_continue_declined)"
+    fi
+else
+    echo "$(t summary_next_dns "$CFG_DOMAIN")"
+    echo "      Subdomains used: $SUBDOMAINS"
+    echo "$(t summary_next_dns_ip "$(detect_public_ip)")"
+    echo "$(t summary_next_dns_howto "$CFG_DOMAIN")"
+    echo "$(t summary_next_start)"
+fi
+echo
 
 _log_to_file "─── bootstrap.sh finished (phase 1) ───"
