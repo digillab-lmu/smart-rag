@@ -104,8 +104,8 @@ docker compose -f "$COMPOSE_FILE" --env-file "$REPO_ROOT/.env" up -d --remove-or
 
 # ─── Wait for health ─────────────────────────────────────────────────────────
 # Polls `docker inspect` for each container's health status.
-# Timeout per service: 180s. Health checks run every 30s in compose,
-# so 180s = up to 6 ticks of grace.
+# Default timeout per service: 180s (see the per-service override below the
+# call site for smartrag-n8n, which legitimately needs longer).
 wait_for_healthy() {
     local container="$1"
     local timeout="${2:-180}"
@@ -145,7 +145,17 @@ wait_for_healthy() {
 info "$(t svc_waiting)"
 all_ok=1
 for svc in "${ALL_SERVICES[@]}"; do
-    wait_for_healthy "$svc" 180 || all_ok=0
+    # smartrag-n8n needs more than the default 180s: a fresh database runs
+    # every migration n8n has ever shipped, and on a real (not idle) server
+    # that raced with every other container's own first-start work, this has
+    # live-been observed to take longer than the docker-compose healthcheck's
+    # own 300s start_period + 100s of retries (400s worst case) — give this
+    # loop enough room to actually see that outcome instead of bailing first.
+    case "$svc" in
+        smartrag-n8n) svc_timeout=450 ;;
+        *)            svc_timeout=180 ;;
+    esac
+    wait_for_healthy "$svc" "$svc_timeout" || all_ok=0
 done
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
