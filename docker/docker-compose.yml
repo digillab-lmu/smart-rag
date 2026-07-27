@@ -2,10 +2,23 @@
 # SMART RAG — Unified Docker Compose
 # ════════════════════════════════════════════════════════════════════════════════
 #
-# All configuration is read from the root .env file.
-# Run from the project root:
+# All configuration is read from the root .env file (one level up from this
+# file). Docker Compose only auto-loads a ".env" from your CURRENT WORKING
+# DIRECTORY — it does NOT resolve one relative to this compose file. Run from
+# the project root, where the real .env lives:
 #
+#   cd /srv/smart-rag
 #   docker compose -f docker/docker-compose.yml up -d
+#
+# ⚠️  If you `cd docker/` first (e.g. to poke around), Compose will NOT find
+#     ../.env automatically — every variable silently defaults to an empty
+#     string ("BASE_DATA_PATH variable is not set" etc.), which can then fail
+#     in confusing ways (e.g. `down` erroring on an empty port mapping) or,
+#     worse, target the wrong things. From inside docker/, always pass the
+#     env file explicitly:
+#
+#   cd /srv/smart-rag/docker
+#   docker compose --env-file ../.env up -d
 #
 # Profiles are controlled via COMPOSE_PROFILES in .env:
 #   core          → always required (Flowise, Weaviate, Neo4j, PostgreSQL, Redis, MinIO, n8n)
