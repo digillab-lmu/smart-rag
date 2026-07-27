@@ -96,6 +96,14 @@ When `--continue` finishes, your stack is running at:
 
 Initial admin credentials are in `credentials.txt` (chmod 600).
 
+**Starting over / uninstalling**: `sudo bash scripts/uninstall.sh` removes SMART
+RAG's own footprint (containers, network, nginx configs) and leaves nginx,
+certbot, Docker, and Postfix themselves untouched (they may be shared with
+other services on this host). Data, secrets, and the SSL certificate are kept
+by default — add `--purge-data`, `--purge-secrets`, `--purge-certs` to also
+remove those (data deletion needs typing `DELETE` to confirm). Try `--dry-run`
+first to see exactly what it would do.
+
 ---
 
 ## Wizard features
@@ -200,7 +208,7 @@ smart-rag/
 │   ├── workflows/          # 3 core workflows (sync, summary, observability)
 │   └── workflows-ingest/   # Document ingest workflows (→ moving to smart-rag-ingest)
 ├── lti-middleware/         # Flask app for LTI 1.3
-├── scripts/                # bootstrap.sh, lib/, standalone phase scripts
+├── scripts/                # bootstrap.sh, uninstall.sh, lib/, standalone phase scripts
 └── docs/                   # COEXISTENCE.md, requirements.md
 ```
 
