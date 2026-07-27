@@ -79,6 +79,18 @@ if ! docker network inspect proxy-network >/dev/null 2>&1; then
     docker network create proxy-network >/dev/null
 fi
 
+# ─── Ensure data directories exist with correct ownership ────────────────────
+# `docker compose up` auto-creates missing bind-mount host directories, but
+# as root:root — fine for images that self-chown on startup (postgres,
+# clickhouse, ...) when they're first run as root, but images that run
+# internally as a fixed non-root user out of the box (no root-then-chown
+# entrypoint dance) can't write into a root-owned directory and crash-loop
+# with an EACCES deep inside their own startup, invisible to any check we
+# run beforehand. Pre-create + chown before compose ever touches them.
+info "$(t svc_preparing_data_dirs)"
+mkdir -p "${BASE_DATA_PATH}/n8n/data"
+chown -R 1000:1000 "${BASE_DATA_PATH}/n8n/data"   # n8n image runs as user "node" (uid 1000)
+
 # ─── Pull images (skip with --no-pull) ───────────────────────────────────────
 COMPOSE_FILE="$REPO_ROOT/docker/docker-compose.yml"
 if (( DO_PULL )); then

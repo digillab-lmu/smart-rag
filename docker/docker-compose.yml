@@ -152,6 +152,11 @@ services:
       TZ: "${TZ}"
     volumes:
       - ${BASE_DATA_PATH}/postgres/data:/var/lib/postgresql/data
+      # Creates the "flowise" and "n8n" databases on first init — the image
+      # only auto-creates the one named by POSTGRES_DB. See postgres-init/
+      # for details. Only runs once (empty data directory); has no effect
+      # on an already-initialized volume.
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
     networks: [smart-rag-network]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
@@ -257,7 +262,12 @@ services:
     image: neo4j:5.26.0
     container_name: smartrag-neo4j
     restart: always
-    env_file: ../.env
+    # NOT env_file: ../.env — the neo4j image auto-translates EVERY env var
+    # starting with "NEO4J_" into a config setting (e.g. server.memory...),
+    # and env_file would leak NEO4J_PASSWORD (used only to build NEO4J_AUTH
+    # below, not a real neo4j setting) straight into that translation. Neo4j
+    # 5.x's strict config validation then rejects the resulting "PASSWORD"
+    # key and crash-loops. List explicitly, only what neo4j should ever see.
     environment:
       NEO4J_AUTH: "${NEO4J_AUTH}"
       NEO4J_server_memory_heap_initial__size: "512m"

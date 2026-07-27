@@ -283,6 +283,7 @@ declare -A MSG_EN=(
 
     # --- phase 7 — services -------------------------------------------------
     [phase_services]="Phase 7 · Starting Docker Services"
+    [svc_preparing_data_dirs]="Preparing data directories with correct ownership…"
     [svc_pulling]="Pulling Docker images (this can take a few minutes on first run)…"
     [svc_starting]="Starting services with profile: %s"
     [svc_waiting]="Waiting for services to become healthy…"
@@ -581,6 +582,7 @@ declare -A MSG_DE=(
 
     # --- phase 7 — services -------------------------------------------------
     [phase_services]="Phase 7 · Docker-Services starten"
+    [svc_preparing_data_dirs]="Datenverzeichnisse mit korrekter Ownership vorbereiten…"
     [svc_pulling]="Docker-Images werden geladen (beim ersten Lauf einige Minuten)…"
     [svc_starting]="Services starten mit Profil: %s"
     [svc_waiting]="Warte bis Services healthy sind…"
