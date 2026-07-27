@@ -407,7 +407,7 @@ services:
     restart: always
     env_file: ../.env
     environment:
-      N8N_HOST: "n8n.${DOMAIN}"
+      N8N_HOST: "${N8N_HOSTNAME}"
       N8N_PROTOCOL: "https"
       N8N_TRUST_PROXY: "true"
       WEBHOOK_URL: "${N8N_WEBHOOK_URL}"
@@ -455,7 +455,12 @@ services:
       interval: 20s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      # 60s wasn't enough on first-ever start: a fresh "n8n" database runs
+      # every migration n8n has ever shipped (dozens, live-observed taking
+      # several minutes), and each failed check during that time counts
+      # against `retries` — locking in "unhealthy" before the app is even
+      # done initializing, even though it comes up fine moments later.
+      start_period: 180s
 
 
   # ════════════════════════════════════════════════════════════════════════════
