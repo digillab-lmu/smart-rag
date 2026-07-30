@@ -40,6 +40,8 @@ source "$LIB_DIR/common.sh"
 source "$LIB_DIR/messages.sh"
 # shellcheck source=lib/preflight.sh
 source "$LIB_DIR/preflight.sh"
+# shellcheck source=lib/config-wizard.sh
+source "$LIB_DIR/config-wizard.sh"
 
 # ─── Arg parsing ─────────────────────────────────────────────────────────────
 while (( $# > 0 )); do
@@ -245,6 +247,123 @@ action_secrets() {
     press_enter
 }
 
+# Recreates any container whose effective config changed (Compose diffs
+# against the current .env automatically — we don't need to know which
+# container is affected by which key).
+_apply_config_change() {
+    info "$(t admin_cfg_applying)"
+    set -a
+    # shellcheck source=/dev/null
+    source "$REPO_ROOT/.env"
+    set +a
+    if bash "$SCRIPT_DIR/compose.sh" up -d; then
+        ok "$(t admin_cfg_done)"
+    else
+        err "$(t admin_cfg_apply_failed)"
+    fi
+    press_enter
+}
+
+# Plain single-value edit: show current value as the default, prompt for a
+# new one, patch .env, apply. Only for NON-secret values — the current value
+# is shown on screen.
+# Args: $1=ENV_KEY  $2=message-key for the question  $3=validator function (may be empty)
+_cfg_simple() {
+    local env_key="$1" msg_key="$2" validator="${3:-}"
+    clear
+    header "$(t admin_config_title)"
+    local new
+    new="$(prompt "$msg_key" "${!env_key:-}" "$validator")" || { press_enter; return 0; }
+    set_env_var "$REPO_ROOT/.env" "$env_key" "$new"
+    _apply_config_change
+}
+
+# Same, but for secrets: never displays the current value, only overwrites
+# if the operator actually typed something (blank = keep unchanged).
+# Args: $1=ENV_KEY  $2=message-key for the question
+_cfg_secret() {
+    local env_key="$1" msg_key="$2"
+    clear
+    header "$(t admin_config_title)"
+    [[ -n "${!env_key:-}" ]] && info "$(t admin_cfg_secret_already_set)"
+    local new
+    new="$(prompt_password "$msg_key" "")" || { press_enter; return 0; }
+    if [[ -z "$new" ]]; then
+        info "$(t admin_cfg_secret_unchanged)"
+        press_enter
+        return 0
+    fi
+    set_env_var "$REPO_ROOT/.env" "$env_key" "$new"
+    _apply_config_change
+}
+
+# Reuses the wizard's own mail-relay section (existing-relay detection,
+# Postfix-vs-direct choice, etc.) instead of duplicating that logic —
+# pre-populated from the current .env so its prompts show real defaults.
+_cfg_mail() {
+    clear
+    header "$(t admin_config_title)"
+    CFG_INSTALL_POSTFIX="${INSTALL_POSTFIX_RELAY:-false}"
+    CFG_SMTP_RELAY_HOST="${SMTP_RELAY_HOST:-}"
+    CFG_SMTP_RELAY_PORT="${SMTP_RELAY_PORT:-587}"
+    CFG_SMTP_RELAY_USER="${SMTP_RELAY_USER:-}"
+    CFG_SMTP_RELAY_PASSWORD="${SMTP_RELAY_PASSWORD:-}"
+    CFG_SMTP_HOST="${SMTP_HOST:-}"
+    CFG_SMTP_PORT="${SMTP_PORT:-587}"
+    CFG_SMTP_SECURE="${SMTP_SECURE:-false}"
+    CFG_SMTP_USER="${SMTP_USER:-}"
+    CFG_SMTP_PASSWORD="${SMTP_PASSWORD:-}"
+
+    if ! ask_mail_config; then
+        info "$(t admin_cfg_cancelled)"
+        press_enter
+        return 0
+    fi
+
+    local env_file="$REPO_ROOT/.env"
+    set_env_var "$env_file" INSTALL_POSTFIX_RELAY "$CFG_INSTALL_POSTFIX"
+    set_env_var "$env_file" SMTP_RELAY_HOST "$CFG_SMTP_RELAY_HOST"
+    set_env_var "$env_file" SMTP_RELAY_PORT "$CFG_SMTP_RELAY_PORT"
+    set_env_var "$env_file" SMTP_RELAY_USER "$CFG_SMTP_RELAY_USER"
+    set_env_var "$env_file" SMTP_RELAY_PASSWORD "$CFG_SMTP_RELAY_PASSWORD"
+    set_env_var "$env_file" N8N_EMAIL_MODE "$CFG_N8N_EMAIL_MODE"
+    set_env_var "$env_file" SMTP_HOST "$CFG_SMTP_HOST"
+    set_env_var "$env_file" SMTP_PORT "$CFG_SMTP_PORT"
+    set_env_var "$env_file" SMTP_USER "$CFG_SMTP_USER"
+    set_env_var "$env_file" SMTP_PASSWORD "$CFG_SMTP_PASSWORD"
+    set_env_var "$env_file" SMTP_SECURE "$CFG_SMTP_SECURE"
+    set_env_var "$env_file" SMTP_CONNECTION_URL "$CFG_SMTP_CONNECTION_URL"
+
+    if [[ "$CFG_INSTALL_POSTFIX" == "true" ]]; then
+        info "$(t admin_cfg_mail_postfix_note)"
+        bash "$SCRIPT_DIR/install-postfix.sh" --lang "$LANG_CHOICE" || warn "$(t admin_cfg_mail_postfix_failed)"
+    fi
+
+    _apply_config_change
+}
+
+action_config() {
+    local items=(mail "$(t admin_cfg_mail)")
+    items+=(reranker "$(t admin_cfg_reranker)")
+    [[ "${COMPOSE_PROFILES:-core}" == *lti* ]] && items+=(lms "$(t admin_cfg_lms)")
+    items+=(admin_email "$(t admin_cfg_admin_email)")
+    items+=(tz "$(t admin_cfg_tz)")
+
+    local choice
+    if ! choice=$(whiptail --title "$(t admin_title)" --menu "$(t admin_cfg_menu_prompt)" \
+        20 78 12 "${items[@]}" 3>&1 1>&2 2>&3); then
+        return 0
+    fi
+
+    case "$choice" in
+        mail)        _cfg_mail ;;
+        reranker)    _cfg_secret RERANKER_API_KEY cfg_reranker_api_key ;;
+        lms)         _cfg_simple LMS_URL cfg_lms_url validate_url ;;
+        admin_email) _cfg_simple ADMIN_EMAIL cfg_admin_email validate_email ;;
+        tz)          _cfg_simple TZ cfg_tz "" ;;
+    esac
+}
+
 action_uninstall() {
     clear
     header "$(t admin_menu_uninstall)"
@@ -265,8 +384,9 @@ while true; do
         "6"  "$(t admin_menu_mail)" \
         "7"  "$(t admin_menu_dns)" \
         "8"  "$(t admin_menu_secrets)" \
-        "9"  "$(t admin_menu_uninstall)" \
-        "10" "$(t admin_menu_exit)" \
+        "9"  "$(t admin_menu_config)" \
+        "10" "$(t admin_menu_uninstall)" \
+        "11" "$(t admin_menu_exit)" \
         3>&1 1>&2 2>&3); then
         clear
         break
@@ -281,7 +401,8 @@ while true; do
         6)  action_mail ;;
         7)  action_dns ;;
         8)  action_secrets ;;
-        9)  action_uninstall ;;
-        10) clear; break ;;
+        9)  action_config ;;
+        10) action_uninstall ;;
+        11) clear; break ;;
     esac
 done

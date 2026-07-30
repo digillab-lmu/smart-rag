@@ -266,6 +266,45 @@ require_command() {
     command -v "$cmd" >/dev/null 2>&1 || die "Required command not found: $cmd"
 }
 
+# Safely patches a single KEY="VALUE" line in-place inside an .env file,
+# preserving every other line's position — some values interpolate earlier
+# ones (e.g. NEO4J_AUTH="neo4j/${NEO4J_PASSWORD}"), so moving lines around
+# would break sourcing. Appends a new KEY="VALUE" line at the end if the key
+# isn't present yet. Backs up the file first (see backup_file() above).
+#
+# Escaping matches templates.sh::write_env_file() exactly, in the same
+# order (backslash first, or the escapes added for the other three get
+# re-escaped) — without this, a value containing e.g. $(...) would be
+# EXECUTED the next time something does `source .env`.
+#
+# Args: $1 = path to .env  $2 = KEY  $3 = new value (unescaped, as typed)
+set_env_var() {
+    local env_file="$1" key="$2" val="$3"
+    [[ -f "$env_file" ]] || die "set_env_var: $env_file not found"
+
+    val="${val//\\/\\\\}"
+    val="${val//\$/\\\$}"
+    val="${val//\`/\\\`}"
+    val="${val//\"/\\\"}"
+
+    backup_file "$env_file"
+
+    local tmp found=0 line
+    tmp="$(mktemp)"
+    chmod 600 "$tmp"
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" == "${key}="* ]]; then
+            printf '%s="%s"\n' "$key" "$val" >> "$tmp"
+            found=1
+        else
+            printf '%s\n' "$line" >> "$tmp"
+        fi
+    done < "$env_file"
+    (( found )) || printf '%s="%s"\n' "$key" "$val" >> "$tmp"
+
+    mv "$tmp" "$env_file"
+}
+
 # Computes the actual hostname for one of our services, honoring an optional
 # shared subdomain prefix (see resolve_subdomain_prefix() in preflight.sh —
 # only set to non-empty when the default unprefixed names collided with
