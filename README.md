@@ -95,18 +95,23 @@ When `--continue` finishes, your stack is running at:
 - `https://langfuse.your-domain.example` — Langfuse (if observability profile)
 - `https://lti.your-domain.example` — LTI middleware (if lti profile)
 
-Initial admin credentials are in `credentials.txt` (chmod 600).
+Initial admin credentials are in `credentials.txt` (chmod 600) — **except
+Flowise and n8n**, which prompt you to create their own admin account on
+first visit instead (their `FLOWISE_USERNAME`/`PASSWORD` env vars are
+ignored by the version this project pins). Full first-login walkthrough
+for every service: [`docs/operations-guide.md`](docs/operations-guide.md).
 
 **Day-to-day admin** — `sudo bash scripts/admin.sh` (or, once installed,
 just `sudo smartrag`) opens a raspi-config-style menu for the operations
 you'll actually use after deployment: service status, tailing logs,
 pulling updates, restarting a service, SSL certificate status/renewal, a
-mail-relay test, a DNS check, and a read-only secrets overview. It offers
-to install itself as the global `smartrag` command the first time you run
-it. Runs entirely on the host as root over SSH — no extra container, no
-new network exposure. (Content authoring — agent prompts, RAG documents,
-the knowledge graph — is intentionally not here; see "What's NOT done"
-below.)
+mail-relay test, a DNS check, a read-only secrets overview, and changing
+a handful of live, safe-to-edit settings (mail relay, reranker API key,
+LMS URL, admin email, timezone). It offers to install itself as the
+global `smartrag` command the first time you run it. Runs entirely on the
+host as root over SSH — no extra container, no new network exposure.
+(Content authoring — agent prompts, RAG documents, the knowledge graph —
+is intentionally not here; see "What's NOT done" below.)
 
 **Day-2 Docker operations** (pulling updated images, viewing logs, restarting):
 use `scripts/compose.sh` instead of calling `docker compose` directly — it's
@@ -240,7 +245,7 @@ smart-rag/
 │   └── workflows-ingest/   # Document ingest workflows (→ moving to smart-rag-ingest)
 ├── lti-middleware/         # Flask app for LTI 1.3
 ├── scripts/                # bootstrap.sh, admin.sh, uninstall.sh, compose.sh, lib/, standalone phase scripts
-└── docs/                   # COEXISTENCE.md, requirements.md
+└── docs/                   # COEXISTENCE.md, requirements.md, operations-guide.md
 ```
 
 ---
