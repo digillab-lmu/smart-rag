@@ -280,11 +280,14 @@ _cfg_simple() {
 
 # Same, but for secrets: never displays the current value, only overwrites
 # if the operator actually typed something (blank = keep unchanged).
-# Args: $1=ENV_KEY  $2=message-key for the question
+# Args: $1=ENV_KEY  $2=message-key for the question  $3=optional message-key
+#       for an extra note printed above the prompt (menu labels must stay
+#       short — whiptail doesn't wrap them — so caveats go here instead)
 _cfg_secret() {
-    local env_key="$1" msg_key="$2"
+    local env_key="$1" msg_key="$2" note_key="${3:-}"
     clear
     header "$(t admin_config_title)"
+    [[ -n "$note_key" ]] && info "$(t "$note_key")"
     [[ -n "${!env_key:-}" ]] && info "$(t admin_cfg_secret_already_set)"
     local new
     new="$(prompt_password "$msg_key" "")" || { press_enter; return 0; }
@@ -357,7 +360,7 @@ action_config() {
 
     case "$choice" in
         mail)        _cfg_mail ;;
-        reranker)    _cfg_secret RERANKER_API_KEY cfg_reranker_api_key ;;
+        reranker)    _cfg_secret RERANKER_API_KEY cfg_reranker_api_key admin_cfg_reranker_note ;;
         lms)         _cfg_simple LMS_URL cfg_lms_url validate_url ;;
         admin_email) _cfg_simple ADMIN_EMAIL cfg_admin_email validate_email ;;
         tz)          _cfg_simple TZ cfg_tz "" ;;
