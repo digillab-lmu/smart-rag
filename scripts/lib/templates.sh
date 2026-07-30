@@ -136,7 +136,14 @@ write_env_file() {
                 if [[ "$val" =~ ^[0-9]+$ ]]; then
                     printf '%s=%s\n' "$key" "$val"
                 else
-                    # Escape any embedded " (unlikely but safe)
+                    # Escape everything that's special inside a double-quoted
+                    # shell string — in this exact order (backslash first, or
+                    # the escapes added for the other three get re-escaped).
+                    # Without this, a value containing e.g. $(...) would be
+                    # EXECUTED the next time something does `source .env`.
+                    val="${val//\\/\\\\}"
+                    val="${val//\$/\\\$}"
+                    val="${val//\`/\\\`}"
                     val="${val//\"/\\\"}"
                     printf '%s="%s"\n' "$key" "$val"
                 fi
