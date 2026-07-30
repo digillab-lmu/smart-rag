@@ -169,6 +169,8 @@ run_deployment_phases() {
     bash "$SCRIPT_DIR/install-postfix.sh"         --lang "$LANG_CHOICE"
     bash "$SCRIPT_DIR/get-ssl-certs.sh"           --lang "$LANG_CHOICE"
     bash "$SCRIPT_DIR/start-services.sh"          --lang "$LANG_CHOICE"
+    bash "$SCRIPT_DIR/deploy-schemas.sh"          --lang "$LANG_CHOICE"
+    bash "$SCRIPT_DIR/generate-lti-keys.sh"       --lang "$LANG_CHOICE"
 
     header "$(t orch_complete)"
     echo "  $(t orch_next_visit "$(subdomain_host smart-rag "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")")"
