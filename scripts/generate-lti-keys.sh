@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # ═════════════════════════════════════════════════════════════════════════════
-# SMART RAG — Install required system packages (Phase 5)
+# SMART RAG — Generate LTI 1.3 RSA signing keys (Phase 11)
 # ═════════════════════════════════════════════════════════════════════════════
 #
-# Installs nginx, certbot, jq, dnsutils, openssl, curl on Ubuntu 24.04.
-# Idempotent — packages already installed are skipped.
+# Thin wrapper around lti-middleware/generate_keys.sh (already handles the
+# actual openssl key generation + its own overwrite protection) — adds the
+# bilingual messaging/idempotency-skip conventions the rest of the pipeline
+# uses, and no-ops entirely when the lti profile isn't enabled.
 #
-# Usage:  sudo bash scripts/install-system-packages.sh [--lang en|de]
+# Usage:  sudo bash scripts/generate-lti-keys.sh [--lang en|de]
+# Re-runnable — skips if keys already exist.
 # ═════════════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
@@ -41,41 +44,30 @@ if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
     die "$(t pf_root_needed "$(basename "$0")")"
 fi
 
-# ─── Required packages ───────────────────────────────────────────────────────
-PACKAGES=(
-    nginx
-    certbot
-    python3-certbot-nginx
-    jq
-    dnsutils       # for `dig` (DNS checks)
-    openssl
-    curl
-    ca-certificates
-    whiptail       # for scripts/admin.sh's TUI menus
-)
+# ─── Load .env ───────────────────────────────────────────────────────────────
+[[ -f "$REPO_ROOT/.env" ]] || die "$(t orch_phase1_needed)"
+set -a
+# shellcheck source=/dev/null
+source "$REPO_ROOT/.env"
+set +a
 
-header "$(t phase_packages)"
+header "$(t phase_lti_keys)"
 
-# ─── Determine which are missing ─────────────────────────────────────────────
-to_install=()
-for pkg in "${PACKAGES[@]}"; do
-    if dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "ok installed"; then
-        dim "$(t pkg_already "$pkg")"
-    else
-        to_install+=("$pkg")
-    fi
-done
-
-if (( ${#to_install[@]} == 0 )); then
-    ok "$(t pkg_done)"
+if [[ "${COMPOSE_PROFILES:-core}" != *lti* ]]; then
+    dim "$(t lti_keys_skip_no_profile)"
     exit 0
 fi
 
-# ─── Install ─────────────────────────────────────────────────────────────────
-info "$(t pkg_updating)"
-DEBIAN_FRONTEND=noninteractive apt-get update -q >/dev/null
+require_command openssl
 
-info "$(t pkg_installing "${to_install[*]}")"
-DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${to_install[@]}"
+if [[ -f "$REPO_ROOT/lti-middleware/config/private.key" ]]; then
+    ok "$(t lti_keys_exist)"
+    exit 0
+fi
 
-ok "$(t pkg_done)"
+info "$(t lti_keys_generating)"
+if (cd "$REPO_ROOT/lti-middleware" && bash ./generate_keys.sh); then
+    ok "$(t lti_keys_done)"
+else
+    die "$(t lti_keys_failed)"
+fi

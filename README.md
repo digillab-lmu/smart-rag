@@ -85,6 +85,7 @@ sudo bash scripts/bootstrap.sh --continue
 #   → installs nginx + certbot (if missing)
 #   → obtains Let's Encrypt SAN certificate
 #   → starts Docker stack and waits for health
+#   → deploys the Weaviate + Neo4j schema, generates LTI keys (if enabled)
 ```
 
 When `--continue` finishes, your stack is running at:
@@ -96,7 +97,18 @@ When `--continue` finishes, your stack is running at:
 
 Initial admin credentials are in `credentials.txt` (chmod 600).
 
-**Day-2 operations** (pulling updated images, viewing logs, restarting):
+**Day-to-day admin** — `sudo bash scripts/admin.sh` (or, once installed,
+just `sudo smartrag`) opens a raspi-config-style menu for the operations
+you'll actually use after deployment: service status, tailing logs,
+pulling updates, restarting a service, SSL certificate status/renewal, a
+mail-relay test, a DNS check, and a read-only secrets overview. It offers
+to install itself as the global `smartrag` command the first time you run
+it. Runs entirely on the host as root over SSH — no extra container, no
+new network exposure. (Content authoring — agent prompts, RAG documents,
+the knowledge graph — is intentionally not here; see "What's NOT done"
+below.)
+
+**Day-2 Docker operations** (pulling updated images, viewing logs, restarting):
 use `scripts/compose.sh` instead of calling `docker compose` directly — it's
 a thin wrapper that always points at the right compose file and `.env`, no
 matter which directory you run it from (plain `docker compose` silently
@@ -172,22 +184,28 @@ first to see exactly what it would do.
 
 ## What's NOT done by the bootstrap (yet)
 
-The bootstrap deploys the *infrastructure*. After `--continue` succeeds, Flowise
-and n8n are running but empty — no agents or workflows imported yet. The next
-release will add:
+The bootstrap deploys the *infrastructure* end to end, including the
+Weaviate/Neo4j schema and LTI keys (phases 8 and 11). What's still missing is
+*content*: after `--continue` succeeds, Flowise and n8n are running but
+empty — no agents or workflows imported yet. The next release will add:
 
-- **Phase 8** — deploy Weaviate + Neo4j schemas
-- **Phase 9** — set up Flowise credentials, variables, and import the 6 agent
-  templates from `flowise/agents/`
-- **Phase 10** — import the 3 n8n core workflows and create credentials
-- **Phase 11** — generate LTI RSA keys (if LTI profile is enabled)
+- **Phase 9** — set up Flowise credentials/variables and import the 6 agent
+  templates from `flowise/agents/`. Non-trivial: the templates contain ~25
+  Mustache placeholders (`{{CONCEPT_LIST}}`, `{{PERSONA_NAME}}`,
+  `{{EXPERT_DOMAIN}}`, …) that are genuine per-course teaching content, not
+  config values — this needs an actual content-authoring UI, not another
+  wizard prompt.
+- **Phase 10** — import the 3 n8n core workflows and create credentials.
 
 For now you can do these steps manually through the Flowise / n8n UIs using
 the JSON templates in `flowise/agents/` and `n8n/workflows/`.
 
-A **Textual-based admin TUI** (raspi-config-style) is also planned for
-day-to-day operations: configure agents, rotate secrets, view health, run
-backups.
+Planned alongside phases 9/10: a **web-based content admin** (course
+content, agent system prompts, RAG documents, the Neo4j knowledge graph) —
+deliberately a *separate* piece from `scripts/admin.sh`. Infrastructure/root
+operations stay in the TUI (SSH-only, no network exposure); content editing
+only ever needs to talk to Weaviate/Neo4j/Flowise over the internal Docker
+network, so a compromised content GUI can't escalate to host control.
 
 ---
 
@@ -221,7 +239,7 @@ smart-rag/
 │   ├── workflows/          # 3 core workflows (sync, summary, observability)
 │   └── workflows-ingest/   # Document ingest workflows (→ moving to smart-rag-ingest)
 ├── lti-middleware/         # Flask app for LTI 1.3
-├── scripts/                # bootstrap.sh, uninstall.sh, compose.sh, lib/, standalone phase scripts
+├── scripts/                # bootstrap.sh, admin.sh, uninstall.sh, compose.sh, lib/, standalone phase scripts
 └── docs/                   # COEXISTENCE.md, requirements.md
 ```
 
