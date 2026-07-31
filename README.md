@@ -187,30 +187,42 @@ first to see exactly what it would do.
 
 ---
 
-## What's NOT done by the bootstrap (yet)
+## Content Admin GUI
 
 The bootstrap deploys the *infrastructure* end to end, including the
-Weaviate/Neo4j schema and LTI keys (phases 8 and 11). What's still missing is
-*content*: after `--continue` succeeds, Flowise and n8n are running but
-empty — no agents or workflows imported yet. The next release will add:
+Weaviate/Neo4j schema and LTI keys (phases 8 and 11) — but Flowise and n8n
+start out empty. `content-admin/` (reachable at `https://content.your-domain.example`
+once deployed) is where course-specific content gets filled in:
 
-- **Phase 9** — set up Flowise credentials/variables and import the 6 agent
-  templates from `flowise/agents/`. Non-trivial: the templates contain ~25
-  Mustache placeholders (`{{CONCEPT_LIST}}`, `{{PERSONA_NAME}}`,
-  `{{EXPERT_DOMAIN}}`, …) that are genuine per-course teaching content, not
-  config values — this needs an actual content-authoring UI, not another
-  wizard prompt.
-- **Phase 10** — import the 3 n8n core workflows and create credentials.
+- Up to 10 agent slots, each backed by one of the 6 existing Flowise agent
+  archetypes (`flowise/agents/`) — fill in a plain form for that archetype's
+  content (concepts, persona, topic subtopics, …), import with one click.
+  Everything already known from the CLI wizard (course name, embedding
+  model, LLM provider, …) is filled in automatically — the form only asks
+  for what's genuinely new.
+- A guided (not automated) path to seed the Neo4j concept graph: an
+  explanation of the data model, a ready-to-copy prompt for an AI of your
+  choice, and a box to paste + run the resulting Cypher. A fully automated
+  version (the GUI proposes the graph itself, with a review step) is
+  planned for later.
 
-For now you can do these steps manually through the Flowise / n8n UIs using
-the JSON templates in `flowise/agents/` and `n8n/workflows/`.
+First-time setup needs one manual step that can't be avoided: Flowise has no
+supported way to hand out an API key non-interactively (same limitation as
+n8n), so you create your Flowise admin account once, generate an API key
+under Settings → API Keys, and paste it into the content-admin GUI on its
+own first run.
 
-Planned alongside phases 9/10: a **web-based content admin** (course
-content, agent system prompts, RAG documents, the Neo4j knowledge graph) —
-deliberately a *separate* piece from `scripts/admin.sh`. Infrastructure/root
-operations stay in the TUI (SSH-only, no network exposure); content editing
-only ever needs to talk to Weaviate/Neo4j/Flowise over the internal Docker
-network, so a compromised content GUI can't escalate to host control.
+Deliberately a *separate* app from `scripts/admin.sh`: infrastructure/root
+operations stay in the TUI (SSH-only, no network exposure); the content GUI
+only ever talks to Flowise/Neo4j over the internal Docker network, so a
+compromised GUI can't escalate to host control.
+
+**Still not done**: importing the 3 n8n core workflows (n8n's credential
+API has the same non-interactive-provisioning limitation, plus its own
+CLI-import reliability concerns — see the project's planning notes),
+and a RAG-document upload frontend (blocked on `n8n/workflows-ingest/`
+itself being generalized first — it currently references institution-
+specific hostnames and isn't meant to run on a fresh deployment).
 
 ---
 
@@ -244,6 +256,7 @@ smart-rag/
 │   ├── workflows/          # 3 core workflows (sync, summary, observability)
 │   └── workflows-ingest/   # Document ingest workflows (→ moving to smart-rag-ingest)
 ├── lti-middleware/         # Flask app for LTI 1.3
+├── content-admin/          # Flask app for course-content authoring
 ├── scripts/                # bootstrap.sh, admin.sh, uninstall.sh, compose.sh, lib/, standalone phase scripts
 └── docs/                   # COEXISTENCE.md, requirements.md, operations-guide.md
 ```
