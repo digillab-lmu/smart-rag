@@ -1,0 +1,94 @@
+"""
+.env read/write helpers.
+
+set_env_var() is a direct port of scripts/lib/common.sh::set_env_var() — same
+in-place patching, same escape order. Keep the two in sync: both write to the
+SAME .env file, so a value written by one must be readable by the other (and
+by `docker compose`, and by every `source .env` in the shell scripts).
+"""
+
+import os
+import re
+from pathlib import Path
+
+ENV_PATH = Path(os.getenv("SMARTRAG_ENV_PATH", "/app/.env"))
+
+
+def _escape(value: str) -> str:
+    """
+    Escape everything that's special inside a double-quoted shell string, in
+    this exact order (backslash first, or the escapes added for the other
+    three get re-escaped).
+
+    Without this, a value containing e.g. $(...) would be EXECUTED the next
+    time any shell script does `source .env`. Verified against the same edge
+    cases as the bash original: trailing backslash, nested quotes, $(...),
+    backticks.
+    """
+    value = value.replace("\\", "\\\\")
+    value = value.replace("$", "\\$")
+    value = value.replace("`", "\\`")
+    value = value.replace('"', '\\"')
+    return value
+
+
+def set_env_var(key: str, value: str, env_path: Path | None = None) -> None:
+    """
+    Patch a single KEY="VALUE" line in place, preserving every other line's
+    position — some values interpolate earlier ones textually (e.g.
+    NEO4J_AUTH="neo4j/${NEO4J_PASSWORD}"), so reordering would silently break
+    sourcing for anything after the moved line. Appends if the key is absent.
+    """
+    path = env_path or ENV_PATH
+    escaped = _escape(value)
+    new_line = f'{key}="{escaped}"\n'
+
+    lines = path.read_text().splitlines(keepends=True)
+    found = False
+    for i, line in enumerate(lines):
+        if line.startswith(f"{key}="):
+            lines[i] = new_line
+            found = True
+            break
+    if not found:
+        if lines and not lines[-1].endswith("\n"):
+            lines[-1] += "\n"
+        lines.append(new_line)
+
+    path.write_text("".join(lines))
+
+
+_UNQUOTE_RE = re.compile(r'^"(.*)"$|^\'(.*)\'$', re.DOTALL)
+
+
+def read_env(env_path: Path | None = None) -> dict[str, str]:
+    """
+    Read .env into a dict. Deliberately does NOT expand ${VAR} references —
+    callers here only need literal values, and expanding would mean
+    reimplementing shell semantics. Values written by set_env_var() are
+    shell-escaped; unescape the four characters it escapes.
+    """
+    path = env_path or ENV_PATH
+    result: dict[str, str] = {}
+    if not path.exists():
+        return result
+
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, raw = line.partition("=")
+        key = key.strip()
+        raw = raw.strip()
+
+        m = _UNQUOTE_RE.match(raw)
+        if m:
+            raw = m.group(1) if m.group(1) is not None else m.group(2)
+            raw = (
+                raw.replace('\\"', '"')
+                .replace("\\`", "`")
+                .replace("\\$", "$")
+                .replace("\\\\", "\\")
+            )
+        result[key] = raw
+    return result

@@ -722,7 +722,7 @@
                 "recordManager": "",
                 "weaviateConnectionType": "local",
                 "weaviateHost": "smartrag-weaviate:8080",
-                "weaviateIndex": "WEAVIATE_COLLECTION_NAME",
+                "weaviateIndex": "{{WEAVIATE_COLLECTION_NAME}}",
                 "weaviateTextKey": "text",
                 "weaviateMetadataKeys": "[\"source_title\", \"authors\", \"chunk_index\", \"agent_id\", \"doc_type\", \"section\", \"chapter_title\", \"parent_chapter_title\", \"section_type\", \"section_id\", \"effect_size\", \"page_number\", \"speaker\", \"year\"]",
                 "topK": "5",
@@ -735,7 +735,7 @@
                 "weaviateGrpcHost": "smartrag-weaviate:50051"
               },
               "embeddingModelConfig": {
-                "modelName": "EMBEDDING_MODEL",
+                "modelName": "{{EMBEDDING_MODEL}}",
                 "embeddingModel": "openAIEmbeddings"
               }
             }

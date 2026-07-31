@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}SMART RAG — Content Admin{% endblock %}</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 1.5rem;
+      line-height: 1.5;
+    }
+    nav { display: flex; gap: 1rem; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid #8884; }
+    nav a { text-decoration: none; }
+    h1 { font-size: 1.4rem; }
+    .error { background: #c0392b22; border: 1px solid #c0392b; padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem; }
+    .success { background: #27ae6022; border: 1px solid #27ae60; padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem; }
+    .note { opacity: 0.75; font-size: 0.9rem; }
+    label { display: block; margin-top: 1rem; font-weight: 600; }
+    input, textarea, select {
+      width: 100%; box-sizing: border-box; padding: 0.5rem; margin-top: 0.25rem;
+      font-family: inherit; font-size: 1rem; border-radius: 6px; border: 1px solid #8888;
+      background: transparent; color: inherit;
+    }
+    textarea { min-height: 5rem; font-family: ui-monospace, monospace; font-size: 0.9rem; }
+    button {
+      margin-top: 1.25rem; padding: 0.6rem 1.2rem; border-radius: 6px; border: none;
+      background: #2563eb; color: white; font-size: 1rem; cursor: pointer;
+    }
+    button.secondary { background: #6b7280; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    td, th { text-align: left; padding: 0.5rem; border-bottom: 1px solid #8884; }
+    code, pre { background: #8882; padding: 0.15rem 0.35rem; border-radius: 4px; }
+    pre { padding: 0.75rem; overflow-x: auto; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  {% if session.get('logged_in') %}
+  <nav>
+    <a href="{{ url_for('dashboard') }}">Agents</a>
+    <a href="{{ url_for('graph_guidance') }}">Knowledge Graph</a>
+    <a href="{{ url_for('flowise_setup') }}">Flowise Connection</a>
+    <span style="flex:1"></span>
+    <a href="{{ url_for('logout') }}">Log out</a>
+  </nav>
+  {% endif %}
+
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  {% if success %}<div class="success">{{ success }}</div>{% endif %}
+
+  {% block content %}{% endblock %}
+</body>
+</html>

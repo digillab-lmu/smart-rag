@@ -617,7 +617,7 @@ run_coexistence_preflight() {
     # Build the list of SERVICE LABELS (not yet combined with domain/prefix —
     # resolve_subdomain_prefix() does that, retrying with a shared prefix if
     # the unprefixed names collide with something already on this host).
-    local services=(smart-rag n8n minio s3)
+    local services=(smart-rag n8n minio s3 content)
     [[ "${COMPOSE_PROFILES:-core}" == *observability* ]] && services+=(langfuse)
     [[ "${COMPOSE_PROFILES:-core}" == *lti*           ]] && services+=(lti)
 
@@ -632,6 +632,7 @@ run_coexistence_preflight() {
         "NEO4J_BOLT_PORT=${NEO4J_BOLT_PORT:-7687}:Neo4j Bolt"
         "MINIO_API_PORT=${MINIO_API_PORT:-9000}:MinIO API"
         "MINIO_CONSOLE_PORT=${MINIO_CONSOLE_PORT:-9001}:MinIO Console"
+        "CONTENT_ADMIN_PORT=${CONTENT_ADMIN_PORT:-3002}:Content Admin GUI"
     )
     [[ "${COMPOSE_PROFILES:-core}" == *observability* ]] && \
         port_entries+=("LANGFUSE_PORT=${LANGFUSE_PORT:-3001}:Langfuse")

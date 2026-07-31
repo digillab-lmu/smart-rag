@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Agents — SMART RAG Content Admin{% endblock %}
+{% block content %}
+<h1>Agents (up to 10)</h1>
+
+{% if not flowise_configured %}
+<div class="error">
+  Flowise isn't connected yet. <a href="{{ url_for('flowise_setup') }}">Set it up first</a> —
+  you can still fill in content below, but importing needs the connection.
+</div>
+{% endif %}
+
+<table>
+  <tr><th>Slot</th><th>Archetype</th><th>Status</th><th></th></tr>
+  {% for num in range(1, 11) %}
+  {% set s = slots[num|string] %}
+  <tr>
+    <td>{{ num }}</td>
+    <td>{{ archetypes.get(s.get('archetype'), '—') }}</td>
+    <td>
+      {% if s.get('chatflow_id') %}Imported
+      {% elif s.get('archetype') %}Content saved, not imported
+      {% else %}Empty{% endif %}
+    </td>
+    <td><a href="{{ url_for('slot_view', slot=num) }}">Edit</a></td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}

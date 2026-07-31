@@ -27,6 +27,7 @@
 #   SECRET_N8N_USER_MANAGEMENT_JWT_SECRET
 #   SECRET_NEXTAUTH_SECRET
 #   SECRET_LTI_SESSION_SECRET
+#   SECRET_CONTENT_ADMIN_SESSION_SECRET
 #   SECRET_ADMIN_PASSWORD     (shared across Flowise/n8n/Langfuse for first login)
 # ═════════════════════════════════════════════════════════════════════════════
 
@@ -77,6 +78,7 @@ generate_all_secrets() {
     SECRET_N8N_USER_MANAGEMENT_JWT_SECRET="$(gen_hex 32)"
     SECRET_NEXTAUTH_SECRET="$(gen_hex 32)"
     SECRET_LTI_SESSION_SECRET="$(gen_hex 32)"
+    SECRET_CONTENT_ADMIN_SESSION_SECRET="$(gen_hex 32)"
 
     # Admin-facing passwords — alphanumeric, more memorable
     SECRET_ADMIN_PASSWORD="$(gen_alnum 24)"
