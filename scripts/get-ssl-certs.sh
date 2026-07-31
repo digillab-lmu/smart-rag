@@ -82,6 +82,7 @@ SUBDOMAINS=(
     "$(subdomain_host n8n       "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")"
     "$(subdomain_host minio     "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")"
     "$(subdomain_host s3        "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")"
+    "$(subdomain_host content   "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")"
 )
 [[ "${COMPOSE_PROFILES:-core}" == *observability* ]] && SUBDOMAINS+=("$(subdomain_host langfuse "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")")
 [[ "${COMPOSE_PROFILES:-core}" == *lti*           ]] && SUBDOMAINS+=("$(subdomain_host lti       "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")")

@@ -422,6 +422,43 @@ services:
         condition: service_healthy
 
 
+  # ── Content Admin GUI ─────────────────────────────────────────────────────────
+  # Course-content authoring: fill in the Flowise agent templates' course-
+  # specific placeholders and import them, plus a guided path to seed the
+  # Neo4j concept graph. Deliberately separate from scripts/admin.sh (the
+  # infrastructure TUI) — this only ever talks to Flowise/Neo4j over the
+  # internal Docker network, never Docker socket or host filesystem, so a
+  # compromised GUI can't escalate to host control.
+  #
+  # .env is bind-mounted READ-WRITE (not env_file:) because this app needs to
+  # write back to it (FLOWISE_API_KEY, CHATFLOW_AGENT0X, its own login) — see
+  # content-admin/env_file.py. No caching on read, so it always sees the
+  # latest state, including edits made via scripts/admin.sh's config menu.
+  smartrag-content-admin:
+    profiles: [core]
+    build:
+      context: ../content-admin
+      dockerfile: Dockerfile
+    container_name: smartrag-content-admin
+    restart: always
+    volumes:
+      - ../.env:/app/.env
+      - ${BASE_DATA_PATH}/content-admin:/app/data
+    environment:
+      SMARTRAG_ENV_PATH: "/app/.env"
+      SMARTRAG_SLOTS_PATH: "/app/data/slots.json"
+      TZ: "${TZ}"
+    ports:
+      - "127.0.0.1:${CONTENT_ADMIN_PORT:-3002}:5000"
+    networks: [smart-rag-network]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/login')"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+
   # ── n8n ──────────────────────────────────────────────────────────────────────
   # Automation platform running background pipelines:
   #   • Chat history sync (PostgreSQL → Weaviate, every 5 min)

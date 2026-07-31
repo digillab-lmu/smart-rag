@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Flowise Connection — SMART RAG Content Admin{% endblock %}
+{% block content %}
+<h1>Connect to Flowise</h1>
+<p>
+  Flowise has no supported way to hand out an API key automatically — a one-time
+  manual step is unavoidable:
+</p>
+<ol>
+  <li>Open your Flowise instance and create your admin account, if you haven't already.</li>
+  <li>Go to <strong>Settings → API Keys → Create Key</strong>.</li>
+  <li>Paste the key below.</li>
+</ol>
+
+{% if already_set %}
+<p class="success">A Flowise API key is already saved. Paste a new one below to replace it.</p>
+{% endif %}
+
+<form method="post">
+  <label for="api_key">Flowise API key</label>
+  <input type="password" id="api_key" name="api_key" required autofocus>
+  <button type="submit">Save and verify</button>
+</form>
+{% endblock %}

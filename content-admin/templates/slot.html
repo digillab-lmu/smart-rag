@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Slot {{ slot }} — SMART RAG Content Admin{% endblock %}
+{% block content %}
+<h1>Slot {{ slot }}</h1>
+<p><a href="{{ url_for('dashboard') }}">&larr; back to agents</a></p>
+
+{% if not existing.get('archetype') %}
+<h2>Choose an archetype</h2>
+<form method="post">
+  <input type="hidden" name="action" value="choose_archetype">
+  <label for="archetype">Agent type</label>
+  <select id="archetype" name="archetype" required>
+    {% for file, label in archetypes.items() %}
+    <option value="{{ file }}">{{ label }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit">Continue</button>
+</form>
+
+{% else %}
+<p class="note">
+  Archetype: <strong>{{ archetypes.get(existing.archetype, existing.archetype) }}</strong>
+  {% if existing.get('chatflow_id') %} — imported (chatflow id: <code>{{ existing.chatflow_id }}</code>){% endif %}
+</p>
+
+<form method="post">
+  <input type="hidden" name="archetype" value="{{ existing.archetype }}">
+
+  {% for field in fields %}
+  <label for="{{ field }}">{{ field.replace('_', ' ').title() }}</label>
+  <textarea id="{{ field }}" name="{{ field }}">{{ existing.content.get(field, '') }}</textarea>
+  {% endfor %}
+
+  <button type="submit" name="action" value="save" class="secondary">Save</button>
+  <button type="submit" name="action" value="import">Save and import to Flowise</button>
+</form>
+{% endif %}
+{% endblock %}

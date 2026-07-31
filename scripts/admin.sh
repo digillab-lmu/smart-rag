@@ -91,6 +91,7 @@ _active_services() {
     local services=(
         smartrag-postgres smartrag-redis smartrag-minio smartrag-weaviate
         smartrag-neo4j smartrag-flowise smartrag-flowise-worker smartrag-n8n
+        smartrag-content-admin
     )
     [[ "${COMPOSE_PROFILES:-core}" == *observability* ]] && services+=(
         smartrag-clickhouse smartrag-langfuse-web smartrag-langfuse-worker
@@ -215,6 +216,7 @@ action_dns() {
     check_dns "$(subdomain_host smart-rag "$DOMAIN" "$prefix")"
     check_dns "$(subdomain_host n8n       "$DOMAIN" "$prefix")"
     check_dns "$(subdomain_host minio     "$DOMAIN" "$prefix")"
+    check_dns "$(subdomain_host content   "$DOMAIN" "$prefix")"
     [[ "${COMPOSE_PROFILES:-core}" == *observability* ]] && check_dns "$(subdomain_host langfuse "$DOMAIN" "$prefix")"
     [[ "${COMPOSE_PROFILES:-core}" == *lti* ]]           && check_dns "$(subdomain_host lti       "$DOMAIN" "$prefix")"
     press_enter

@@ -89,6 +89,7 @@ write_env_file() {
     # LMS (LTI)
     REPL[LMS_URL]="$CFG_LMS_URL"
     REPL[LTI_SESSION_SECRET]="$SECRET_LTI_SESSION_SECRET"
+    REPL[CONTENT_ADMIN_SESSION_SECRET]="$SECRET_CONTENT_ADMIN_SESSION_SECRET"
 
     # Database secrets
     REPL[POSTGRES_PASSWORD]="$SECRET_POSTGRES_PASSWORD"
@@ -201,6 +202,7 @@ write_nginx_config() {
     # isn't set (e.g. this function called outside the normal wizard flow).
     local flowise_port=3000 n8n_port=5678 langfuse_port=3001
     local minio_console_port=9001 minio_api_port=9000 lti_port=10088
+    local content_admin_port=3002
     if declare -p RESOLVED_PORTS >/dev/null 2>&1; then
         [[ -n "${RESOLVED_PORTS[FLOWISE_PORT]:-}" ]]        && flowise_port="${RESOLVED_PORTS[FLOWISE_PORT]}"
         [[ -n "${RESOLVED_PORTS[N8N_PORT]:-}" ]]             && n8n_port="${RESOLVED_PORTS[N8N_PORT]}"
@@ -208,6 +210,7 @@ write_nginx_config() {
         [[ -n "${RESOLVED_PORTS[MINIO_CONSOLE_PORT]:-}" ]]   && minio_console_port="${RESOLVED_PORTS[MINIO_CONSOLE_PORT]}"
         [[ -n "${RESOLVED_PORTS[MINIO_API_PORT]:-}" ]]       && minio_api_port="${RESOLVED_PORTS[MINIO_API_PORT]}"
         [[ -n "${RESOLVED_PORTS[LTI_PORT]:-}" ]]             && lti_port="${RESOLVED_PORTS[LTI_PORT]}"
+        [[ -n "${RESOLVED_PORTS[CONTENT_ADMIN_PORT]:-}" ]]   && content_admin_port="${RESOLVED_PORTS[CONTENT_ADMIN_PORT]}"
     fi
 
     sed -e "s|smart-rag\.YOUR_DOMAIN|$(subdomain_host smart-rag "$CFG_DOMAIN" "$prefix")|g" \
@@ -217,6 +220,7 @@ write_nginx_config() {
         -e "s|minio\.YOUR_DOMAIN|$(subdomain_host minio "$CFG_DOMAIN" "$prefix")|g" \
         -e "s|s3\.YOUR_DOMAIN|$(subdomain_host s3 "$CFG_DOMAIN" "$prefix")|g" \
         -e "s|lti\.YOUR_DOMAIN|$(subdomain_host lti "$CFG_DOMAIN" "$prefix")|g" \
+        -e "s|content\.YOUR_DOMAIN|$(subdomain_host content "$CFG_DOMAIN" "$prefix")|g" \
         -e "s|YOUR_DOMAIN|$CFG_DOMAIN|g" \
         -e "s|YOUR_LMS_DOMAIN|$lms_domain|g" \
         -e "s|__FLOWISE_PORT__|$flowise_port|g" \
@@ -225,6 +229,7 @@ write_nginx_config() {
         -e "s|__MINIO_CONSOLE_PORT__|$minio_console_port|g" \
         -e "s|__MINIO_API_PORT__|$minio_api_port|g" \
         -e "s|__LTI_PORT__|$lti_port|g" \
+        -e "s|__CONTENT_ADMIN_PORT__|$content_admin_port|g" \
         "$src" > "$out"
 
     ok "nginx config written to $out"

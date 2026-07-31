@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}First-time setup — SMART RAG Content Admin{% endblock %}
+{% block content %}
+<h1>Welcome — create your admin account</h1>
+<p class="note">This is separate from your Flowise login — it only protects this content-authoring tool.</p>
+<form method="post">
+  <label for="username">Username</label>
+  <input type="text" id="username" name="username" required autofocus>
+
+  <label for="password">Password (min. 12 characters)</label>
+  <input type="password" id="password" name="password" minlength="12" required>
+
+  <label for="confirm">Confirm password</label>
+  <input type="password" id="confirm" name="confirm" minlength="12" required>
+
+  <button type="submit">Create account</button>
+</form>
+{% endblock %}

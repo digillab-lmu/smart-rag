@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Knowledge Graph — SMART RAG Content Admin{% endblock %}
+{% block content %}
+<h1>Knowledge Graph</h1>
+<p class="note">
+  Guided, manual process for now — no LLM call happens from this GUI. A fully
+  automated builder (the GUI proposes concepts and prerequisite edges itself,
+  with a review step before writing) is planned for a later batch.
+</p>
+
+<h2>1. The data model</h2>
+<ul>
+  <li><code>(Topic)</code> — a high-level topic in the course (chapter / unit)</li>
+  <li><code>(Concept)</code> — a specific learning concept (theory, method, idea)</li>
+  <li><code>(:Concept)-[:BELONGS_TO]-&gt;(:Topic)</code></li>
+  <li><code>(:Concept)-[:PREREQUISITE_FOR]-&gt;(:Concept)</code></li>
+</ul>
+<p>Concept properties: <code>name</code> (required, unique), <code>chapter</code> (optional), <code>section_id</code> (optional), <code>description</code> (optional).</p>
+
+<h2>2. Prompt template</h2>
+<p>Copy this into an AI assistant of your choice, together with your course documents (or a summary of their chapter/section structure):</p>
+<pre id="prompt-template">I'm building a concept-prerequisite graph for a course, to be loaded into Neo4j.
+
+Data model:
+  (Topic)     — a high-level topic/chapter
+  (Concept)   — a specific learning concept
+  (:Concept)-[:BELONGS_TO]->(:Topic)
+  (:Concept)-[:PREREQUISITE_FOR]->(:Concept)   -- "X must be understood before Y"
+
+Given the attached course material, produce Cypher MERGE statements that:
+  1. Create one Topic per chapter/unit.
+  2. Create one Concept per distinct learning concept, each with a short
+     `description` property and the `chapter` number it belongs to.
+  3. Link each Concept to its Topic via BELONGS_TO.
+  4. Link concepts that genuinely require prior understanding of another
+     concept via PREREQUISITE_FOR — only where the material itself implies
+     a dependency, don't invent one. When in doubt, omit the edge rather
+     than guess.
+
+Use exactly this format for every statement (idempotent, safe to re-run):
+
+MERGE (t:Topic {name: "..."});
+
+MERGE (c:Concept {name: "..."})
+SET c.chapter = ..., c.description = "...";
+
+MERGE (c:Concept {name: "..."})-[:BELONGS_TO]->(t:Topic {name: "..."});
+
+MERGE (a:Concept {name: "..."})-[:PREREQUISITE_FOR]->(b:Concept {name: "..."});
+
+Output ONLY the Cypher statements, nothing else.</pre>
+
+<h2>3. Review, then run it</h2>
+<p>
+  Read through what the AI produced before running it — this step exists so a
+  bad suggestion doesn't quietly land in the graph the tutoring agents rely on
+  for scaffolding. Paste the (reviewed) Cypher below.
+</p>
+<form method="post">
+  <label for="cypher">Cypher statements</label>
+  <textarea id="cypher" name="cypher" style="min-height: 14rem;" required placeholder="MERGE (t:Topic {name: &quot;...&quot;});"></textarea>
+  <button type="submit">Run against Neo4j</button>
+</form>
+{% endblock %}
