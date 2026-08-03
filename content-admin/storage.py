@@ -35,7 +35,7 @@ def _save(data: dict) -> None:
 
 def all_slots() -> dict[str, dict]:
     """Returns a dict for slots "1".."10", each either {} (unconfigured) or
-    {"archetype": ..., "content": {...}, "chatflow_id": ... | None}."""
+    {"archetype": ..., "name": ..., "content": {...}, "chatflow_id": ... | None}."""
     data = _load()
     return {str(i): data.get(str(i), {}) for i in range(1, MAX_SLOTS + 1)}
 
@@ -44,7 +44,22 @@ def get_slot(slot: int) -> dict:
     return _load().get(str(slot), {})
 
 
-def save_slot(slot: int, archetype: str, content: dict[str, str]) -> None:
+def name_taken(name: str, exclude_slot: int) -> bool:
+    """Case-insensitive check whether another slot already uses this name."""
+    normalized = name.strip().casefold()
+    if not normalized:
+        return False
+    data = _load()
+    for key, slot_data in data.items():
+        if int(key) == exclude_slot:
+            continue
+        existing_name = (slot_data.get("name") or "").strip().casefold()
+        if existing_name and existing_name == normalized:
+            return True
+    return False
+
+
+def save_slot(slot: int, archetype: str, content: dict[str, str], name: str) -> None:
     if not (1 <= slot <= MAX_SLOTS):
         raise ValueError(f"slot must be 1..{MAX_SLOTS}, got {slot}")
     with _LOCK:
@@ -52,6 +67,7 @@ def save_slot(slot: int, archetype: str, content: dict[str, str]) -> None:
         existing = data.get(str(slot), {})
         data[str(slot)] = {
             "archetype": archetype,
+            "name": name,
             "content": content,
             "chatflow_id": existing.get("chatflow_id"),
         }

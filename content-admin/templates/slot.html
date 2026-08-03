@@ -34,8 +34,20 @@
 <form method="post">
   <input type="hidden" name="archetype" value="{{ existing.archetype }}">
 
+  <label for="name">Agent Name</label>
+  <p class="note" style="margin-top: 0.15rem;">
+    A unique name for this agent, so it's easy to tell apart from your other
+    agents — this becomes the chatflow's name in Flowise. Example: "Chapter 4
+    Tutor" or "Sarah the Statistics Expert". Must be different from every
+    other agent's name.
+  </p>
+  <input type="text" id="name" name="name" value="{{ existing.get('name', '') }}" required>
+
   {% for field in fields %}
   <label for="{{ field }}">{{ field.replace('_', ' ').title() }}</label>
+  {% if field_help.get(field) %}
+  <p class="note" style="margin-top: 0.15rem;">{{ field_help.get(field) }}</p>
+  {% endif %}
   <textarea id="{{ field }}" name="{{ field }}">{{ existing.content.get(field, '') }}</textarea>
   {% endfor %}
 

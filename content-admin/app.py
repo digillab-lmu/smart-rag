@@ -175,26 +175,46 @@ def slot_view(slot: int):
             archetype = request.form.get("archetype", existing.get("archetype", ""))
 
             if action == "choose_archetype":
-                existing = {"archetype": archetype, "content": {}, "chatflow_id": None}
+                existing = {"archetype": archetype, "name": "", "content": {}, "chatflow_id": None}
 
             elif action in ("save", "import"):
                 fields = agent_templates.placeholders_for(archetype)
                 content = {f: request.form.get(f, "") for f in fields}
-                storage.save_slot(slot, archetype, content)
-                existing = storage.get_slot(slot)
+                name = request.form.get("name", "").strip()
 
-                if action == "import":
-                    client = _flowise_client()
-                    if client is None:
-                        error = "Flowise isn't connected yet — set it up first."
-                    else:
-                        try:
-                            error = _do_import(slot, archetype, client)
-                            if not error:
-                                success = "Imported into Flowise."
-                                existing = storage.get_slot(slot)
-                        except FlowiseError as exc:
-                            error = f"Flowise import failed: {exc}"
+                if not name:
+                    error = "Please give this agent a name."
+                elif storage.name_taken(name, exclude_slot=slot):
+                    error = (
+                        f'The name "{name}" is already used by another agent — '
+                        "each agent needs a unique name."
+                    )
+
+                if error:
+                    # Redisplay what the user typed instead of discarding it
+                    # in favor of the last-saved state.
+                    existing = {
+                        "archetype": archetype,
+                        "name": name,
+                        "content": content,
+                        "chatflow_id": existing.get("chatflow_id"),
+                    }
+                else:
+                    storage.save_slot(slot, archetype, content, name)
+                    existing = storage.get_slot(slot)
+
+                    if action == "import":
+                        client = _flowise_client()
+                        if client is None:
+                            error = "Flowise isn't connected yet — set it up first."
+                        else:
+                            try:
+                                error = _do_import(slot, archetype, client)
+                                if not error:
+                                    success = "Imported into Flowise."
+                                    existing = storage.get_slot(slot)
+                            except FlowiseError as exc:
+                                error = f"Flowise import failed: {exc}"
 
         fields = agent_templates.placeholders_for(existing.get("archetype", "")) if existing.get(
             "archetype"
@@ -213,6 +233,7 @@ def slot_view(slot: int):
         slot=slot,
         archetypes=agent_templates.ARCHETYPES,
         descriptions=agent_templates.ARCHETYPE_DESCRIPTIONS,
+        field_help=agent_templates.FIELD_HELP,
         existing=existing,
         fields=fields,
         error=error,
@@ -237,7 +258,7 @@ def _do_import(slot: int, archetype: str, client: FlowiseClient) -> str | None:
     )
 
     flow = agent_templates.load_template(archetype)
-    agent_templates.auto_fill_from_env(flow, env)
+    agent_templates.auto_fill_from_env(flow, env, slot=slot)
     missing = agent_templates.substitute_content(flow, content)
     if missing:
         return f"Missing content for: {', '.join(missing)} — fill in the form and save first."
@@ -273,7 +294,8 @@ def _do_import(slot: int, archetype: str, client: FlowiseClient) -> str | None:
     ):
         client.get_or_create_variable(name, value)
 
-    chatflow_name = f"SMART RAG — Agent {slot:02d}"
+    agent_name = slot_data.get("name") or f"Agent {slot:02d}"
+    chatflow_name = f"SMART RAG — {agent_name}"
     flow_data_json = __import__("json").dumps(flow)
     chatflow_id, _created = client.upsert_chatflow(chatflow_name, flow_data_json)
     storage.set_chatflow_id(slot, chatflow_id)

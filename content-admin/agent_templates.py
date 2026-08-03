@@ -173,13 +173,124 @@ ARCHETYPE_DESCRIPTIONS: dict[str, str] = {
 # form — see derive_translation_tables(). Only relevant for agent-13.
 DERIVED_FIELDS = {"AGENT_TRANSLATION_TABLE", "CONTENT_TRANSLATION_TABLE"}
 
+# Fields auto_fill_from_env() (or _do_import()'s slot-number substitution)
+# already fills in from .env / context — must NOT also show up as a content
+# form field. Bug caught live: COURSE_NAME/EMBEDDING_MODEL/AGENT_NUMBER were
+# rendering as free-text boxes the operator's input for was silently
+# discarded (auto-fill runs first and overwrites those exact keys before the
+# content pass ever sees them) — confusing, not just cosmetic.
+AUTO_FILLED_FIELDS = {"COURSE_NAME", "WEAVIATE_COLLECTION_NAME", "EMBEDDING_MODEL", "AGENT_NUMBER"}
+
+# Shown under each content-form field — every remaining field is genuine,
+# course-specific prose the operator has to write themselves, so a first-
+# time non-technical user needs to know what's actually expected, not just
+# a title-cased field name. One entry per field NAME (not per archetype):
+# the same field means the same thing everywhere it appears.
+FIELD_HELP: dict[str, str] = {
+    "CONCEPT_LIST": (
+        "The specific concepts this agent should know about, one per line "
+        "or comma-separated. Example: Mean, Variance, Standard Deviation, "
+        "Normal Distribution"
+    ),
+    "CONCEPT_EXAMPLE": (
+        "One concrete concept this persona might mention or struggle with, "
+        "to make their dialogue feel grounded. Example: \"confusing "
+        "correlation with causation\""
+    ),
+    "COURSE_KNOWLEDGE_DESCRIPTION": (
+        "A short paragraph summarizing what the whole course covers — "
+        "gives the agent context for what it's retrieving. Example: "
+        "\"Introduction to educational psychology: learning theories, "
+        "motivation, and assessment methods.\""
+    ),
+    "EXPERT_DOMAIN": (
+        "The specific field of expertise this agent should respond as an "
+        "expert in. Example: \"cognitive load theory in multimedia "
+        "learning\""
+    ),
+    "EXPERT_KNOWLEDGE_DESCRIPTION": (
+        "What this expert knows and can give feedback on. Example: \"Best "
+        "practices for reducing extraneous cognitive load in instructional "
+        "design.\""
+    ),
+    "PERSONA_CONCEPTS": (
+        "Which course concepts this persona is familiar with (or "
+        "struggling with) — shapes what they can meaningfully discuss. "
+        "Example: \"Basic statistics, but not yet inferential methods.\""
+    ),
+    "PERSONA_CONTEXT": (
+        "Background situation — who this persona is, why they're in this "
+        "conversation. Example: \"A first-year teacher preparing their "
+        "first multimedia lesson.\""
+    ),
+    "PERSONA_DESCRIPTION": (
+        "A short character description — personality, tone, how they "
+        "talk. Example: \"Enthusiastic but easily overwhelmed, asks a lot "
+        "of follow-up questions.\""
+    ),
+    "PERSONA_KNOWLEDGE_DESCRIPTION": (
+        "What this persona's own background/expertise consists of, if "
+        "relevant to their role. Example: \"5 years of classroom teaching "
+        "experience, no formal instructional design training.\""
+    ),
+    "PERSONA_KNOWLEDGE_NAME": (
+        "A short label for that background, used when the agent refers "
+        "back to it. Example: \"classroom experience\""
+    ),
+    "PERSONA_NAME": (
+        "The persona's name, as students will see it. Example: \"Sarah, a "
+        "Teacher\""
+    ),
+    "PERSONA_SITUATION": (
+        "The specific scenario this persona is currently facing — gives "
+        "the roleplay a concrete starting point. Example: \"Sarah is "
+        "planning a lesson and isn't sure how many images to put on each "
+        "slide.\""
+    ),
+    "PERSONA_STYLE_DESCRIPTION": (
+        "How this persona communicates — formal or casual, short or long "
+        "answers, etc. Example: \"Casual, everyday language, keeps "
+        "messages short.\""
+    ),
+    "RESPONSE_LANGUAGE_RULE": (
+        "One sentence telling the agent which language to answer in. "
+        "Example: \"Always respond in German.\" or \"Respond in the same "
+        "language the student writes in.\""
+    ),
+    "STUDENT_ROLE": (
+        "Who the students using this agent are — shapes how it addresses "
+        "them. Example: \"trainee teachers\" or \"first-semester "
+        "psychology students\""
+    ),
+    "STUDENT_ROLE_CONTEXT": (
+        "A slightly longer version of Student Role, used to generate "
+        "realistic practice scenarios. Example: \"trainee teachers "
+        "preparing lessons for secondary school classrooms\""
+    ),
+    "TOPIC_KNOWLEDGE_DESCRIPTION": (
+        "A short paragraph summarizing what this specific chapter covers "
+        "— scopes the agent's retrieval to it. Example: \"Covers working "
+        "memory, cognitive load theory, and multimedia learning "
+        "principles.\""
+    ),
+    "TOPIC_NAME": (
+        "The name of this chapter/topic, as it appears in your course. "
+        "Example: \"Chapter 4: Cognitive Prerequisites for Learning\""
+    ),
+    "TOPIC_SUBTOPICS": (
+        "The subtopics/sections within this chapter, one per line. "
+        "Example:\n4.1 Three-Store Model\n4.2 Cognitive Load Theory"
+    ),
+}
+
 
 def placeholders_for(archetype_file: str) -> list[str]:
-    """All {{PLACEHOLDER}} names a template references, minus the derived
-    ones — used to render the content form for a slot."""
+    """All {{PLACEHOLDER}} names a template references that the operator
+    actually needs to fill in — i.e. minus the derived and auto-filled
+    ones. Used to render the content form for a slot."""
     flow = load_template(archetype_file)
     found = set(PLACEHOLDER_RE.findall(json.dumps(flow)))
-    return sorted(found - DERIVED_FIELDS)
+    return sorted(found - DERIVED_FIELDS - AUTO_FILLED_FIELDS)
 
 
 def derive_translation_tables(all_slots: dict[str, dict]) -> dict[str, str]:
@@ -261,11 +372,15 @@ def substitute_content(flow_data: dict[str, Any], values: dict[str, str]) -> lis
     return sorted(missing)
 
 
-def auto_fill_from_env(flow_data: dict[str, Any], env: dict[str, str]) -> None:
+def auto_fill_from_env(
+    flow_data: dict[str, Any], env: dict[str, str], slot: int | None = None
+) -> None:
     """
-    Pass 1: fill in everything already known from the CLI wizard. Mutates
-    flow_data in place. Must run BEFORE substitute_content(), since
-    {{COURSE_NAME}} is handled here (env-known), not as a content field.
+    Pass 1: fill in everything already known from the CLI wizard (or, for
+    AGENT_NUMBER, from which slot this is) — the operator is never asked for
+    these in the content form (see AUTO_FILLED_FIELDS). Mutates flow_data in
+    place. Must run BEFORE substitute_content(), since {{COURSE_NAME}} and
+    {{AGENT_NUMBER}} are both handled here, not as content fields.
     """
     llm_provider = env.get("LLM_PROVIDER", "anthropic")
     embed_provider = env.get("EMBEDDING_PROVIDER", "openai")
@@ -275,13 +390,19 @@ def auto_fill_from_env(flow_data: dict[str, Any], env: dict[str, str]) -> None:
     course_name = env.get("COURSE_NAME", "")
     weaviate_collection = env.get("WEAVIATE_COLLECTION_NAME", "")
     embedding_model = env.get("EMBEDDING_MODEL", "")
+    agent_number = str(slot) if slot is not None else ""
 
-    def replace_course_name(text: str) -> str:
-        return PLACEHOLDER_RE.sub(
-            lambda m: course_name if m.group(1) == "COURSE_NAME" else m.group(0), text
-        )
+    def replace_context_fields(text: str) -> str:
+        def sub(m: re.Match) -> str:
+            if m.group(1) == "COURSE_NAME":
+                return course_name
+            if m.group(1) == "AGENT_NUMBER":
+                return agent_number
+            return m.group(0)
 
-    _walk_strings(flow_data, replace_course_name)
+        return PLACEHOLDER_RE.sub(sub, text)
+
+    _walk_strings(flow_data, replace_context_fields)
 
     for node in flow_data.get("nodes", []):
         inputs = node.get("data", {}).get("inputs", {})
