@@ -379,6 +379,43 @@ services:
       start_period: 30s
 
 
+  # ── Docling (document conversion) ───────────────────────────────────────────
+  # Self-hosted PDF/DOCX/PPTX/HTML/image → Markdown conversion + OCR for the
+  # ingest pipeline (n8n/workflows-ingest/). CPU-only image, deliberately: this
+  # project has no GPU dependency anywhere else, and Docling's own pipeline
+  # runs fine on CPU (slower than with a GPU, not blocked by its absence).
+  # Internal-only — no host port mapping, only n8n's ingest workflow calls it
+  # over the Docker network.
+  #
+  # No data volume: confirmed from the upstream Containerfile that the
+  # layout/table/OCR models (layout, tableformer, picture_classifier,
+  # rapidocr, easyocr) are downloaded and baked into the image at BUILD time
+  # (docling-tools models download → DOCLING_SERVE_ARTIFACTS_PATH), not
+  # lazily on first request — nothing to persist across restarts.
+  smartrag-docling:
+    profiles: [core]
+    image: ghcr.io/docling-project/docling-serve-cpu:v1.29.0
+    container_name: smartrag-docling
+    restart: always
+    environment:
+      DOCLING_DEVICE: "cpu"
+      TZ: "${TZ}"
+    expose: ["5001"]
+    networks: [smart-rag-network]
+    healthcheck:
+      # python3, not curl/wget: this is a python-312-c9s-based image whose
+      # os-packages.txt (tesseract/leptonica/glib2/...) doesn't list either
+      # HTTP CLI tool, and unlike every other service's healthcheck in this
+      # file, that couldn't be confirmed present without a running Docker
+      # daemon to inspect the actual image — python3 is guaranteed (it's
+      # the whole runtime docling-serve itself runs on).
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/health', timeout=5)"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+
   # ── Flowise (main server) ─────────────────────────────────────────────────────
   # AI agent orchestration platform. Hosts all course agents as AgentFlows.
   # After first start: import agents from flowise/agents/ via Flowise UI.
