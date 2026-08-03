@@ -321,6 +321,11 @@ declare -A MSG_EN=(
 
     # --- LTI keys (phase 11) --------------------------------------------------
     [phase_lti_keys]="Phase 11 · Generating LTI Signing Keys"
+    [phase_nginx_redeploy]="Regenerating nginx Config"
+    [nginx_redeploy_testing]="Testing new nginx config…"
+    [nginx_redeploy_test_failed]="nginx config test failed for %s — NOT reloading. Check manually: nginx -t"
+    [nginx_redeploy_done]="nginx config regenerated and reloaded."
+    [nginx_redeploy_ssl_hint]="If this added a new subdomain, its certificate isn't ready yet — run: sudo bash scripts/get-ssl-certs.sh"
     [lti_keys_skip_no_profile]="LTI profile not enabled — skipping key generation"
     [lti_keys_exist]="LTI keys already exist — skipping (delete lti-middleware/config/private.key to regenerate)"
     [lti_keys_generating]="Generating RSA-4096 keypair for LTI 1.3…"
@@ -440,6 +445,8 @@ declare -A MSG_EN=(
     [admin_restart_failed]="Failed to restart %s — see output above."
     [admin_ssl_title]="SSL Certificates"
     [admin_ssl_none]="No smartrag-* certificates found."
+    [admin_ssl_regen_nginx_confirm]="Regenerate the nginx config from the current .env? (do this after a git pull that adds a new subdomain, e.g. a new service)"
+    [admin_ssl_regen_nginx_failed]="nginx config regeneration failed — see output above."
     [admin_ssl_renew_confirm]="Force-renew the SSL certificate now?"
     [admin_ssl_renew_failed]="Renewal failed — see output above."
     [admin_mail_title]="Mail Relay"
@@ -767,6 +774,11 @@ declare -A MSG_DE=(
 
     # --- LTI keys (phase 11) --------------------------------------------------
     [phase_lti_keys]="Phase 11 · LTI-Signierschlüssel generieren"
+    [phase_nginx_redeploy]="nginx-Config wird neu erzeugt"
+    [nginx_redeploy_testing]="Neue nginx-Config wird getestet…"
+    [nginx_redeploy_test_failed]="nginx-Config-Test fehlgeschlagen für %s — wird NICHT neu geladen. Manuell prüfen: nginx -t"
+    [nginx_redeploy_done]="nginx-Config neu erzeugt und neu geladen."
+    [nginx_redeploy_ssl_hint]="Falls dabei eine neue Subdomain hinzugekommen ist, fehlt für sie noch das Zertifikat — ausführen: sudo bash scripts/get-ssl-certs.sh"
     [lti_keys_skip_no_profile]="LTI-Profil nicht aktiviert — Schlüsselgenerierung übersprungen"
     [lti_keys_exist]="LTI-Schlüssel existieren bereits — übersprungen (lti-middleware/config/private.key löschen zum Neugenerieren)"
     [lti_keys_generating]="RSA-4096-Schlüsselpaar für LTI 1.3 wird generiert…"
@@ -886,6 +898,8 @@ declare -A MSG_DE=(
     [admin_restart_failed]="Neustart von %s fehlgeschlagen — siehe Ausgabe oben."
     [admin_ssl_title]="SSL-Zertifikate"
     [admin_ssl_none]="Keine smartrag-*-Zertifikate gefunden."
+    [admin_ssl_regen_nginx_confirm]="nginx-Config aus der aktuellen .env neu erzeugen? (nach einem git pull, der eine neue Subdomain hinzufügt, z. B. einen neuen Service)"
+    [admin_ssl_regen_nginx_failed]="nginx-Config-Neuerzeugung fehlgeschlagen — siehe Ausgabe oben."
     [admin_ssl_renew_confirm]="SSL-Zertifikat jetzt zwangserneuern?"
     [admin_ssl_renew_failed]="Erneuerung fehlgeschlagen — siehe Ausgabe oben."
     [admin_mail_title]="Mail-Relay"

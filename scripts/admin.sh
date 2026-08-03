@@ -185,6 +185,10 @@ action_ssl() {
     header "$(t admin_ssl_title)"
     certbot certificates 2>/dev/null | grep -A5 "smartrag-" || dim "$(t admin_ssl_none)"
     echo
+    if confirm admin_ssl_regen_nginx_confirm "n"; then
+        bash "$SCRIPT_DIR/deploy-nginx-config.sh" --lang "$LANG_CHOICE" || err "$(t admin_ssl_regen_nginx_failed)"
+        echo
+    fi
     if confirm admin_ssl_renew_confirm "n"; then
         bash "$SCRIPT_DIR/get-ssl-certs.sh" --lang "$LANG_CHOICE" || err "$(t admin_ssl_renew_failed)"
     fi
