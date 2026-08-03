@@ -5,51 +5,143 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}SMART RAG — Content Admin{% endblock %}</title>
   <style>
-    :root { color-scheme: light dark; }
+    /* Roboto: LMU's own web typeface (their print corporate font "Compatil
+       Fact" is licensed for print only — LMU's brand guide names Roboto as
+       the web substitute). Self-hosted variable font (weights 400-700 in
+       one file) instead of linking fonts.googleapis.com/fonts.gstatic.com
+       at runtime — avoids sending every visitor's IP to Google on each
+       page load (the exact practice German courts have held to violate
+       GDPR without consent), and works without an outbound request at all. */
+    @font-face {
+      font-family: 'Roboto';
+      font-style: normal;
+      font-weight: 100 900;
+      font-display: swap;
+      src: url("{{ url_for('static', filename='fonts/roboto-latin-variable.woff2') }}") format('woff2');
+    }
+
+    :root {
+      color-scheme: light dark;
+      /* LMU green, read directly from the official logo artwork
+         (#00883A) — not a guessed brand color. */
+      --lmu-green: #00883a;
+      --lmu-green-hover: #037032;
+      --lmu-green-tint: #ebf5ef;
+      --accent: var(--lmu-green);
+      --accent-hover: var(--lmu-green-hover);
+      --accent-tint: var(--lmu-green-tint);
+      --bg: #ffffff;
+      --text: #1a1a1a;
+      --border: #d8dedb;
+      --card-bg: #ffffff;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        /* Lightened toward white so it still clears WCAG AA (4.5:1) on a
+           dark background — the raw brand green only manages ~3.8:1 there. */
+        --accent: #59b27f;
+        --accent-hover: #73be93;
+        --accent-tint: #163024;
+        --bg: #17191b;
+        --text: #edf2ef;
+        --border: #3a413d;
+        --card-bg: #1e2422;
+      }
+    }
+    :root[data-theme="dark"] {
+      --accent: #59b27f; --accent-hover: #73be93; --accent-tint: #163024;
+      --bg: #17191b; --text: #edf2ef; --border: #3a413d; --card-bg: #1e2422;
+    }
+    :root[data-theme="light"] {
+      --accent: #00883a; --accent-hover: #037032; --accent-tint: #ebf5ef;
+      --bg: #ffffff; --text: #1a1a1a; --border: #d8dedb; --card-bg: #ffffff;
+    }
+
+    * { box-sizing: border-box; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: 'Roboto', -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
       max-width: 900px;
       margin: 0 auto;
       padding: 1.5rem;
       line-height: 1.5;
+      background: var(--bg);
+      color: var(--text);
     }
-    nav { display: flex; gap: 1rem; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid #8884; }
-    nav a { text-decoration: none; }
-    h1 { font-size: 1.4rem; }
-    .error { background: #c0392b22; border: 1px solid #c0392b; padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem; }
-    .success { background: #27ae6022; border: 1px solid #27ae60; padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem; }
+    a { color: var(--accent); }
+    a:hover { color: var(--accent-hover); }
+
+    .brand-header {
+      display: flex; align-items: center; gap: 0.9rem;
+      padding-bottom: 1rem; margin-bottom: 1rem; border-bottom: 3px solid var(--accent);
+    }
+    .brand-header img.lmu-logo { height: 46px; width: auto; display: block; }
+    .brand-header .brand-title { font-weight: 700; font-size: 1.15rem; line-height: 1.25; }
+    .brand-header .brand-subtitle { font-size: 0.85rem; opacity: 0.7; font-weight: 400; }
+
+    nav { display: flex; flex-wrap: wrap; gap: 1.25rem; align-items: center; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
+    nav a { text-decoration: none; font-weight: 500; }
+    h1, h2, h3 { font-weight: 700; }
+    h1 { font-size: 1.4rem; color: var(--accent); }
+    .error { background: #c0392b1a; border: 1px solid #c0392b; padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem; }
+    .success { background: var(--accent-tint); border: 1px solid var(--accent); padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem; }
     .note { opacity: 0.75; font-size: 0.9rem; }
-    label { display: block; margin-top: 1rem; font-weight: 600; }
+    label { display: block; margin-top: 1rem; font-weight: 500; }
     input, textarea, select {
       width: 100%; box-sizing: border-box; padding: 0.5rem; margin-top: 0.25rem;
-      font-family: inherit; font-size: 1rem; border-radius: 6px; border: 1px solid #8888;
-      background: transparent; color: inherit;
+      font-family: inherit; font-size: 1rem; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--card-bg); color: var(--text);
+    }
+    input:focus, textarea:focus, select:focus {
+      outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent);
     }
     textarea { min-height: 5rem; font-family: ui-monospace, monospace; font-size: 0.9rem; }
     button {
       margin-top: 1.25rem; padding: 0.6rem 1.2rem; border-radius: 6px; border: none;
-      background: #2563eb; color: white; font-size: 1rem; cursor: pointer;
+      background: var(--accent); color: white; font-size: 1rem; font-weight: 500; cursor: pointer;
     }
+    button:hover { background: var(--accent-hover); }
     button.secondary { background: #6b7280; }
+    button.secondary:hover { background: #565d68; }
     button.optimize-btn {
-      background: transparent; color: #2563eb; border: 1px solid #2563eb;
+      background: transparent; color: var(--accent); border: 1px solid var(--accent);
       padding: 0.35rem 0.75rem; font-size: 0.85rem; margin-top: 0.5rem;
     }
+    button.optimize-btn:hover { background: var(--accent-tint); }
     button.optimize-accept, button.optimize-discard { margin-top: 0.75rem; margin-right: 0.5rem; }
     .optimize-result {
-      margin-top: 0.5rem; padding: 0.75rem; border: 1px solid #2563eb55;
-      border-radius: 6px; background: #2563eb11;
+      margin-top: 0.5rem; padding: 0.75rem; border: 1px solid var(--accent);
+      border-radius: 6px; background: var(--accent-tint);
     }
     .optimize-result .suggestion-text {
       white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 0.9rem;
     }
     table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-    td, th { text-align: left; padding: 0.5rem; border-bottom: 1px solid #8884; }
-    code, pre { background: #8882; padding: 0.15rem 0.35rem; border-radius: 4px; }
+    th { background: var(--accent-tint); font-weight: 500; }
+    td, th { text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--border); }
+    code, pre { background: #88882233; padding: 0.15rem 0.35rem; border-radius: 4px; }
     pre { padding: 0.75rem; overflow-x: auto; white-space: pre-wrap; }
+
+    footer.site-footer {
+      margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--border);
+      display: flex; align-items: center; gap: 0.75rem;
+    }
+    footer.site-footer .digillab-badge {
+      background: #ffffff; border-radius: 6px; padding: 0.3rem 0.6rem;
+      display: inline-flex; align-items: center;
+    }
+    footer.site-footer .digillab-badge img { height: 28px; width: auto; display: block; }
+    footer.site-footer .footer-text { font-size: 0.8rem; opacity: 0.65; }
   </style>
 </head>
 <body>
+  <div class="brand-header">
+    <img class="lmu-logo" src="{{ url_for('static', filename='img/lmu-logo.png') }}" alt="LMU München">
+    <div>
+      <div class="brand-title">SMART RAG</div>
+      <div class="brand-subtitle">Content Admin</div>
+    </div>
+  </div>
+
   {% if session.get('logged_in') %}
   <nav>
     <a href="{{ url_for('dashboard') }}">Agents</a>
@@ -64,5 +156,12 @@
   {% if success %}<div class="success">{{ success }}</div>{% endif %}
 
   {% block content %}{% endblock %}
+
+  <footer class="site-footer">
+    <span class="digillab-badge">
+      <img src="{{ url_for('static', filename='img/digillab-logo.png') }}" alt="DigiLLab, der LMU">
+    </span>
+    <span class="footer-text">SMART RAG is an initiative of DigiLLab, LMU München.</span>
+  </footer>
 </body>
 </html>
