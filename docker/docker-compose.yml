@@ -444,9 +444,11 @@ services:
     volumes:
       - ../.env:/app/.env
       - ${BASE_DATA_PATH}/content-admin:/app/data
+      - ../flowise/agents:/app/flowise/agents:ro
     environment:
       SMARTRAG_ENV_PATH: "/app/.env"
       SMARTRAG_SLOTS_PATH: "/app/data/slots.json"
+      SMARTRAG_TEMPLATES_DIR: "/app/flowise/agents"
       TZ: "${TZ}"
     ports:
       - "127.0.0.1:${CONTENT_ADMIN_PORT:-3002}:5000"

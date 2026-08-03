@@ -169,39 +169,50 @@ def slot_view(slot: int):
     error = None
     success = None
 
-    if request.method == "POST":
-        action = request.form.get("action")
-        archetype = request.form.get("archetype", existing.get("archetype", ""))
+    try:
+        if request.method == "POST":
+            action = request.form.get("action")
+            archetype = request.form.get("archetype", existing.get("archetype", ""))
 
-        if action == "choose_archetype":
-            existing = {"archetype": archetype, "content": {}, "chatflow_id": None}
+            if action == "choose_archetype":
+                existing = {"archetype": archetype, "content": {}, "chatflow_id": None}
 
-        elif action in ("save", "import"):
-            fields = agent_templates.placeholders_for(archetype)
-            content = {f: request.form.get(f, "") for f in fields}
-            storage.save_slot(slot, archetype, content)
-            existing = storage.get_slot(slot)
+            elif action in ("save", "import"):
+                fields = agent_templates.placeholders_for(archetype)
+                content = {f: request.form.get(f, "") for f in fields}
+                storage.save_slot(slot, archetype, content)
+                existing = storage.get_slot(slot)
 
-            if action == "import":
-                client = _flowise_client()
-                if client is None:
-                    error = "Flowise isn't connected yet — set it up first."
-                else:
-                    try:
-                        error = _do_import(slot, archetype, client)
-                        if not error:
-                            success = "Imported into Flowise."
-                            existing = storage.get_slot(slot)
-                    except FlowiseError as exc:
-                        error = f"Flowise import failed: {exc}"
+                if action == "import":
+                    client = _flowise_client()
+                    if client is None:
+                        error = "Flowise isn't connected yet — set it up first."
+                    else:
+                        try:
+                            error = _do_import(slot, archetype, client)
+                            if not error:
+                                success = "Imported into Flowise."
+                                existing = storage.get_slot(slot)
+                        except FlowiseError as exc:
+                            error = f"Flowise import failed: {exc}"
 
-    fields = agent_templates.placeholders_for(existing.get("archetype", "")) if existing.get(
-        "archetype"
-    ) else []
+        fields = agent_templates.placeholders_for(existing.get("archetype", "")) if existing.get(
+            "archetype"
+        ) else []
+    except agent_templates.TemplateError as exc:
+        # Surfaces cleanly instead of a bare 500 — this is exactly the class
+        # of error that hit in practice (SMARTRAG_TEMPLATES_DIR pointing at
+        # a path that doesn't exist in this container), and a plain
+        # "Internal Server Error" page gives the operator nothing to act on.
+        logger.error("Template load failed for slot %s: %s", slot, exc)
+        error = f"Could not load agent template: {exc}"
+        fields = []
+
     return render_template(
         "slot.html",
         slot=slot,
         archetypes=agent_templates.ARCHETYPES,
+        descriptions=agent_templates.ARCHETYPE_DESCRIPTIONS,
         existing=existing,
         fields=fields,
         error=error,

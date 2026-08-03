@@ -6,14 +6,22 @@
 
 {% if not existing.get('archetype') %}
 <h2>Choose an archetype</h2>
+<p class="note">
+  All except Backup Assistant use RAG (retrieval over your course documents in
+  Weaviate) — document upload isn't in this GUI yet, see
+  <code>docs/operations-guide.md</code> for how ingestion works today.
+</p>
 <form method="post">
   <input type="hidden" name="action" value="choose_archetype">
-  <label for="archetype">Agent type</label>
-  <select id="archetype" name="archetype" required>
-    {% for file, label in archetypes.items() %}
-    <option value="{{ file }}">{{ label }}</option>
-    {% endfor %}
-  </select>
+  {% for file, label in archetypes.items() %}
+  <label style="font-weight: normal; margin-top: 1rem; display: flex; gap: 0.6rem; align-items: flex-start;">
+    <input type="radio" name="archetype" value="{{ file }}" required style="width: auto; margin-top: 0.3rem;">
+    <span>
+      <strong>{{ label }}</strong><br>
+      <span class="note">{{ descriptions.get(file, '') }}</span>
+    </span>
+  </label>
+  {% endfor %}
   <button type="submit">Continue</button>
 </form>
 
