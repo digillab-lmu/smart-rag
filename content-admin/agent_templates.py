@@ -185,101 +185,113 @@ AUTO_FILLED_FIELDS = {"COURSE_NAME", "WEAVIATE_COLLECTION_NAME", "EMBEDDING_MODE
 # course-specific prose the operator has to write themselves, so a first-
 # time non-technical user needs to know what's actually expected, not just
 # a title-cased field name. One entry per field NAME (not per archetype):
-# the same field means the same thing everywhere it appears.
+# the same field means the same thing everywhere it appears. Kept short —
+# the worked example in FIELD_EXAMPLES (shown as the field's placeholder
+# text) is what actually shows the operator what a good answer looks like.
 FIELD_HELP: dict[str, str] = {
+    "CONCEPT_LIST": "The specific concepts this agent should know about, one per line or comma-separated.",
+    "CONCEPT_EXAMPLE": "One concrete concept this persona might mention or struggle with, to make their dialogue feel grounded.",
+    "COURSE_KNOWLEDGE_DESCRIPTION": "A short paragraph summarizing what the whole course covers — gives the agent context for what it's retrieving.",
+    "EXPERT_DOMAIN": "The specific field of expertise this agent should respond as an expert in.",
+    "EXPERT_KNOWLEDGE_DESCRIPTION": "What this expert knows and can give feedback on.",
+    "PERSONA_CONCEPTS": "Which course concepts this persona is familiar with (or struggling with) — shapes what they can meaningfully discuss.",
+    "PERSONA_CONTEXT": "Background situation — who this persona is, why they're in this conversation.",
+    "PERSONA_DESCRIPTION": "A short character description — personality, tone, how they talk.",
+    "PERSONA_KNOWLEDGE_DESCRIPTION": "What this persona's own background/expertise consists of, if relevant to their role.",
+    "PERSONA_KNOWLEDGE_NAME": "A short label for that background, used when the agent refers back to it.",
+    "PERSONA_NAME": "The persona's name, as students will see it.",
+    "PERSONA_SITUATION": "The specific scenario this persona is currently facing — gives the roleplay a concrete starting point.",
+    "PERSONA_STYLE_DESCRIPTION": "How this persona communicates — formal or casual, short or long answers, etc.",
+    "RESPONSE_LANGUAGE_RULE": "One sentence telling the agent which language to answer in.",
+    "STUDENT_ROLE": "Who the students using this agent are — shapes how it addresses them.",
+    "STUDENT_ROLE_CONTEXT": "A slightly longer version of Student Role, used to generate realistic practice scenarios.",
+    "TOPIC_KNOWLEDGE_DESCRIPTION": "A short paragraph summarizing what this specific chapter covers — scopes the agent's retrieval to it.",
+    "TOPIC_NAME": "The name of this chapter/topic, as it appears in your course.",
+    "TOPIC_SUBTOPICS": "The subtopics/sections within this chapter, one per line.",
+}
+
+# Shown as the field's placeholder text (grayed-out, inside the box) — a
+# complete, realistic worked example the operator can read, then overwrite
+# with their own course content ("nachbauen" — rebuild the same shape with
+# their own ideas). All examples share one fictional course (a teacher-
+# training module on cognitive load theory) so they read as one coherent,
+# copyable pattern rather than disconnected one-liners.
+FIELD_EXAMPLES: dict[str, str] = {
     "CONCEPT_LIST": (
-        "The specific concepts this agent should know about, one per line "
-        "or comma-separated. Example: Mean, Variance, Standard Deviation, "
-        "Normal Distribution"
+        "Working Memory\nCognitive Load Theory\nIntrinsic, Extraneous, and "
+        "Germane Load\nMultimedia Learning Principles"
     ),
     "CONCEPT_EXAMPLE": (
-        "One concrete concept this persona might mention or struggle with, "
-        "to make their dialogue feel grounded. Example: \"confusing "
-        "correlation with causation\""
+        "Confusing intrinsic load (the inherent difficulty of the material) "
+        "with extraneous load (poor instructional design)"
     ),
     "COURSE_KNOWLEDGE_DESCRIPTION": (
-        "A short paragraph summarizing what the whole course covers — "
-        "gives the agent context for what it's retrieving. Example: "
-        "\"Introduction to educational psychology: learning theories, "
-        "motivation, and assessment methods.\""
+        "This course introduces educational psychology for future teachers. "
+        "It covers major learning theories (behaviorism, cognitivism, "
+        "constructivism), motivation and self-regulation, cognitive load "
+        "theory, and how to design and evaluate assessments. Students apply "
+        "these theories to real classroom scenarios throughout the "
+        "semester."
     ),
-    "EXPERT_DOMAIN": (
-        "The specific field of expertise this agent should respond as an "
-        "expert in. Example: \"cognitive load theory in multimedia "
-        "learning\""
-    ),
+    "EXPERT_DOMAIN": "Cognitive load theory in multimedia learning design",
     "EXPERT_KNOWLEDGE_DESCRIPTION": (
-        "What this expert knows and can give feedback on. Example: \"Best "
-        "practices for reducing extraneous cognitive load in instructional "
-        "design.\""
+        "Reviews instructional materials for excessive extraneous cognitive "
+        "load and suggests concrete redesigns — e.g. splitting a dense "
+        "slide into sequential steps, replacing redundant on-screen text "
+        "with narration, or removing decorative elements that add no "
+        "learning value."
     ),
     "PERSONA_CONCEPTS": (
-        "Which course concepts this persona is familiar with (or "
-        "struggling with) — shapes what they can meaningfully discuss. "
-        "Example: \"Basic statistics, but not yet inferential methods.\""
+        "Comfortable with basic learning theories (behaviorism, "
+        "cognitivism) from her teacher training, but has never formally "
+        "studied cognitive load theory or multimedia design principles."
     ),
     "PERSONA_CONTEXT": (
-        "Background situation — who this persona is, why they're in this "
-        "conversation. Example: \"A first-year teacher preparing their "
-        "first multimedia lesson.\""
+        "A first-year secondary school teacher preparing her first "
+        "multimedia-based lesson on the water cycle for a 7th-grade class."
     ),
     "PERSONA_DESCRIPTION": (
-        "A short character description — personality, tone, how they "
-        "talk. Example: \"Enthusiastic but easily overwhelmed, asks a lot "
-        "of follow-up questions.\""
+        "Enthusiastic and eager to use technology in her teaching, but "
+        "easily overwhelmed by too much theoretical jargon. Asks a lot of "
+        "clarifying, practical \"so what should I actually do\" questions."
     ),
     "PERSONA_KNOWLEDGE_DESCRIPTION": (
-        "What this persona's own background/expertise consists of, if "
-        "relevant to their role. Example: \"5 years of classroom teaching "
-        "experience, no formal instructional design training.\""
+        "Three years of classroom teaching experience and a completed "
+        "teacher-training degree, but no formal background in "
+        "instructional design or media psychology."
     ),
-    "PERSONA_KNOWLEDGE_NAME": (
-        "A short label for that background, used when the agent refers "
-        "back to it. Example: \"classroom experience\""
-    ),
-    "PERSONA_NAME": (
-        "The persona's name, as students will see it. Example: \"Sarah, a "
-        "Teacher\""
-    ),
+    "PERSONA_KNOWLEDGE_NAME": "classroom teaching experience",
+    "PERSONA_NAME": "Sarah, a first-year secondary school teacher",
     "PERSONA_SITUATION": (
-        "The specific scenario this persona is currently facing — gives "
-        "the roleplay a concrete starting point. Example: \"Sarah is "
-        "planning a lesson and isn't sure how many images to put on each "
-        "slide.\""
+        "Sarah has just built a 20-slide presentation on the water cycle, "
+        "packed with text, diagrams, and animations, and isn't sure why her "
+        "students seem confused instead of engaged."
     ),
     "PERSONA_STYLE_DESCRIPTION": (
-        "How this persona communicates — formal or casual, short or long "
-        "answers, etc. Example: \"Casual, everyday language, keeps "
-        "messages short.\""
+        "Casual, conversational tone. Short messages, occasional "
+        "teacher-lounge small talk. Avoids academic jargon unless the "
+        "student introduces it first."
     ),
     "RESPONSE_LANGUAGE_RULE": (
-        "One sentence telling the agent which language to answer in. "
-        "Example: \"Always respond in German.\" or \"Respond in the same "
-        "language the student writes in.\""
+        "Always respond in German, regardless of the language the student "
+        "writes in."
     ),
-    "STUDENT_ROLE": (
-        "Who the students using this agent are — shapes how it addresses "
-        "them. Example: \"trainee teachers\" or \"first-semester "
-        "psychology students\""
-    ),
+    "STUDENT_ROLE": "trainee secondary school teachers in their second year of teacher training",
     "STUDENT_ROLE_CONTEXT": (
-        "A slightly longer version of Student Role, used to generate "
-        "realistic practice scenarios. Example: \"trainee teachers "
-        "preparing lessons for secondary school classrooms\""
+        "Trainee secondary school teachers who are currently completing "
+        "their practical teaching placement and need to design real lesson "
+        "materials for their mentor teacher to review."
     ),
     "TOPIC_KNOWLEDGE_DESCRIPTION": (
-        "A short paragraph summarizing what this specific chapter covers "
-        "— scopes the agent's retrieval to it. Example: \"Covers working "
-        "memory, cognitive load theory, and multimedia learning "
-        "principles.\""
+        "Covers Baddeley's working memory model, Sweller's cognitive load "
+        "theory (intrinsic, extraneous, germane load), and Mayer's "
+        "multimedia learning principles (coherence, signaling, redundancy, "
+        "spatial and temporal contiguity)."
     ),
-    "TOPIC_NAME": (
-        "The name of this chapter/topic, as it appears in your course. "
-        "Example: \"Chapter 4: Cognitive Prerequisites for Learning\""
-    ),
+    "TOPIC_NAME": "Chapter 4: Cognitive Prerequisites for Learning",
     "TOPIC_SUBTOPICS": (
-        "The subtopics/sections within this chapter, one per line. "
-        "Example:\n4.1 Three-Store Model\n4.2 Cognitive Load Theory"
+        "4.1 The Three-Store Model of Memory\n4.2 Cognitive Load Theory\n"
+        "4.3 Principles of Multimedia Learning"
     ),
 }
 

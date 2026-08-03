@@ -43,12 +43,18 @@
   </p>
   <input type="text" id="name" name="name" value="{{ existing.get('name', '') }}" required>
 
+  <p class="note">
+    Each field below shows a complete worked example as gray placeholder
+    text (it disappears once you start typing) — write your own course
+    content following that same pattern.
+  </p>
+
   {% for field in fields %}
   <label for="{{ field }}">{{ field.replace('_', ' ').title() }}</label>
   {% if field_help.get(field) %}
   <p class="note" style="margin-top: 0.15rem;">{{ field_help.get(field) }}</p>
   {% endif %}
-  <textarea id="{{ field }}" name="{{ field }}">{{ existing.content.get(field, '') }}</textarea>
+  <textarea id="{{ field }}" name="{{ field }}" placeholder="{{ field_examples.get(field, '') }}">{{ existing.content.get(field, '') }}</textarea>
   {% endfor %}
 
   <button type="submit" name="action" value="save" class="secondary">Save</button>
