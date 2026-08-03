@@ -67,8 +67,16 @@ def optimize_field(field_name: str, field_purpose: str, current_text: str, env: 
     if provider == "anthropic":
         text = _call_anthropic(api_key, model, system_prompt, user_prompt)
     elif provider == "openai":
+        # OpenAI's newer models (o-series/reasoning, and now some current
+        # chat models too) reject the classic "max_tokens" field outright —
+        # live error: "Unsupported parameter: 'max_tokens' is not supported
+        # with this model. Use 'max_completion_tokens' instead." OpenAI's own
+        # docs mark max_completion_tokens as the current field for all
+        # models, so use it unconditionally here rather than guessing per
+        # model name.
         text = _call_openai_compatible(
-            "https://api.openai.com/v1/chat/completions", api_key, model, system_prompt, user_prompt
+            "https://api.openai.com/v1/chat/completions", api_key, model, system_prompt, user_prompt,
+            tokens_param="max_completion_tokens",
         )
     elif provider == "google":
         text = _call_google(api_key, model, system_prompt, user_prompt)
@@ -140,7 +148,8 @@ def _call_anthropic(api_key: str, model: str, system_prompt: str, user_prompt: s
 
 
 def _call_openai_compatible(
-    url: str, api_key: str, model: str, system_prompt: str, user_prompt: str
+    url: str, api_key: str, model: str, system_prompt: str, user_prompt: str,
+    tokens_param: str = "max_tokens",
 ) -> str:
     resp = requests.post(
         url,
@@ -151,7 +160,7 @@ def _call_openai_compatible(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            "max_tokens": _MAX_TOKENS,
+            tokens_param: _MAX_TOKENS,
         },
         timeout=_TIMEOUT,
     )
