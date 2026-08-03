@@ -19,11 +19,24 @@ configured in the Flowise UI at all.
 """
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
 
-TEMPLATES_DIR = Path(__file__).parent.parent / "flowise" / "agents"
+# Default assumes running from source (content-admin/ next to flowise/, as
+# in this repo checkout) — correct for local dev/tests, but WRONG inside the
+# container: the Dockerfile's `COPY *.py ./` flattens everything into /app
+# with no parent repo structure, so Path(__file__).parent.parent silently
+# resolves to "/" instead of the repo root. Bug caught live (every archetype
+# choice 500'd — load_template() raised because the path didn't exist, with
+# nothing catching it). Fixed the same way env_file.py/storage.py already
+# handle this exact class of local-vs-container path mismatch: an env var
+# override, with docker-compose.yml bind-mounting the real directory in at
+# that exact path (see SMARTRAG_TEMPLATES_DIR there).
+TEMPLATES_DIR = Path(
+    os.getenv("SMARTRAG_TEMPLATES_DIR", str(Path(__file__).parent.parent / "flowise" / "agents"))
+)
 
 # ─── Provider → Flowise node-type / credential mapping ───────────────────────
 # (chat_node, credential_name, credential_key) — credential_name/key are
@@ -114,6 +127,46 @@ ARCHETYPES: dict[str, str] = {
     "agent-13-knowledge-test.json": "Knowledge Test Agent",
     "agent-14-backup.json": "Backup Assistant",
     "agent-topic-template.json": "Topic Agent",
+}
+
+# Shown next to each archetype in the picker — purpose, typical use case,
+# whether it needs RAG (course documents retrieved from Weaviate). All but
+# Backup Assistant do; document upload/ingestion isn't in this GUI yet
+# (see docs/operations-guide.md) so those agents have nothing to retrieve
+# until documents exist in the course's Weaviate collection some other way.
+ARCHETYPE_DESCRIPTIONS: dict[str, str] = {
+    "agent-01-universal.json": (
+        "General-purpose course assistant — answers questions across the "
+        "whole course. Uses RAG (course documents). Good as a default or "
+        "your only agent for a small course."
+    ),
+    "agent-10-persona.json": (
+        "Simulates a specific character or role (e.g. a struggling student, "
+        "a stakeholder in a case study) for perspective-taking exercises. "
+        "Uses RAG, scoped to what that persona would plausibly know."
+    ),
+    "agent-11-expert-feedback.json": (
+        "Simulates a domain expert giving feedback on student work within "
+        "one specific field. Uses RAG, drawing on materials relevant to "
+        "that expert domain."
+    ),
+    "agent-13-knowledge-test.json": (
+        "Adaptive, scenario-based knowledge assessment — poses practice "
+        "tasks and adjusts difficulty from the student's answers. Uses RAG "
+        "across the whole course. Typically one per course, not one per "
+        "topic — it also references your other configured agents "
+        "automatically."
+    ),
+    "agent-14-backup.json": (
+        "Plain fallback chat agent — no RAG, no course-document retrieval. "
+        "Use for general conversation when a materials-grounded answer "
+        "isn't needed, or as a safety-net slot."
+    ),
+    "agent-topic-template.json": (
+        "Focused on one course chapter/topic — meant to be reused, one per "
+        "chapter. Uses RAG, scoped to that chapter's material. Most of "
+        "your 10 slots will likely be this type."
+    ),
 }
 
 # Fields whose value is derived from other slots, not asked in that slot's own
