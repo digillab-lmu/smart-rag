@@ -1,0 +1,638 @@
+{
+  "name": "SMART RAG Ingest — Document",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "document-ingest",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "a1a1b1c1-0003-4a1a-9a1a-000000000001",
+      "name": "Upload Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        400
+      ],
+      "webhookId": "smartrag-document-ingest"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://smartrag-docling:5001/v1/convert/file",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "files",
+              "inputDataFieldName": "file"
+            },
+            {
+              "name": "force_ocr",
+              "value": "={{ $json.body.force_ocr === 'true' ? 'true' : 'false' }}"
+            },
+            {
+              "name": "ocr_engine",
+              "value": "tesseract"
+            },
+            {
+              "name": "ocr_language",
+              "value": "de"
+            },
+            {
+              "name": "ocr_language",
+              "value": "en"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 1800000
+        }
+      },
+      "id": "a1a1b1c1-0003-4a1a-9a1a-000000000002",
+      "name": "Docling Conversion",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        240,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const trigger = $('Upload Webhook').first().json;\nconst originalFileName = $binary?.file?.fileName || $binary?.data?.fileName || 'document.pdf';\nconst agentId = parseInt(trigger.body?.agent_id, 10) || 0;\n\nconst inputData = $json.document.md_content;\n\n// Regex captures inline base64 images from Docling's markdown output. Two\n// forms: ![Image](data:...) and bare data: URLs. Unchanged from the\n// original, live-verified implementation.\nconst imgRegex = /!\\[Image\\]\\(data:image\\/([^;]+);base64,([A-Za-z0-9+/=\\s]+)\\)|data:image\\/([^;]+);base64,([A-Za-z0-9+/=\\s]+)/g;\n\nconst tempImages = [];\nlet match;\nwhile ((match = imgRegex.exec(inputData)) !== null) {\n  const mimeType = (match[1] || match[3] || 'unknown').toLowerCase();\n  const rawBase64 = match[2] || match[4];\n  const cleanBase64 = rawBase64.replace(/\\s+/g, '');\n\n  // PNG dimensions from the header (bytes 16-23). JPEG always falls back to\n  // 999x999 (no header parsing implemented for it).\n  function getPngDimensions(base64) {\n    try {\n      const binary = atob(base64.substring(0, 40));\n      const width  = (binary.charCodeAt(16) << 24) | (binary.charCodeAt(17) << 16) |\n                     (binary.charCodeAt(18) << 8)  |  binary.charCodeAt(19);\n      const height = (binary.charCodeAt(20) << 24) | (binary.charCodeAt(21) << 16) |\n                     (binary.charCodeAt(22) << 8)  |  binary.charCodeAt(23);\n      return { width, height };\n    } catch(e) { return { width: 999, height: 999 }; }\n  }\n\n  const dims = mimeType.includes('png') ? getPngDimensions(cleanBase64) : { width: 999, height: 999 };\n\n  const isKnownUnsupported = ['svg', 'pdf', 'unknown'].some(t => mimeType.includes(t));\n  // >= 33 not >= 50: very small images crash some vision models' resize step.\n  const isSupported = !isKnownUnsupported && dims.width >= 33 && dims.height >= 33;\n\n  tempImages.push({\n    base64: cleanBase64,\n    mimeType,\n    isSupported,\n    index: match.index,\n    length: match[0].length,\n    width: dims.width,\n    height: dims.height\n  });\n}\n\nlet counter = 0;\nconst cleanMarkdown = inputData.replace(imgRegex, () => {\n  counter++;\n  return ` ##FIGURE_${counter}## `;\n});\n\n// Context before/after each image, for the vision-model prompt (figure\n// caption/source is usually right next to the image in the source doc).\nconst images = tempImages.map((img, i) => {\n  const placeholder = ` ##FIGURE_${i + 1}## `;\n  const pos = cleanMarkdown.indexOf(placeholder);\n  return {\n    imageIndex: i + 1,\n    base64Image: img.isSupported ? img.base64 : null,\n    imageType: img.mimeType,\n    isSupported: img.isSupported,\n    width: img.width,\n    height: img.height,\n    totalImages: tempImages.length,\n    contextBefore: cleanMarkdown.substring(Math.max(0, pos - 1000), pos).trim(),\n    contextAfter: cleanMarkdown.substring(pos + placeholder.length, pos + placeholder.length + 1000).trim()\n  };\n});\n\nreturn [{\n  json: {\n    cleanMarkdown,\n    images,\n    hasImages: images.some(img => img.isSupported),\n    originalFileName,\n    agentId,\n    fileName: originalFileName.replace(/\\.[^/.]+$/, '.md')\n  }\n}];"
+      },
+      "id": "a1a1b1c1-0003-4a1a-9a1a-000000000003",
+      "name": "Extract Images",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Replaces the old two-node chain (external \"markdowncleaner\" HTTP service\n// + a merge step) — that service was an unpinned, undocumented VHB-internal\n// microservice with no known implementation to port; not part of this\n// project's own deployment. What's kept here is the self-contained part of\n// the old logic that doesn't depend on it: an OCR-artifact fix for umlauts\n// getting split from the following letter, FIGURE-token spacing\n// normalization, and dropping any \"## Quellen\" (references) section.\nlet cleaned = $json.cleanMarkdown || '';\n\ncleaned = cleaned.replace(/([äöüÄÖÜß])\\s+([a-zA-ZäöüÄÖÜß])/gu, '$1$2');\ncleaned = cleaned.replace(/([äöüÄÖÜß])\\s+([a-zA-ZäöüÄÖÜß])/gu, '$1$2');\ncleaned = cleaned.replace(/([a-zA-ZäöüÄÖÜß])\\s+([äöüÄÖÜß])/gu, '$1$2');\ncleaned = cleaned.replace(/([a-zA-ZäöüÄÖÜß])\\s+([äöüÄÖÜß])/gu, '$1$2');\n\ncleaned = cleaned.replace(/##\\s*FIGURE_(\\d+)\\s*##/g, '##FIGURE_$1##');\n\nconst sections = cleaned.split(/(?=^## )/m);\ncleaned = sections.filter(s => !s.startsWith('## Quellen')).join('');\n\nreturn [{\n  json: {\n    ...$json,\n    cleanMarkdown: cleaned.trim()\n  }\n}];"
+      },
+      "id": "a1a1b1c1-0003-4a1a-9a1a-000000000004",
+      "name": "Clean Markdown",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "7c7d39c2-9e7f-43a2-b07a-ebbf3967657e",
+              "leftValue": "={{ $json.hasImages }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "a1a1b1c1-0003-4a1a-9a1a-000000000005",
+      "name": "Has Images?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        960,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const images = $json.images || [];\nconst supportedImages = images.filter(img => img.isSupported && img.base64Image);\n\nif (supportedImages.length === 0) {\n  return [{ json: { skip: true } }];\n}\n\nreturn supportedImages.map(img => ({\n  json: {\n    ...img,\n    cleanMarkdown: $json.cleanMarkdown,\n    fileName: $json.fileName,\n    originalFileName: $json.originalFileName,\n    agentId: $json.agentId\n  }\n}));"
+      },
+      "id": "a1a1b1c1-0003-4a1a-9a1a-000000000006",
+      "name": "Prepare Image Loop",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "a1a1b1c1-0003-4a1a-9a1a-000000000007",
+      "name": "Loop Over Images",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1440,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "skip-001",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1a1b1c1-0003-4a1a-9a1a-000000000008",
+      "name": "Skip Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Provider-agnostic image description — replaces a hardcoded call to a\n// specific Ollama instance's IP with the same LLM_PROVIDER already\n// configured for the course's agents ($env.LLM_PROVIDER/LLM_API_KEY/\n// LLM_BASE_URL/LLM_MODEL_STRONG), matching content-admin/llm_client.py's\n// already-verified per-provider request shapes (same endpoints/headers/\n// auth), extended with an image content block. Uses this.helpers.request\n// like every other outbound call already in this workflow's Code nodes —\n// no need for the old raw-socket keepAlive workaround, which existed\n// specifically to survive Ollama's long idle think time; hosted APIs\n// respond in seconds.\n//\n// Image content-block formats verified directly against each provider's\n// docs: Anthropic (content: [{type:'image', source:{type:'base64', ...}}]),\n// OpenAI (content: [{type:'image_url', image_url:{url:'data:...'}}]), Google\n// (parts: [{inline_data:{mime_type, data}}]). Mistral/OpenRouter/\"custom\"\n// reuse the OpenAI image_url shape as a disclosed assumption — they're\n// already OpenAI-Chat-Completions-compatible endpoints for text (verified\n// in llm_client.py), not independently confirmed for images. Cohere has no\n// verified image format here and is explicitly unsupported rather than\n// guessed.\nconst item = $input.first().json;\nconst provider = $env.LLM_PROVIDER || 'anthropic';\nconst apiKey   = $env.LLM_API_KEY  || '';\nconst model    = $env.LLM_MODEL_STRONG || '';\nconst baseUrl  = $env.LLM_BASE_URL || '';\nconst language = ($('Upload Webhook').first().json.body?.language) || 'en';\n\nconst mimeType = `image/${item.imageType === 'jpg' ? 'jpeg' : item.imageType}`;\n\nconst systemPrompt =\n  'You are a specialist in describing figures/diagrams from academic and ' +\n  'course material for a retrieval-augmented generation (RAG) system. Your ' +\n  'description must let a language model that never sees the original image ' +\n  'answer questions about it correctly from your text alone.\\n\\n' +\n  'Rules: no pronouns (\"this\", \"that\", \"here\") — always use the full term; ' +\n  'state causal relationships explicitly (\"X leads to Y, which means Z\"); ' +\n  'name any color-coding and what it means; describe symbols/icons even ' +\n  'without visible text; if the figure has multiple sub-panels (a, b, c, ' +\n  'd...), describe each separately and label it; note ambiguity as such ' +\n  'instead of guessing. Respond in ' + language + '.';\n\nconst userPrompt =\n  'Describe the attached figure.\\n\\n' +\n  '=== DOCUMENT CONTEXT ===\\n\\n' +\n  'Text BEFORE the figure:\\n' + (item.contextBefore || 'none — possibly a title page or cover') + '\\n\\n' +\n  'Text AFTER the figure:\\n' + (item.contextAfter || 'not available') + '\\n\\n' +\n  '=== OUTPUT FORMAT (follow exactly) ===\\n\\n' +\n  '**[Figure number/title from context, if identifiable]**\\n' +\n  'Source: [author, year, from context — \"not stated\" if not identifiable]\\n\\n' +\n  '**Figure type:** [e.g. cyclical process model, flowchart, set diagram, ' +\n  'icon row, comparison layout, bar/line/scatter chart, photo, ' +\n  'screenshot/UI, diagram]\\n\\n' +\n  '**Key message:** [4-7 sentences: what concept or model does this figure ' +\n  'convey, on the meta level?]\\n\\n' +\n  '**Description:** [full description following the rules above]\\n\\n' +\n  '**Keywords:** [term1 | term2 | term3 | ...]\\n\\n' +\n  'Return only the formatted description, no meta-commentary.';\n\nlet url, headers, body, extractText;\n\nif (provider === 'anthropic') {\n  url = 'https://api.anthropic.com/v1/messages';\n  headers = { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' };\n  body = {\n    model,\n    max_tokens: 2048,\n    system: systemPrompt,\n    messages: [{\n      role: 'user',\n      content: [\n        { type: 'image', source: { type: 'base64', media_type: mimeType, data: item.base64Image } },\n        { type: 'text', text: userPrompt }\n      ]\n    }]\n  };\n  extractText = (data) => (data.content || []).find(b => b.type === 'text')?.text || '';\n} else if (provider === 'google') {\n  url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;\n  headers = { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' };\n  body = {\n    systemInstruction: { parts: [{ text: systemPrompt }] },\n    contents: [{\n      role: 'user',\n      parts: [\n        { inline_data: { mime_type: mimeType, data: item.base64Image } },\n        { text: userPrompt }\n      ]\n    }],\n    generationConfig: { maxOutputTokens: 2048 }\n  };\n  extractText = (data) => data?.candidates?.[0]?.content?.parts?.[0]?.text || '';\n} else if (provider === 'cohere') {\n  return [{ json: { message: { content: '[Image description skipped: Cohere image format not implemented — see ingest-document.json comments]' } } }];\n} else {\n  // openai / mistral / openrouter / custom — OpenAI-compatible Chat\n  // Completions endpoint, image_url content block (disclosed assumption\n  // for mistral/openrouter/custom, see comment above).\n  if (provider === 'openai') url = 'https://api.openai.com/v1/chat/completions';\n  else if (provider === 'mistral') url = 'https://api.mistral.ai/v1/chat/completions';\n  else if (provider === 'openrouter') url = 'https://openrouter.ai/api/v1/chat/completions';\n  else url = `${(baseUrl || '').replace(/\\/$/, '')}/chat/completions`;\n\n  headers = { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };\n  body = {\n    model,\n    messages: [\n      { role: 'system', content: systemPrompt },\n      {\n        role: 'user',\n        content: [\n          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${item.base64Image}` } },\n          { type: 'text', text: userPrompt }\n        ]\n      }\n    ]\n  };\n  if (provider === 'openai') body.max_completion_tokens = 2048;\n  else body.max_tokens = 2048;\n  extractText = (data) => data?.choices?.[0]?.message?.content || '';\n}\n\ntry {\n  const raw = await this.helpers.request({\n    method: 'POST',\n    url,\n    headers,\n    body: JSON.stringify(body),\n    json: false\n  });\n  const parsed = JSON.parse(raw);\n  const text = extractText(parsed);\n  return [{ json: { message: { content: text || '[No description returned]' } } }];\n} catch (e) {\n  return [{ json: { message: { content: `[Image description failed: ${e.message}]` } } }];\n}"
+      },
+      "id": "a1a1b1c1-0003-4a1a-9a1a-000000000009",
+      "name": "Describe Image",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const imageIndex = $('Prepare Image Loop').item.json.imageIndex;\nconst raw = $json.message?.content || '';\n\nconst content = raw.includes('</think>')\n  ? raw.split('</think>').pop().trim()\n  : raw.replace(/<think>[\\s\\S]*?<\\/think>/g, '').trim();\n\nreturn [{\n  json: {\n    imageIndex: imageIndex,\n    message: { content }\n  }\n}];"
+      },
+      "id": "a1a1b1c1-0003-4a1a-9a1a-00000000000a",
+      "name": "Preserve Image Index",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const allAnalyses = $input.all();\nconst meta = $('Clean Markdown').first().json;\nlet finalDocument = meta.cleanMarkdown || '';\n\nconst analysesWithIndex = allAnalyses\n  .map(item => ({\n    imageIndex: item.json.imageIndex,\n    content: item.json.message?.content ?? ''\n  }))\n  .filter(a => Number.isInteger(a.imageIndex) && a.content.trim().length > 0)\n  .sort((a, b) => a.imageIndex - b.imageIndex);\n\nconst analysisMap = {};\nfor (const a of analysesWithIndex) {\n  analysisMap[a.imageIndex] = a.content;\n}\n\nfinalDocument = finalDocument.replace(/##\\s*FIGURE_(\\d+)\\s*##/g, '##FIGURE_$1##');\nconst parts = finalDocument.split(/##FIGURE_(\\d+)##/);\n\nfinalDocument = '';\nfor (let i = 0; i < parts.length; i++) {\n  if (i % 2 === 0) {\n    finalDocument += parts[i];\n  } else {\n    const index = parseInt(parts[i]);\n    const analysis = analysisMap[index];\n    if (analysis) {\n      finalDocument += `\\n---\\n> ### Figure ${index} — AI description\\n>\\n${analysis.split('\\n').map(line => '> ' + line).join('\\n')}\\n---\\n`;\n    } else {\n      finalDocument += `[No description for figure ${index}]`;\n    }\n  }\n}\n\nreturn [{\n  json: {\n    ...meta,\n    message: { content: finalDocument }\n  }\n}];"
+      },
+      "id": "a1a1b1c1-0003-4a1a-9a1a-00000000000b",
+      "name": "Reassemble Markdown",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    ...$json,\n    message: { content: $json.cleanMarkdown || '' }\n  }\n}];"
+      },
+      "id": "a1a1b1c1-0003-4a1a-9a1a-00000000000c",
+      "name": "Pass Through Markdown",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const replaceUmlauts = (str) => {\n  if (!str) return str;\n  return str\n    .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue')\n    .replace(/Ä/g, 'Ae').replace(/Ö/g, 'Oe').replace(/Ü/g, 'Ue')\n    .replace(/ß/g, 'ss')\n    .normalize('NFD').replace(/[\\u0300-\\u036f]/g, '');\n};\n\nconst toS3Safe = (str) => replaceUmlauts(str).replace(/[^a-zA-Z0-9/_-]/g, '-').toLowerCase();\n\nconst rawFileName = $json.originalFileName || 'document';\nconst agentId = $json.agentId || 0;\nconst cleanedContent = $json.message?.content || '';\n\nreturn [{\n  json: {\n    message: { content: cleanedContent },\n    directory: `agent_${agentId}`,\n    agentId,\n    originalFileName: toS3Safe(rawFileName.replace(/\\.[^/.]+$/, '')) + '.md'\n  }\n}];"
+      },
+      "id": "a1a1b1c1-0003-4a1a-9a1a-00000000000d",
+      "name": "Sanitize Filename",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Type detection stays regex-only (no LLM call) — figure caption blocks are\n// stripped first so they don't confuse the interview/numbered-heading checks.\nconst content = $json.message?.content || '';\n\nconst isInterview = /###\\s+.+[\\s\\S]*?<!--\\s*ts:/.test(content);\nconst isNumberedHeadings = /^##\\s+\\d+\\.\\d+[.\\s]/m.test(content);\n\nconst docType = isInterview ? 'interview'\n  : isNumberedHeadings ? 'wissensbausteine'\n  : 'document';\n\nreturn [{ json: { ...$json, doc_type: docType } }];"
+      },
+      "id": "a1a1b1c1-0003-4a1a-9a1a-00000000000e",
+      "name": "Detect Doc Type",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Metadata comes directly from the upload form (content-admin GUI, itself\n// optionally AI-assisted via /slot/<n>/optimize-style suggestion — see the\n// batch plan) — no LLM round-trip inside this workflow at all anymore, and\n// no hardcoded per-course author/year defaults like the old version had.\nconst trigger = $('Upload Webhook').first().json.body || {};\nconst d = $json;\nconst content = d.message?.content || '';\n\nconst title    = trigger.title    || d.originalFileName.replace(/\\.md$/, '');\nconst authors  = trigger.authors  || '';\nconst year     = trigger.year     ? parseInt(trigger.year, 10) : null;\nconst topic    = trigger.topic    || '';\nconst language = trigger.language || 'en';\n\nconst frontmatter = [\n  '---',\n  `title: \"${title.replace(/\"/g, \"'\")}\"`,\n  `authors: \"${authors.replace(/\"/g, \"'\")}\"`,\n  `year: ${year ?? 'null'}`,\n  `type: ${d.doc_type || 'document'}`,\n  `topic: \"${topic.replace(/\"/g, \"'\")}\"`,\n  `language: ${language}`,\n  '---',\n  ''\n].join('\\n');\n\nreturn [{\n  json: {\n    ...d,\n    message: { content: frontmatter + content },\n    bodyContent: content,\n    meta: {\n      title, authors, year, topic, language,\n      doc_type: d.doc_type || 'document',\n      agent_id: d.agentId,\n      block_number: d.agentId,\n      source_file: `${d.directory}/${d.originalFileName}`,\n      bucket: `${$env.COURSE_ID || 'smartrag'}-rag`\n    }\n  }\n}];"
+      },
+      "id": "a1a1b1c1-0003-4a1a-9a1a-00000000000f",
+      "name": "Build Frontmatter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3120,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "bucketName": "={{ ($env.COURSE_ID || 'smartrag') + '-rag' }}",
+        "fileName": "={{ $json.directory + '/' + $json.originalFileName }}",
+        "binaryData": false,
+        "fileContent": "={{ $json.message.content }}",
+        "additionalFields": {}
+      },
+      "id": "a1a1b1c1-0003-4a1a-9a1a-000000000010",
+      "name": "Upload to MinIO",
+      "type": "n8n-nodes-base.s3",
+      "typeVersion": 1,
+      "position": [
+        3360,
+        360
+      ],
+      "credentials": {
+        "s3": {
+          "id": "smartrag-minio-credential",
+          "name": "smartrag-minio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// The S3 node's own output is its upload API response (ETag/Location/...),\n// not the document data — rebuild the {bodyContent, metadata} shape the\n// \"Chunk + Embed\" sub-workflow's trigger expects from what \"Build\n// Frontmatter\" produced, referenced back explicitly since it's no longer\n// the current item.\nconst built = $('Build Frontmatter').first().json;\n\nreturn [{\n  json: {\n    bodyContent: built.bodyContent,\n    metadata: built.meta\n  }\n}];"
+      },
+      "id": "a1a1b1c1-0003-4a1a-9a1a-000000000015",
+      "name": "Prepare Chunk+Embed Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": "smartrag-ingest-chunk-embed",
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "a1a1b1c1-0003-4a1a-9a1a-000000000011",
+      "name": "Chunk + Embed",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        3840,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.SMTP_SENDER_EMAIL }}",
+        "toEmail": "={{ $('Upload Webhook').first().json.body?.notify_email || $env.ADMIN_EMAIL }}",
+        "subject": "Document processed — SMART RAG Ingest",
+        "html": "=<div style=\"font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; border: 1px solid #e5e7eb; padding: 20px; border-radius: 10px;\">\n  <h2 style=\"color: #00883a; margin-top: 0;\">Processing complete</h2>\n  <p>Your document has been converted, described, chunked, and embedded — it's now searchable by its assigned agent.</p>\n  <div style=\"background-color: #f8fafc; border-left: 4px solid #00883a; padding: 15px; margin: 20px 0;\">\n    <p style=\"margin: 5px 0;\"><strong>File:</strong> {{ $('Build Frontmatter').first().json.originalFileName }}</p>\n    <p style=\"margin: 5px 0;\"><strong>Agent:</strong> {{ $('Upload Webhook').first().json.body?.agent_id }}</p>\n  </div>\n  <div style=\"text-align: center; margin: 25px 0;\">\n    <a href=\"https://minio.{{ $env.DOMAIN }}\" style=\"background-color: #00883a; color: white; padding: 12px 25px; text-decoration: none; font-weight: bold; border-radius: 5px; display: inline-block;\">View file in MinIO</a>\n  </div>\n</div>",
+        "options": {}
+      },
+      "id": "a1a1b1c1-0003-4a1a-9a1a-000000000012",
+      "name": "Send Success Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        4080,
+        360
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "smartrag-smtp-credential",
+          "name": "smartrag-smtp"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "a1a1b1c1-0003-4a1a-9a1a-000000000013",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.SMTP_SENDER_EMAIL }}",
+        "toEmail": "={{ $env.ADMIN_EMAIL }}",
+        "subject": "Ingest failed — SMART RAG",
+        "html": "=<div style=\"font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; border: 1px solid #e5e7eb; padding: 20px; border-radius: 10px;\">\n  <h2 style=\"color: #dc2626;\">Document ingest failed</h2>\n  <div style=\"background: #fef2f2; border-left: 4px solid #dc2626; padding: 15px; margin: 20px 0; border-radius: 5px;\">\n    <p style=\"margin: 0 0 8px 0;\"><strong>Error:</strong></p>\n    <code style=\"background: #fff; padding: 10px; display: block; border-radius: 5px; color: #dc2626; word-break: break-word;\">{{ $json.error?.message || $json.error?.description || 'Unknown error' }}</code>\n    <p style=\"margin: 10px 0 0 0;\"><strong>Node:</strong> {{ $json.error?.node?.name || 'unknown' }}</p>\n  </div>\n</div>",
+        "options": {}
+      },
+      "id": "a1a1b1c1-0003-4a1a-9a1a-000000000014",
+      "name": "Send Error Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        240,
+        640
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "smartrag-smtp-credential",
+          "name": "smartrag-smtp"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Upload Webhook": {
+      "main": [
+        [
+          {
+            "node": "Docling Conversion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Docling Conversion": {
+      "main": [
+        [
+          {
+            "node": "Extract Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Images": {
+      "main": [
+        [
+          {
+            "node": "Clean Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean Markdown": {
+      "main": [
+        [
+          {
+            "node": "Has Images?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Images?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Image Loop",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Pass Through Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Image Loop": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Images": {
+      "main": [
+        [
+          {
+            "node": "Reassemble Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Check": {
+      "main": [
+        [
+          {
+            "node": "Preserve Image Index",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Describe Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Describe Image": {
+      "main": [
+        [
+          {
+            "node": "Preserve Image Index",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preserve Image Index": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reassemble Markdown": {
+      "main": [
+        [
+          {
+            "node": "Sanitize Filename",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pass Through Markdown": {
+      "main": [
+        [
+          {
+            "node": "Sanitize Filename",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sanitize Filename": {
+      "main": [
+        [
+          {
+            "node": "Detect Doc Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect Doc Type": {
+      "main": [
+        [
+          {
+            "node": "Build Frontmatter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Frontmatter": {
+      "main": [
+        [
+          {
+            "node": "Upload to MinIO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to MinIO": {
+      "main": [
+        [
+          {
+            "node": "Prepare Chunk+Embed Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Chunk+Embed Input": {
+      "main": [
+        [
+          {
+            "node": "Chunk + Embed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk + Embed": {
+      "main": [
+        [
+          {
+            "node": "Send Success Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Send Error Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "b1a1b1c1-0004-4a1a-9a1a-000000000001",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "smartrag-ingest-document",
+  "tags": [
+    {
+      "name": "RAG"
+    }
+  ]
+}
