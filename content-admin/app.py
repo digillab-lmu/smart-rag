@@ -27,6 +27,7 @@ import auth
 import storage
 from env_file import read_env, set_env_var
 from flowise_client import FlowiseClient, FlowiseError
+from llm_client import LLMError, optimize_field
 from neo4j_client import Neo4jClient, Neo4jError
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-7s  %(message)s")
@@ -240,6 +241,31 @@ def slot_view(slot: int):
         error=error,
         success=success,
     )
+
+
+# ─── "Optimize with AI" — one-shot, per-field content suggestion ────────────────
+@app.route("/slot/<int:slot>/optimize", methods=["POST"])
+@auth.login_required
+def slot_optimize(slot: int):
+    if not (1 <= slot <= storage.MAX_SLOTS):
+        return {"error": "Invalid slot."}, 404
+
+    payload = request.get_json(silent=True) or {}
+    field = payload.get("field", "")
+    text = payload.get("text", "")
+
+    # Scoped to known content fields only — refuses to spend an LLM call on
+    # arbitrary field names the client might send.
+    if field not in agent_templates.FIELD_HELP:
+        return {"error": "Unknown field."}, 400
+
+    env = read_env()
+    try:
+        result = optimize_field(field, agent_templates.FIELD_HELP[field], text, env)
+    except LLMError as exc:
+        logger.error("Optimize failed for slot %s field %s: %s", slot, field, exc)
+        return {"error": str(exc)}, 502
+    return result
 
 
 def _do_import(slot: int, archetype: str, client: FlowiseClient) -> str | None:
