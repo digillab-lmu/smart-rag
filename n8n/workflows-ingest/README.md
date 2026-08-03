@@ -26,11 +26,15 @@ on the HTTP request.
 
 Both workflows only depend on services already part of this repo's own
 `docker-compose.yml` (profile `core`, always deployed): `smartrag-docling`
-(self-hosted, CPU-only Docling), `smartrag-minio`, `smartrag-weaviate`, and
-whichever `LLM_PROVIDER`/`EMBEDDING_PROVIDER` is configured in `.env` (no
-self-hosted LLM/embedding service required — see the batch's commit history
-for why the earlier VHB-derived versions of these workflows depended on an
-external, GPU-bound Ollama instance and why that dependency was removed).
+(self-hosted, CPU-only Docling), `smartrag-markdowncleaner` (self-hosted
+wrapper around the `markdowncleaner` PyPI package, see `markdowncleaner/`
+at the repo root — strips references/footnotes/copyright-notice sections
+and fixes PDF-conversion artifacts before chunking), `smartrag-minio`,
+`smartrag-weaviate`, and whichever `LLM_PROVIDER`/`EMBEDDING_PROVIDER` is
+configured in `.env` (no self-hosted LLM/embedding service required — see
+the batch's commit history for why the earlier VHB-derived versions of
+these workflows depended on an external, GPU-bound Ollama instance and
+why that dependency was removed).
 
 ## Import
 
