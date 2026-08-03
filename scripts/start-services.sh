@@ -58,6 +58,7 @@ CORE_SERVICES=(
     smartrag-flowise
     smartrag-n8n
     smartrag-content-admin
+    smartrag-docling
 )
 EXTRA_SERVICES=()
 [[ "${COMPOSE_PROFILES:-core}" == *observability* ]] && EXTRA_SERVICES+=(
