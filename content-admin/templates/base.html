@@ -31,6 +31,18 @@
       background: #2563eb; color: white; font-size: 1rem; cursor: pointer;
     }
     button.secondary { background: #6b7280; }
+    button.optimize-btn {
+      background: transparent; color: #2563eb; border: 1px solid #2563eb;
+      padding: 0.35rem 0.75rem; font-size: 0.85rem; margin-top: 0.5rem;
+    }
+    button.optimize-accept, button.optimize-discard { margin-top: 0.75rem; margin-right: 0.5rem; }
+    .optimize-result {
+      margin-top: 0.5rem; padding: 0.75rem; border: 1px solid #2563eb55;
+      border-radius: 6px; background: #2563eb11;
+    }
+    .optimize-result .suggestion-text {
+      white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 0.9rem;
+    }
     table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
     td, th { text-align: left; padding: 0.5rem; border-bottom: 1px solid #8884; }
     code, pre { background: #8882; padding: 0.15rem 0.35rem; border-radius: 4px; }
