@@ -234,6 +234,7 @@ def slot_view(slot: int):
         archetypes=agent_templates.ARCHETYPES,
         descriptions=agent_templates.ARCHETYPE_DESCRIPTIONS,
         field_help=agent_templates.FIELD_HELP,
+        field_examples=agent_templates.FIELD_EXAMPLES,
         existing=existing,
         fields=fields,
         error=error,
