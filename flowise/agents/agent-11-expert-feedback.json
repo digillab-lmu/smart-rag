@@ -700,12 +700,13 @@
                 "weaviateTextKey": "text",
                 "weaviateMetadataKeys": "[\"source_title\", \"authors\", \"chunk_index\", \"agent_id\", \"doc_type\", \"section\", \"chapter_title\", \"parent_chapter_title\", \"section_type\", \"section_id\", \"effect_size\", \"page_number\", \"speaker\", \"year\"]",
                 "topK": "5",
-                "weaviateFilter": "",
+                "weaviateFilter": "{\"operator\": \"Equal\", \"target\": {\"property\": \"agent_id\"}, \"value\": {{AGENT_NUMBER}}}",
                 "searchType": "similarity",
                 "fetchK": "10",
                 "lambda": "",
                 "alpha": "0.75",
-                "vectorStore": "weaviate"
+                "vectorStore": "weaviate",
+                "weaviateGrpcHost": "smartrag-weaviate:50051"
               },
               "embeddingModelConfig": {
                 "modelName": "{{EMBEDDING_MODEL}}",

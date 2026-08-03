@@ -705,7 +705,8 @@
                 "fetchK": "10",
                 "lambda": "",
                 "alpha": "0.75",
-                "vectorStore": "weaviate"
+                "vectorStore": "weaviate",
+                "weaviateGrpcHost": "smartrag-weaviate:50051"
               },
               "embeddingModelConfig": {
                 "modelName": "{{EMBEDDING_MODEL}}",
