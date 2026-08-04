@@ -148,6 +148,40 @@
       border-left: 3px solid #c0392b; padding: 0.4rem 0 0.4rem 0.7rem;
       opacity: 1; font-size: 0.85rem;
     }
+    .guide-steps { list-style: none; padding: 0; margin: 1.5rem 0 0; counter-reset: step; }
+    .guide-step {
+      counter-increment: step; position: relative;
+      border: 1px solid var(--border); border-left: 4px solid var(--border);
+      border-radius: 6px; padding: 0.9rem 1rem; margin-bottom: 0.9rem;
+    }
+    /* The left edge carries the state, so the page can be read as a column
+       of colours before a single word of it is read. */
+    .guide-step.state-ok { border-left-color: var(--accent); }
+    .guide-step.state-warn { border-left-color: #d68910; }
+    .guide-step.state-fail { border-left-color: #c0392b; }
+    .guide-step.state-unknown { border-left-color: #6b7280; }
+    .guide-step-head { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+    .guide-step-head strong::before { content: counter(step) ". "; opacity: 0.5; font-weight: 400; }
+    .guide-badge {
+      font-size: 0.75rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.04em; padding: 0.1rem 0.45rem; border-radius: 4px;
+      background: #8882; white-space: nowrap;
+    }
+    .state-ok .guide-badge { background: var(--accent-tint); color: var(--accent); }
+    .state-warn .guide-badge { background: #d689101a; color: #b9770e; }
+    .state-fail .guide-badge { background: #c0392b1a; color: #c0392b; }
+    .guide-result { font-size: 0.92rem; margin: 0.4rem 0; }
+    .guide-detail, .guide-detail-inline {
+      font-family: ui-monospace, monospace; font-size: 0.8rem; opacity: 0.8;
+    }
+    .guide-detail { white-space: pre-wrap; word-break: break-word; margin: 0.4rem 0; }
+    .guide-substeps { list-style: none; padding: 0; margin: 0.4rem 0; font-size: 0.9rem; }
+    .guide-substeps li { padding: 0.15rem 0; }
+    .guide-substeps li::before { margin-right: 0.4rem; }
+    .guide-substeps .sub-ok::before { content: "✓"; color: var(--accent); }
+    .guide-substeps .sub-fail::before { content: "✕"; color: #c0392b; }
+    .guide-why { font-size: 0.8rem; margin-top: 0.4rem; }
+
     .copy-row { display: flex; gap: 0.5rem; align-items: stretch; }
     .copy-row input { font-family: ui-monospace, monospace; font-size: 0.85rem; }
     .copy-row .copy-btn { margin-top: 0.25rem; white-space: nowrap; flex-shrink: 0; }
@@ -199,6 +233,7 @@
 
   {% if session.get('logged_in') %}
   <nav>
+    <a href="{{ url_for('getting_started') }}">{{ t('guide_title') }}</a>
     <a href="{{ url_for('dashboard') }}">{{ t('nav_agents') }}</a>
     <a href="{{ url_for('upload') }}">{{ t('nav_documents') }}</a>
     <a href="{{ url_for('graph_guidance') }}">{{ t('nav_graph') }}</a>
