@@ -70,6 +70,62 @@
   <button type="submit" name="action" value="import">{{ t('slot_import') }}</button>
 </form>
 
+{% if existing.get('chatflow_id') %}
+{# Its own form, deliberately outside the content form: publishing changes
+   who can reach the agent, not what it says, and must never be submitted
+   as a side effect of saving content. #}
+<details class="publish-box" {% if is_public %}open{% endif %}>
+  <summary><strong>{{ t('publish_heading') }}</strong></summary>
+  <p class="note">{{ t('publish_intro') }}</p>
+
+  <p class="publish-state {% if is_public %}is-public{% endif %}">
+    {% if chatflow_gone %}{{ t('publish_state_gone') }}
+    {% elif is_public is none %}{{ t('publish_state_unknown') }}
+    {% elif is_public %}{{ t('publish_state_public') }}
+    {% else %}{{ t('publish_state_private') }}{% endif %}
+  </p>
+
+  {% if is_public %}
+    {% if public_url %}
+    <label for="public-url">{{ t('publish_url_label') }}</label>
+    <div class="copy-row">
+      <input type="text" id="public-url" value="{{ public_url }}" readonly>
+      <button type="button" class="copy-btn" data-copy="public-url">{{ t('publish_copy') }}</button>
+    </div>
+
+    <label for="embed-snippet">{{ t('publish_embed_label') }}</label>
+    <p class="note" style="margin-top: 0.15rem;">{{ t('publish_embed_help') }}</p>
+    <div class="copy-row">
+      <input type="text" id="embed-snippet" readonly
+             value='<iframe src="{{ public_url }}" style="width: 100%; height: 600px; border: none;"></iframe>'>
+      <button type="button" class="copy-btn" data-copy="embed-snippet">{{ t('publish_copy') }}</button>
+    </div>
+    {% else %}
+    <p class="error">{{ t('publish_err_no_domain') }}</p>
+    {% endif %}
+  {% endif %}
+
+  <form method="post">
+    <input type="hidden" name="archetype" value="{{ existing.archetype }}">
+    {% if is_public %}
+    <button type="submit" name="action" value="unpublish" class="secondary">
+      {{ t('publish_unpublish_button') }}
+    </button>
+    {% else %}
+    <p class="note publish-warning">{{ t('publish_warning') }}</p>
+    {# Single-quoted attribute on purpose: |tojson escapes < > & and the
+       single quote, but NOT the double quote it wraps the string in — in a
+       double-quoted attribute the value would be cut off at the first one
+       and the confirmation would silently never appear. #}
+    <button type="submit" name="action" value="publish"
+            onclick='return confirm({{ t("publish_confirm")|tojson }});'>
+      {{ t('publish_button') }}
+    </button>
+    {% endif %}
+  </form>
+</details>
+{% endif %}
+
 <script>
 // Labels the handler swaps in at runtime — rendered here rather than
 // hardcoded in the script so they follow the GUI language like everything else.
@@ -143,6 +199,30 @@ document.addEventListener('click', function (e) {
     discard.closest('.optimize-result').hidden = true;
   }
 });
+
+// Copy-to-clipboard for the public link and the embed snippet. Falls back to
+// selecting the text when the Clipboard API is unavailable — it needs a
+// secure context, and someone reaching this page over plain HTTP on a test
+// box should still be able to grab the link by hand.
+(function () {
+  var COPIED = {{ t('publish_copied')|tojson }};
+  var COPY = {{ t('publish_copy')|tojson }};
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.copy-btn');
+    if (!btn) return;
+    var field = document.getElementById(btn.dataset.copy);
+    if (!field) return;
+
+    field.select();
+    field.setSelectionRange(0, field.value.length);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(field.value).catch(function () {});
+    }
+    btn.textContent = COPIED;
+    setTimeout(function () { btn.textContent = COPY; }, 1500);
+  });
+})();
 </script>
 {% endif %}
 {% endblock %}

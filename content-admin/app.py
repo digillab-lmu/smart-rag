@@ -69,6 +69,27 @@ MAX_UPLOAD_BYTES = 200 * 1024 * 1024  # 200 MB
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
 
 
+def _subdomain_host(service: str, env: dict) -> str:
+    """Mirrors subdomain_host() in scripts/lib/common.sh — the same rule the
+    bootstrap wizard used to name the vhost and request the certificate, so a
+    URL shown here is the one nginx actually serves. Kept as an exact mirror
+    (prefix-service.domain when SUBDOMAIN_PREFIX is set, service.domain
+    otherwise) rather than a second, divergent naming scheme."""
+    domain = env.get("DOMAIN", "").strip()
+    if not domain:
+        return ""
+    prefix = env.get("SUBDOMAIN_PREFIX", "").strip()
+    return f"{prefix}-{service}.{domain}" if prefix else f"{service}.{domain}"
+
+
+def _public_chat_url(chatflow_id: str, env: dict) -> str:
+    """The student-facing URL of a published agent. Flowise serves its public
+    chat UI at /chatbot/<id> (ChatbotRoutes), and the smart-rag vhost proxies
+    everything, so no extra routing is needed."""
+    host = _subdomain_host("smart-rag", env)
+    return f"https://{host}/chatbot/{chatflow_id}" if host and chatflow_id else ""
+
+
 def _flowise_client() -> FlowiseClient | None:
     env = read_env()
     api_key = env.get("FLOWISE_API_KEY")
@@ -226,11 +247,33 @@ def flowise_setup():
 def dashboard():
     env = read_env()
     slots = storage.all_slots()
+
+    # One list call covers all ten slots — asking Flowise per slot would be
+    # ten round trips for a table. Ids missing from the answer were deleted
+    # in Flowise, so they simply aren't in the map and render as not public.
+    public_ids: set[str] = set()
+    client = _flowise_client()
+    if client is not None:
+        try:
+            public_ids = {
+                cf["id"] for cf in client.list_chatflows()
+                if cf.get("isPublic") and cf.get("id")
+            }
+        except FlowiseError as exc:
+            # The dashboard is the page an operator lands on; a Flowise
+            # outage must not replace it with an error.
+            logger.error("Could not read published states: %s", exc)
+
     return render_template(
         "dashboard.html",
         slots=slots,
         archetypes=agent_templates.archetypes_for(current_language()),
         flowise_configured=bool(env.get("FLOWISE_API_KEY")),
+        public_ids=public_ids,
+        public_urls={
+            num: _public_chat_url(data.get("chatflow_id") or "", env)
+            for num, data in slots.items()
+        },
     )
 
 
@@ -258,6 +301,28 @@ def slot_view(slot: int):
                     "system_prompt": None,
                     "chatflow_id": None,
                 }
+
+            elif action in ("publish", "unpublish"):
+                # Deliberately separate from save/import: publishing changes
+                # who can reach the agent, not what it says, and must never
+                # ride along on a content save the operator didn't connect
+                # with going public.
+                chatflow_id = existing.get("chatflow_id")
+                client = _flowise_client()
+                if not chatflow_id:
+                    error = _t("publish_err_not_imported")
+                elif client is None:
+                    error = _t("slot_err_not_connected")
+                else:
+                    try:
+                        client.set_chatflow_public(chatflow_id, action == "publish")
+                    except FlowiseError as exc:
+                        logger.error("Publish toggle failed for slot %s: %s", slot, exc)
+                        error = _t("publish_err_failed", exc)
+                    else:
+                        success = _t(
+                            "publish_ok" if action == "publish" else "unpublish_ok"
+                        )
 
             elif action in ("save", "import", "reset_prompt"):
                 submitted_prompt = request.form.get("system_prompt", "")
@@ -335,9 +400,38 @@ def slot_view(slot: int):
         error = _t("slot_err_template", exc)
         fields = []
 
+    # Read the published state back from Flowise rather than caching it in
+    # slots.json: it can also be toggled in Flowise's own UI, and a stale
+    # "not published" badge next to a live public URL would be worse than
+    # one extra internal call. A Flowise outage must not take this page
+    # down, so failure degrades to "unknown" instead of raising.
+    env = read_env()
+    is_public = None
+    chatflow_gone = False
+    publish_client = _flowise_client()
+    if existing.get("chatflow_id") and publish_client is not None:
+        try:
+            chatflow = publish_client.get_chatflow(existing["chatflow_id"])
+        except FlowiseError as exc:
+            logger.error("Could not read published state for slot %s: %s", slot, exc)
+        else:
+            if chatflow is None:
+                # Deleted in Flowise while slots.json still remembers the id.
+                # Said plainly rather than shown as "unknown": the operator
+                # needs to re-import, and "unknown" would send them looking
+                # for a connection problem that isn't there.
+                logger.info("Slot %s references chatflow %s, which no longer "
+                            "exists in Flowise", slot, existing["chatflow_id"])
+                chatflow_gone = True
+            else:
+                is_public = bool(chatflow.get("isPublic"))
+
     return render_template(
         "slot.html",
         slot=slot,
+        is_public=is_public,
+        chatflow_gone=chatflow_gone,
+        public_url=_public_chat_url(existing.get("chatflow_id") or "", env),
         archetypes=agent_templates.archetypes_for(current_language()),
         descriptions=agent_templates.archetype_descriptions_for(current_language()),
         field_help=agent_templates.field_help_for(current_language()),

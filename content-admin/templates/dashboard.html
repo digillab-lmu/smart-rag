@@ -13,6 +13,7 @@
     <th>{{ t('dash_col_name') }}</th>
     <th>{{ t('dash_col_archetype') }}</th>
     <th>{{ t('dash_col_status') }}</th>
+    <th>{{ t('dash_col_public') }}</th>
     <th></th>
   </tr>
   {% for num in range(1, 11) %}
@@ -25,6 +26,13 @@
       {% if s.get('chatflow_id') %}{{ t('dash_status_imported') }}
       {% elif s.get('archetype') %}{{ t('dash_status_saved') }}
       {% else %}{{ t('dash_status_empty') }}{% endif %}
+    </td>
+    <td>
+      {% if s.get('chatflow_id') and s.get('chatflow_id') in public_ids %}
+        {% if public_urls.get(num|string) %}
+        <a href="{{ public_urls[num|string] }}" target="_blank" rel="noopener noreferrer">{{ t('dash_public_yes') }}</a>
+        {% else %}{{ t('dash_public_yes') }}{% endif %}
+      {% else %}{{ t('dash_public_no') }}{% endif %}
     </td>
     <td><a href="{{ url_for('slot_view', slot=num) }}">{{ t('dash_edit') }}</a></td>
   </tr>
