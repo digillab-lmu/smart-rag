@@ -29,19 +29,51 @@ ignored by the version this project pins. Instead:
    account-recovery flow (or its API/database directly) — this project
    doesn't manage that credential.
 
-Nothing to import here yet — Flowise starts empty. Agent import (the ~6
-templates in `flowise/agents/`) is planned but not yet built (see
-[What's NOT done](../README.md#whats-not-done-by-the-bootstrap-yet) in the
-README) — for now, importing/configuring agents is a manual, one-off task
-through the Flowise UI.
+Flowise starts empty, and you don't import agents here by hand: you fill
+in a course-content template in the [Content Admin GUI](#content-authoring-course-material-agent-prompts-knowledge-graph)
+and press "Save and import to Flowise". The one manual step is giving that
+GUI an API key — its **Flowise Connection** page walks you through it
+(Flowise has no supported way to hand out a key automatically, same
+chicken-and-egg as the admin account above).
 
 ### n8n (automation) — `https://n8n.your-domain.example`
 
-Same pattern as Flowise: first visit prompts you to create the owner
-account. Stored in n8n's own database, not `.env`.
+Same pattern as Flowise: the first visit prompts you to create the owner
+account, stored in n8n's own database, not `.env`.
 
-Workflow import (`n8n/workflows/`) is likewise not yet automated — see the
-README's "What's NOT done" section.
+**This one is required, and it is why a fresh install finishes in two
+phases.** The ingest workflows are imported by a script, but that script
+needs an existing n8n owner to assign the imported credentials and
+workflows to — and that account can only be created in a browser. So on a
+first run, `bootstrap.sh` cannot complete this step and says so:
+
+```
+━━━ Setup INCOMPLETE — 2 manual steps left ━━━
+```
+
+Finish it in this order:
+
+1. Open `https://n8n.your-domain.example` and complete n8n's one-time
+   owner setup (email + password).
+2. Back on the server, run:
+
+   ```bash
+   sudo bash scripts/deploy-n8n-workflows.sh
+   ```
+
+That imports the MinIO/SMTP credentials and both ingest workflows,
+activates the document-ingest workflow, restarts n8n, and then **verifies
+that the webhook is actually registered** before reporting success. It is
+re-runnable at any time (imports are keyed by fixed ids, so a re-run
+updates in place), and it's also available from `sudo smartrag` →
+*Ingest — (re-)import n8n credentials + workflows*.
+
+**Until you do this, document upload will fail with a 404.** That 404 is
+the single most common symptom of a half-finished install: the Content
+Admin GUI is working correctly and n8n simply has no webhook listening.
+The GUI's **Getting started** page checks this — along with the API keys,
+the Flowise connection, your agents, and the Docling/markdowncleaner/
+Weaviate services — and tells you which step is missing, at any time.
 
 ### MinIO console — `https://minio.your-domain.example`
 
@@ -126,19 +158,39 @@ edit.
 
 ## Content authoring (course material, agent prompts, knowledge graph)
 
-**Not yet available.** The 6 agent templates in `flowise/agents/` contain
-~25 placeholders (`{{CONCEPT_LIST}}`, `{{PERSONA_NAME}}`, `{{TOPIC_NAME}}`,
-etc.) that need real, course-specific teaching content — this is planned
-as a dedicated web-based content admin (separate from `scripts/admin.sh`,
-so it never needs host/Docker-level privileges), covering:
+This is done in the **Content Admin GUI** at
+`https://content.your-domain.example` — a separate app from
+`scripts/admin.sh` on purpose: it only ever talks to Flowise, n8n and
+Neo4j over the internal Docker network, and never touches Docker or the
+host filesystem, so a compromised content GUI cannot escalate to host
+control. (That boundary is also why it can show you the
+`deploy-n8n-workflows.sh` command but cannot run it for you.)
 
-- Filling in the agent template placeholders and importing the resulting
-  agents into Flowise
-- Uploading and managing RAG source documents
-- Editing the Neo4j concept-prerequisite graph (`neo4j/schema.cypher`'s
-  data model: Topics, Concepts, `BELONGS_TO`, `PREREQUISITE_FOR`)
+On first visit it asks you to create its own admin account — separate
+from the Flowise and n8n accounts above, and unrelated to `.env`.
 
-Until it ships, do these manually through the Flowise / n8n / Neo4j
-Browser UIs, using the JSON templates in `flowise/agents/` and
-`n8n/workflows/`, and `neo4j/seed.example.cypher` as a starting point for
-your own graph data.
+What you do there:
+
+- **Getting started** — a live checklist of everything that has to be in
+  place: API keys, the Flowise connection, your agents, the n8n ingest
+  webhook, and the Docling/markdowncleaner/Weaviate services. Each line is
+  checked by asking the service itself at that moment, so it is also the
+  fastest way to answer "why isn't this working?" later on.
+- **Agents** — up to 10 slots, each based on one of the agent archetypes
+  in `flowise/agents/`. Fill in a plain form for that archetype's course
+  content and import it into Flowise with one click; anything already
+  known from the install (course name, LLM provider, embedding model, …)
+  is filled in for you. Each agent's system prompt can be viewed and
+  edited, and reset to the shipped default. An imported agent can also be
+  published as a public chat link — read the warning on that page first.
+- **Documents** — upload course material for retrieval. The GUI can read
+  the bibliographic details out of the PDF or look them up from a DOI or
+  ISBN, and suggest keywords. Processing runs asynchronously in n8n;
+  a large scanned PDF can take tens of minutes, and you get an email when
+  it's done. **This needs the n8n step above to be finished.**
+- **Knowledge Graph** — a guided (not automated) path to seed the Neo4j
+  concept graph: the data model explained, a ready-to-copy prompt for an
+  AI of your choice, and a box to paste and run the resulting Cypher.
+  `neo4j/seed.example.cypher` is a starting point for doing it by hand.
+
+The interface is available in English and German (switch top right).
