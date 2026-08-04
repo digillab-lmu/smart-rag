@@ -268,44 +268,31 @@ fi
 # what the import actually created would leave the workflow inactive without
 # any command here failing. So don't claim it works — ask.
 #
-# GET, not POST: a POST would start a real ingest run. n8n answers 404 either
-# way, but with two different messages, and the distinction is the whole
-# check (verified in n8n's packages/cli/src/errors/response-errors/
-# webhook-not-found.error.ts at tag n8n@1.123.0):
-#
-#   registered for POST, asked with GET
-#       "This webhook is not registered for GET requests.
-#        Did you mean to make a POST request?"      → this is SUCCESS
-#   not registered at all (missing or inactive workflow)
-#       'The requested webhook "GET document-ingest" is not registered.'
-#
-# Same probe the Content Admin's setup guide uses, so both agree.
+# The probe itself lives in common.sh as n8n_webhook_state(), shared with
+# admin.sh's status view so the two can never disagree about whether ingest
+# is live (it also matches the Content Admin's System status page).
 info "$(t n8n_verifying)"
 
 N8N_LOCAL_URL="http://127.0.0.1:${N8N_PORT:-5678}"
 
 # The restart above means n8n is still booting; wait for its own healthz
 # before drawing any conclusion from the webhook's answer.
-verify_body=""
+verify_state="unreachable"
 for _ in $(seq 1 30); do
     if curl -sf --max-time 3 "$N8N_LOCAL_URL/healthz" >/dev/null 2>&1; then
-        verify_body="$(curl -s --max-time 5 "$N8N_LOCAL_URL/webhook/document-ingest" 2>&1)"
+        verify_state="$(n8n_webhook_state "$N8N_LOCAL_URL")"
         break
     fi
     sleep 2
 done
 
-if [[ -z "$verify_body" ]]; then
-    # n8n never came back up. The import itself may well have worked, so
-    # this is a warning with an instruction, not a failure of this script.
-    warn "$(t n8n_verify_unreachable "$N8N_LOCAL_URL")"
-elif grep -q "not registered for GET requests" <<<"$verify_body"; then
-    ok "$(t n8n_verify_ok)"
-elif grep -q "is not registered" <<<"$verify_body"; then
-    echo "$verify_body" >&2
-    die "$(t n8n_verify_not_registered)"
-else
-    warn "$(t n8n_verify_unexpected "${verify_body:0:200}")"
-fi
+case "$verify_state" in
+    registered)   ok "$(t n8n_verify_ok)" ;;
+    unregistered) die "$(t n8n_verify_not_registered)" ;;
+    # n8n never came back up, or answered something unexpected. The import
+    # itself may well have worked, so this is a warning with an
+    # instruction, not a failure of this script.
+    *)            warn "$(t n8n_verify_unreachable "$N8N_LOCAL_URL")" ;;
+esac
 
 ok "$(t n8n_workflows_done)"
