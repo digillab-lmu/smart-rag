@@ -170,6 +170,10 @@ run_deployment_phases() {
     bash "$SCRIPT_DIR/get-ssl-certs.sh"           --lang "$LANG_CHOICE"
     bash "$SCRIPT_DIR/start-services.sh"          --lang "$LANG_CHOICE"
     bash "$SCRIPT_DIR/deploy-schemas.sh"          --lang "$LANG_CHOICE"
+    # Skips itself (exit 0) if n8n has no owner account yet — expected on a
+    # first run, since that's a manual browser step. Re-run the script
+    # afterwards, or just re-run bootstrap --continue.
+    bash "$SCRIPT_DIR/deploy-n8n-workflows.sh"    --lang "$LANG_CHOICE"
     bash "$SCRIPT_DIR/generate-lti-keys.sh"       --lang "$LANG_CHOICE"
 
     header "$(t orch_complete)"
