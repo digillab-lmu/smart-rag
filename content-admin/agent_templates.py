@@ -742,26 +742,63 @@ def auto_fill_from_env(
                     vsc["weaviateIndex"] = weaviate_collection
 
 
+def _set_config_credential(cfg: Any, credential_id: str) -> None:
+    """Attach a credential to one node config block.
+
+    Flowise's agentflow nodes read the credential from FLOWISE_CREDENTIAL_ID,
+    NOT from the `credential` key the templates ship with. Verified in the
+    pinned version's own source (flowise@3.1.3):
+
+        Agent.ts:909   credential: modelConfig['FLOWISE_CREDENTIAL_ID']
+        Agent.ts:830   credential: selectedEmbeddingModelConfig['FLOWISE_CREDENTIAL_ID']
+        Agent.ts:845   credential: selectedVectorStoreConfig['FLOWISE_CREDENTIAL_ID']
+        LLM.ts:376     credential: modelConfig['FLOWISE_CREDENTIAL_ID']
+
+    Setting only `credential` — which is what this function used to do for
+    the LLM configs — means the node starts with no credential at all and
+    falls back to the provider SDK's own environment variable, which in a
+    container that has none produces "Missing credentials. Please pass an
+    apiKey, or set the OPENAI_API_KEY environment variable" at the first
+    message, regardless of which provider was configured.
+
+    Both keys are written: FLOWISE_CREDENTIAL_ID is what the runtime reads,
+    and `credential` is what the templates declare and the canvas UI shows,
+    so keeping them in sync avoids an imported agent that works but looks
+    unconfigured when opened in Flowise.
+    """
+    if not isinstance(cfg, dict):
+        return
+    cfg["FLOWISE_CREDENTIAL_ID"] = credential_id
+    cfg["credential"] = credential_id
+
+
 def set_credential_ids(
-    flow_data: dict[str, Any], llm_credential_id: str, embed_credential_id: str
+    flow_data: dict[str, Any],
+    llm_credential_id: str,
+    embed_credential_id: str,
+    vectorstore_credential_id: str = "",
 ) -> None:
     """Wire the Flowise credential IDs (created via flowise_client) into every
     node that references one — the templates ship with credential: ""."""
     for node in flow_data.get("nodes", []):
-        inputs = node.get("data", {}).get("inputs", {})
+        inputs = node.get("data", {}).get("inputs") if isinstance(node, dict) else None
+        if not isinstance(inputs, dict):
+            # A node without inputs is a note or a malformed template entry —
+            # skip it rather than failing the whole import over it.
+            continue
         for cfg_key in ("agentModelConfig", "llmModelConfig"):
-            cfg = inputs.get(cfg_key)
-            if isinstance(cfg, dict) and "credential" in cfg:
-                cfg["credential"] = llm_credential_id
+            _set_config_credential(inputs.get(cfg_key), llm_credential_id)
+
         vs_list = inputs.get("agentKnowledgeVSEmbeddings")
         if isinstance(vs_list, list):
             for vs in vs_list:
-                emc = vs.get("embeddingModelConfig") if isinstance(vs, dict) else None
-                if isinstance(emc, dict):
-                    # Not "credential" like agentModelConfig/llmModelConfig —
-                    # verified against Flowise's own Agent.ts source, which
-                    # reads embeddingModelConfig['FLOWISE_CREDENTIAL_ID'].
-                    # Always set (not conditional on the key pre-existing):
-                    # our templates don't declare it at all yet, since
-                    # credential:"" was only ever copied onto the LLM configs.
-                    emc["FLOWISE_CREDENTIAL_ID"] = embed_credential_id
+                if not isinstance(vs, dict):
+                    continue
+                _set_config_credential(vs.get("embeddingModelConfig"), embed_credential_id)
+                # Weaviate runs with AUTHENTICATION_APIKEY_ENABLED=true (see
+                # docker-compose.yml), so retrieval needs a credential too —
+                # without one the agent answers, then fails to retrieve.
+                if vectorstore_credential_id:
+                    _set_config_credential(
+                        vs.get("vectorStoreConfig"), vectorstore_credential_id
+                    )

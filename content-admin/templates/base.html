@@ -181,6 +181,12 @@
     .guide-substeps .sub-ok::before { content: "✓"; color: var(--accent); }
     .guide-substeps .sub-fail::before { content: "✕"; color: #c0392b; }
     .guide-why { font-size: 0.8rem; margin-top: 0.4rem; }
+    /* Plain prose, not monospace: this is a message to send to a person,
+       and the textarea default would make it read like a config file. */
+    .admin-message {
+      font-family: inherit; font-size: 0.9rem; white-space: pre-wrap;
+      background: var(--accent-tint); border-color: var(--accent);
+    }
 
     .copy-row { display: flex; gap: 0.5rem; align-items: stretch; }
     .copy-row input { font-family: ui-monospace, monospace; font-size: 0.85rem; }
