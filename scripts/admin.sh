@@ -224,7 +224,10 @@ action_n8n_workflows() {
         # already said so on screen. Calling that "failed" would send them
         # looking for a broken import instead of the browser step they
         # deferred.
-        if (( rc != 0 && rc != EXIT_SKIPPED )); then
+        # EXIT_UNVERIFIED: the import ran but n8n hadn't restarted in time
+        # to confirm it. The script has already said so; the Status entry
+        # shows the real answer once n8n is back.
+        if (( rc != 0 && rc != EXIT_SKIPPED && rc != EXIT_UNVERIFIED )); then
             err "$(t admin_n8n_failed)"
         fi
     fi

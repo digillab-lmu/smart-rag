@@ -275,24 +275,47 @@ info "$(t n8n_verifying)"
 
 N8N_LOCAL_URL="http://127.0.0.1:${N8N_PORT:-5678}"
 
+# How long to wait for n8n to come back after the restart. 60s was too
+# tight in practice — an n8n restarting against a busy Postgres regularly
+# needs longer, and reporting "could not verify" for a system that was
+# merely still booting sends the operator debugging a non-problem.
+# Overridable for two honest reasons: a slow or heavily loaded server may
+# need longer, and the test suite must not sit here for three minutes.
+VERIFY_TIMEOUT="${N8N_VERIFY_TIMEOUT:-180}"
+
 # The restart above means n8n is still booting; wait for its own healthz
 # before drawing any conclusion from the webhook's answer.
 verify_state="unreachable"
-for _ in $(seq 1 30); do
+verify_waited=0
+while (( verify_waited < VERIFY_TIMEOUT )); do
     if curl -sf --max-time 3 "$N8N_LOCAL_URL/healthz" >/dev/null 2>&1; then
         verify_state="$(n8n_webhook_state "$N8N_LOCAL_URL")"
         break
     fi
-    sleep 2
+    sleep 3
+    verify_waited=$(( verify_waited + 3 ))
 done
 
 case "$verify_state" in
-    registered)   ok "$(t n8n_verify_ok)" ;;
-    unregistered) die "$(t n8n_verify_not_registered)" ;;
-    # n8n never came back up, or answered something unexpected. The import
-    # itself may well have worked, so this is a warning with an
-    # instruction, not a failure of this script.
-    *)            warn "$(t n8n_verify_unreachable "$N8N_LOCAL_URL")" ;;
+    registered)
+        ok "$(t n8n_verify_ok)"
+        ok "$(t n8n_workflows_done)"
+        ;;
+    unregistered)
+        die "$(t n8n_verify_not_registered)"
+        ;;
+    *)
+        # n8n never came back up, or answered something unexpected. The
+        # import itself may well have worked — but saying so here is
+        # exactly the claim this verification exists to avoid. Report what
+        # is actually known and where to see the real answer, and exit
+        # non-zero so a caller can't treat this as a finished job.
+        warn "$(t n8n_verify_unreachable "$N8N_LOCAL_URL" "$VERIFY_TIMEOUT")"
+        warn "$(t n8n_verify_recheck)"
+        # Not exit 1: nothing observably broke, and aborting a whole
+        # install because n8n was still restarting would be wrong. But not
+        # exit 0 either — the caller must not print a success banner over
+        # an outcome nobody confirmed.
+        exit "$EXIT_UNVERIFIED"
+        ;;
 esac
-
-ok "$(t n8n_workflows_done)"

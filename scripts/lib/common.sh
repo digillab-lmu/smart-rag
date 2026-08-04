@@ -31,6 +31,13 @@ fi
 # (126/127/128+n).
 readonly EXIT_SKIPPED=10
 
+# A phase that ran, reported success at every step, but could not confirm
+# the result — so the outcome is genuinely unknown. Distinct from success
+# (we must not claim it works), from failure (nothing observably broke) and
+# from EXIT_SKIPPED (it did run). In practice: n8n was still restarting when
+# the webhook check gave up.
+readonly EXIT_UNVERIFIED=11
+
 # ─── n8n ingest webhook state ────────────────────────────────────────────────
 # Echoes one of: registered | unregistered | unreachable
 #
