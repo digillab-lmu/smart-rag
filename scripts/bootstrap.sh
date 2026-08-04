@@ -170,11 +170,38 @@ run_deployment_phases() {
     bash "$SCRIPT_DIR/get-ssl-certs.sh"           --lang "$LANG_CHOICE"
     bash "$SCRIPT_DIR/start-services.sh"          --lang "$LANG_CHOICE"
     bash "$SCRIPT_DIR/deploy-schemas.sh"          --lang "$LANG_CHOICE"
-    # Skips itself (exit 0) if n8n has no owner account yet — expected on a
-    # first run, since that's a manual browser step. Re-run the script
-    # afterwards, or just re-run bootstrap --continue.
-    bash "$SCRIPT_DIR/deploy-n8n-workflows.sh"    --lang "$LANG_CHOICE"
+    # Exits EXIT_SKIPPED if n8n has no owner account yet — expected on a
+    # first run, since creating that account is a manual browser step. The
+    # rest of the install is unaffected, so we carry on and report it at the
+    # end instead of aborting. `|| rc=$?` is required under `set -e`.
+    n8n_rc=0
+    bash "$SCRIPT_DIR/deploy-n8n-workflows.sh"    --lang "$LANG_CHOICE" || n8n_rc=$?
+    if (( n8n_rc != 0 && n8n_rc != EXIT_SKIPPED )); then
+        die "$(t orch_n8n_failed)"
+    fi
+
     bash "$SCRIPT_DIR/generate-lti-keys.sh"       --lang "$LANG_CHOICE"
+
+    # A run that skipped a required phase is not a completed install, and
+    # must not look like one. The old version printed the same "Complete"
+    # banner either way and left the follow-up as one line of prose in a
+    # long wall of text — which is exactly how an install reaches the point
+    # where the first sign of trouble is a 404 in the Content Admin GUI.
+    if (( n8n_rc == EXIT_SKIPPED )); then
+        header "$(t orch_incomplete)"
+        echo "  $(t orch_incomplete_intro)"
+        echo
+        echo "  $(t orch_incomplete_step1 "$(subdomain_host n8n "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")")"
+        echo "  $(t orch_incomplete_step2)"
+        echo
+        printf "      ${BOLD}sudo bash %s/deploy-n8n-workflows.sh${RESET}\n" "$SCRIPT_DIR"
+        echo
+        echo "  $(t orch_incomplete_then)"
+        echo
+        echo "  $(t orch_next_visit "$(subdomain_host smart-rag "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")")"
+        echo "  $(t orch_next_login)"
+        return 0
+    fi
 
     header "$(t orch_complete)"
     echo "  $(t orch_next_visit "$(subdomain_host smart-rag "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")")"

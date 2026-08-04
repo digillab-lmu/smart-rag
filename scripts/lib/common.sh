@@ -23,6 +23,14 @@ else
     RED='' YELLOW='' GREEN='' BLUE='' CYAN='' BOLD='' DIM='' RESET=''
 fi
 
+# ─── Exit codes ──────────────────────────────────────────────────────────────
+# A phase that could not run yet — not a failure, but not a success either.
+# Distinct from 0 so an orchestrating script can report an incomplete setup
+# instead of a clean finish, and from 1 so `set -e` handling stays honest
+# about what actually broke. Well outside the shell's own reserved range
+# (126/127/128+n).
+readonly EXIT_SKIPPED=10
+
 # ─── Log file (set by bootstrap.sh; may be empty) ─────────────────────────────
 LOG_FILE="${LOG_FILE:-}"
 

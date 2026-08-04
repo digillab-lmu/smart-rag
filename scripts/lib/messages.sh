@@ -339,6 +339,11 @@ declare -A MSG_EN=(
     [n8n_restarting]="Restarting n8n so the activation takes effect…"
     [n8n_restarted]="n8n restarted"
     [n8n_restart_failed]="Failed to restart n8n — activate the workflow manually in the n8n UI, or restart the container yourself"
+    [n8n_verifying]="Verifying the ingest webhook is registered..."
+    [n8n_verify_ok]="Ingest webhook is registered and accepting documents."
+    [n8n_verify_not_registered]="The ingest webhook is NOT registered even though import and activation reported success. The workflow is present but inactive, or its id differs from the one this script activates."
+    [n8n_verify_unreachable]="n8n did not come back up at %s within 60s, so the webhook could not be verified. The import itself looks fine — check 'docker logs smartrag-n8n', then re-run this script."
+    [n8n_verify_unexpected]="Unexpected answer while verifying the webhook: %s"
     [n8n_workflows_done]="n8n credentials and ingest workflows are in place. Documents can now be uploaded from the Content Admin GUI."
 
     # --- LTI keys (phase 11) --------------------------------------------------
@@ -377,6 +382,12 @@ declare -A MSG_EN=(
     [orch_complete]="Bootstrap complete. Your SMART RAG instance is now running."
     [orch_next_visit]="Visit: https://%s"
     [orch_next_login]="Login as: admin / (see credentials.txt for password)"
+    [orch_n8n_failed]="Importing the n8n credentials and workflows failed. The output above says why."
+    [orch_incomplete]="Setup INCOMPLETE — 2 manual steps left"
+    [orch_incomplete_intro]="Everything installed and started correctly, but the document-ingest workflows could NOT be imported yet: n8n has no owner account until a human creates one in a browser. Until you finish the two steps below, uploading a document in the Content Admin GUI will fail with a 404."
+    [orch_incomplete_step1]="1. Open https://%s and complete n8n's one-time owner setup (email + password)."
+    [orch_incomplete_step2]="2. Then run this command on this server:"
+    [orch_incomplete_then]="That command imports and activates the workflows, and verifies the webhook is live before it reports success. Afterwards, open Flowise and complete its one-time admin setup as well; course content is then authored in the Content Admin GUI, whose \"Getting started\" page re-checks all of this at any time. Day-to-day admin: sudo bash scripts/admin.sh"
     [orch_next_finalize]="Next: open n8n and Flowise in a browser and complete their one-time owner/admin setup, then re-run this script (or scripts/deploy-n8n-workflows.sh) so the ingest workflows get imported. Course content is authored in the Content Admin GUI. Day-to-day admin: sudo bash scripts/admin.sh"
 
     # --- uninstall ------------------------------------------------------------
@@ -819,6 +830,11 @@ declare -A MSG_DE=(
     [n8n_restarting]="n8n wird neu gestartet, damit die Aktivierung greift…"
     [n8n_restarted]="n8n neu gestartet"
     [n8n_restart_failed]="n8n-Neustart fehlgeschlagen — Workflow manuell in der n8n-Oberfläche aktivieren oder den Container selbst neu starten"
+    [n8n_verifying]="Prüfe, ob der Ingest-Webhook registriert ist..."
+    [n8n_verify_ok]="Ingest-Webhook ist registriert und nimmt Dokumente an."
+    [n8n_verify_not_registered]="Der Ingest-Webhook ist NICHT registriert, obwohl Import und Aktivierung Erfolg gemeldet haben. Der Workflow ist vorhanden, aber inaktiv — oder seine ID weicht von der ab, die dieses Skript aktiviert."
+    [n8n_verify_unreachable]="n8n war unter %s nicht innerhalb von 60s wieder erreichbar, der Webhook konnte deshalb nicht geprüft werden. Der Import selbst sieht in Ordnung aus — prüfe 'docker logs smartrag-n8n' und führe dieses Skript danach erneut aus."
+    [n8n_verify_unexpected]="Unerwartete Antwort beim Prüfen des Webhooks: %s"
     [n8n_workflows_done]="n8n-Credentials und Ingest-Workflows sind eingerichtet. Dokumente können jetzt über die Content-Admin-Oberfläche hochgeladen werden."
 
     # --- LTI keys (phase 11) --------------------------------------------------
@@ -857,6 +873,12 @@ declare -A MSG_DE=(
     [orch_complete]="Bootstrap abgeschlossen. Deine SMART RAG Instanz läuft jetzt."
     [orch_next_visit]="Öffne: https://%s"
     [orch_next_login]="Login als: admin / (Passwort in credentials.txt)"
+    [orch_n8n_failed]="Der Import der n8n-Credentials und -Workflows ist fehlgeschlagen. Die Ausgabe oben nennt den Grund."
+    [orch_incomplete]="Einrichtung UNVOLLSTÄNDIG — 2 manuelle Schritte fehlen"
+    [orch_incomplete_intro]="Alles wurde korrekt installiert und gestartet, aber die Ingest-Workflows konnten noch NICHT importiert werden: n8n hat kein Besitzerkonto, solange es nicht jemand im Browser anlegt. Bis die beiden Schritte unten erledigt sind, schlägt jeder Dokument-Upload in der Content-Admin-Oberfläche mit einem 404 fehl."
+    [orch_incomplete_step1]="1. Öffne https://%s und schließe die einmalige Besitzer-Einrichtung von n8n ab (E-Mail + Passwort)."
+    [orch_incomplete_step2]="2. Führe danach diesen Befehl auf diesem Server aus:"
+    [orch_incomplete_then]="Dieser Befehl importiert und aktiviert die Workflows und prüft vor der Erfolgsmeldung nach, dass der Webhook wirklich erreichbar ist. Öffne anschließend auch Flowise und schließe dort die einmalige Admin-Einrichtung ab; Kursinhalte werden danach in der Content-Admin-Oberfläche gepflegt, deren Seite \"Erste Schritte\" das alles jederzeit erneut prüft. Tagesbetrieb: sudo bash scripts/admin.sh"
     [orch_next_finalize]="Nächster Schritt: n8n und Flowise im Browser öffnen und dort die einmalige Besitzer-/Admin-Einrichtung abschließen, danach dieses Skript (oder scripts/deploy-n8n-workflows.sh) erneut ausführen, damit die Ingest-Workflows importiert werden. Kursinhalte werden in der Content-Admin-Oberfläche gepflegt. Tagesbetrieb: sudo bash scripts/admin.sh"
 
     # --- uninstall ------------------------------------------------------------
