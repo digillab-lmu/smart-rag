@@ -24,6 +24,7 @@ from flask import Flask, redirect, render_template, request, session, url_for
 
 import agent_templates
 import auth
+import i18n
 import storage
 from env_file import read_env, set_env_var
 from flowise_client import FlowiseClient, FlowiseError
@@ -79,6 +80,59 @@ def _n8n_client() -> N8nClient:
     return N8nClient(N8N_INTERNAL_URL)
 
 
+# ─── Language ───────────────────────────────────────────────────────────────────
+def current_language() -> str:
+    """Cookie first (an explicit choice), browser preference otherwise."""
+    cookie = request.cookies.get(i18n.LANGUAGE_COOKIE)
+    if cookie:
+        return i18n.normalize_language(cookie)
+    return i18n.language_from_accept_header(request.headers.get("Accept-Language"))
+
+
+def _t(key: str, *args) -> str:
+    """Request-scoped translate — resolves the language itself so call sites
+    (and templates) never have to pass it around."""
+    return i18n.t(key, *args, lang=current_language())
+
+
+@app.context_processor
+def inject_i18n():
+    """Makes t(), the active language, and the language list available to
+    every template without each route having to pass them in."""
+    return {
+        "t": _t,
+        "lang": current_language(),
+        "languages": i18n.LANGUAGES,
+    }
+
+
+@app.route("/language/<lang>")
+def set_language(lang: str):
+    """Sets the language cookie, then returns the operator to where they
+    were — the switch appears on every page, so bouncing to the dashboard
+    would lose their place. Only same-site relative paths are honoured, so
+    the Referer header can't be used to redirect somewhere else."""
+    target = request.referrer or url_for("dashboard")
+    if "://" in target:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(target)
+        if parsed.netloc and parsed.netloc != request.host:
+            target = url_for("dashboard")
+        else:
+            target = parsed.path or url_for("dashboard")
+
+    resp = redirect(target)
+    resp.set_cookie(
+        i18n.LANGUAGE_COOKIE,
+        i18n.normalize_language(lang),
+        max_age=i18n.LANGUAGE_COOKIE_MAX_AGE,
+        samesite="Lax",
+        httponly=False,
+    )
+    return resp
+
+
 def _neo4j_client() -> Neo4jClient:
     env = read_env()
     return Neo4jClient(
@@ -100,11 +154,11 @@ def setup():
         password = request.form.get("password", "")
         confirm = request.form.get("confirm", "")
         if not username or not password:
-            error = "Username and password are required."
+            error = _t("setup_err_required")
         elif password != confirm:
-            error = "Passwords do not match."
+            error = _t("setup_err_mismatch")
         elif len(password) < 12:
-            error = "Password must be at least 12 characters."
+            error = _t("setup_err_too_short")
         else:
             auth.create_admin_account(username, password)
             session["logged_in"] = True
@@ -127,7 +181,7 @@ def login():
             session["logged_in"] = True
             session["username"] = username
             return redirect(url_for("dashboard"))
-        error = "Invalid username or password."
+        error = _t("login_err_invalid")
     return render_template("login.html", error=error)
 
 
@@ -147,15 +201,15 @@ def flowise_setup():
     if request.method == "POST":
         api_key = request.form.get("api_key", "").strip()
         if not api_key:
-            error = "API key is required."
+            error = _t("flowise_err_required")
         else:
             try:
                 FlowiseClient(FLOWISE_INTERNAL_URL, api_key).check_connection()
             except FlowiseError as exc:
-                error = f"Could not connect to Flowise with this key: {exc}"
+                error = _t("flowise_err_connect", exc)
             else:
                 set_env_var("FLOWISE_API_KEY", api_key)
-                success = "Connected — Flowise API key saved."
+                success = _t("flowise_saved")
                 env = read_env()
     return render_template(
         "flowise_setup.html",
@@ -174,7 +228,7 @@ def dashboard():
     return render_template(
         "dashboard.html",
         slots=slots,
-        archetypes=agent_templates.ARCHETYPES,
+        archetypes=agent_templates.archetypes_for(current_language()),
         flowise_configured=bool(env.get("FLOWISE_API_KEY")),
     )
 
@@ -184,7 +238,7 @@ def dashboard():
 @auth.login_required
 def slot_view(slot: int):
     if not (1 <= slot <= storage.MAX_SLOTS):
-        return "Invalid slot", 404
+        return _t("slot_err_invalid"), 404
 
     existing = storage.get_slot(slot)
     error = None
@@ -204,12 +258,9 @@ def slot_view(slot: int):
                 name = request.form.get("name", "").strip()
 
                 if not name:
-                    error = "Please give this agent a name."
+                    error = _t("slot_err_name_required")
                 elif storage.name_taken(name, exclude_slot=slot):
-                    error = (
-                        f'The name "{name}" is already used by another agent — '
-                        "each agent needs a unique name."
-                    )
+                    error = _t("slot_err_name_taken", name)
 
                 if error:
                     # Redisplay what the user typed instead of discarding it
@@ -227,15 +278,15 @@ def slot_view(slot: int):
                     if action == "import":
                         client = _flowise_client()
                         if client is None:
-                            error = "Flowise isn't connected yet — set it up first."
+                            error = _t("slot_err_not_connected")
                         else:
                             try:
                                 error = _do_import(slot, archetype, client)
                                 if not error:
-                                    success = "Imported into Flowise."
+                                    success = _t("slot_imported_ok")
                                     existing = storage.get_slot(slot)
                             except FlowiseError as exc:
-                                error = f"Flowise import failed: {exc}"
+                                error = _t("slot_err_import_failed", exc)
 
         fields = agent_templates.placeholders_for(existing.get("archetype", "")) if existing.get(
             "archetype"
@@ -246,16 +297,17 @@ def slot_view(slot: int):
         # a path that doesn't exist in this container), and a plain
         # "Internal Server Error" page gives the operator nothing to act on.
         logger.error("Template load failed for slot %s: %s", slot, exc)
-        error = f"Could not load agent template: {exc}"
+        error = _t("slot_err_template", exc)
         fields = []
 
     return render_template(
         "slot.html",
         slot=slot,
-        archetypes=agent_templates.ARCHETYPES,
-        descriptions=agent_templates.ARCHETYPE_DESCRIPTIONS,
-        field_help=agent_templates.FIELD_HELP,
-        field_examples=agent_templates.FIELD_EXAMPLES,
+        archetypes=agent_templates.archetypes_for(current_language()),
+        descriptions=agent_templates.archetype_descriptions_for(current_language()),
+        field_help=agent_templates.field_help_for(current_language()),
+        field_examples=agent_templates.field_examples_for(current_language()),
+        field_labels=agent_templates.field_labels_for(current_language()),
         existing=existing,
         fields=fields,
         error=error,
@@ -268,7 +320,7 @@ def slot_view(slot: int):
 @auth.login_required
 def slot_optimize(slot: int):
     if not (1 <= slot <= storage.MAX_SLOTS):
-        return {"error": "Invalid slot."}, 404
+        return {"error": _t("slot_err_invalid")}, 404
 
     payload = request.get_json(silent=True) or {}
     field = payload.get("field", "")
@@ -277,11 +329,18 @@ def slot_optimize(slot: int):
     # Scoped to known content fields only — refuses to spend an LLM call on
     # arbitrary field names the client might send.
     if field not in agent_templates.FIELD_HELP:
-        return {"error": "Unknown field."}, 400
+        return {"error": _t("slot_err_unknown_field")}, 400
 
     env = read_env()
     try:
-        result = optimize_field(field, agent_templates.FIELD_HELP[field], text, env)
+        lang = current_language()
+        result = optimize_field(
+            field,
+            agent_templates.field_help_for(lang)[field],
+            text,
+            env,
+            language=lang,
+        )
     except LLMError as exc:
         logger.error("Optimize failed for slot %s field %s: %s", slot, field, exc)
         return {"error": str(exc)}, 502
@@ -308,7 +367,7 @@ def _do_import(slot: int, archetype: str, client: FlowiseClient) -> str | None:
     agent_templates.auto_fill_from_env(flow, env, slot=slot)
     missing = agent_templates.substitute_content(flow, content)
     if missing:
-        return f"Missing content for: {', '.join(missing)} — fill in the form and save first."
+        return _t("slot_err_missing_content", ", ".join(missing))
 
     llm_map = agent_templates.LLM_PROVIDER_MAP.get(
         env.get("LLM_PROVIDER", "anthropic"), agent_templates.LLM_PROVIDER_MAP["anthropic"]
@@ -379,16 +438,17 @@ def upload():
         upload_file = request.files.get("document")
 
         if not form["slot"] or form["slot"] not in configured:
-            error = "Please choose which agent this document belongs to."
+            error = _t("upload_err_no_slot")
         elif not upload_file or not upload_file.filename:
-            error = "Please choose a file to upload."
+            error = _t("upload_err_no_file")
         elif os.path.splitext(upload_file.filename)[1].lower() not in ALLOWED_UPLOAD_EXTENSIONS:
-            error = (
-                f"'{upload_file.filename}' isn't a supported format. Allowed: "
-                + ", ".join(sorted(ALLOWED_UPLOAD_EXTENSIONS))
+            error = _t(
+                "upload_err_bad_type",
+                upload_file.filename,
+                ", ".join(sorted(ALLOWED_UPLOAD_EXTENSIONS)),
             )
         elif form["year"] and not form["year"].isdigit():
-            error = "Year must be a number (or left empty)."
+            error = _t("upload_err_bad_year")
         else:
             try:
                 _n8n_client().upload_document(
@@ -409,15 +469,10 @@ def upload():
                 )
             except N8nError as exc:
                 logger.error("Upload failed for slot %s: %s", form["slot"], exc)
-                error = f"Upload failed: {exc}"
+                error = _t("upload_err_failed", exc)
             else:
                 agent_label = configured[form["slot"]].get("name") or f"Agent {form['slot']}"
-                success = (
-                    f"'{upload_file.filename}' was handed to the ingest pipeline for "
-                    f"{agent_label}. Processing runs in the background — a large "
-                    "scanned document with many figures can take a while. You'll get "
-                    "an email when it's searchable."
-                )
+                success = _t("upload_ok", upload_file.filename, agent_label)
                 form = {}
 
     return render_template(
@@ -443,7 +498,7 @@ def upload_too_large(_exc):
                 if data.get("archetype")
             },
             form={},
-            error=f"That file is too large — the limit is {MAX_UPLOAD_BYTES // (1024 * 1024)} MB.",
+            error=_t("upload_err_too_large", MAX_UPLOAD_BYTES // (1024 * 1024)),
             success=None,
         ),
         413,
@@ -460,7 +515,7 @@ def graph_guidance():
         cypher = request.form.get("cypher", "")
         try:
             results = _neo4j_client().run_script(cypher)
-            success = f"Executed {len(results)} statement(s) successfully."
+            success = _t("graph_ok", len(results))
         except Neo4jError as exc:
             error = str(exc)
     return render_template("graph_guidance.html", error=error, success=success)

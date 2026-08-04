@@ -1,31 +1,22 @@
 {% extends "base.html" %}
-{% block title %}Flowise Connection — SMART RAG Content Admin{% endblock %}
+{% block title %}{{ t('flowise_title') }} — {{ t('app_name') }} {{ t('app_subtitle') }}{% endblock %}
 {% block content %}
-<h1>Connect to Flowise</h1>
-<p>
-  Flowise has no supported way to hand out an API key automatically — a one-time
-  manual step is unavoidable:
-</p>
+<h1>{{ t('flowise_heading') }}</h1>
+<p>{{ t('flowise_intro') }}</p>
 <ol>
-  <li>Open your Flowise instance and create your admin account, if you haven't already.</li>
-  <li>Go to <strong>Settings → API Keys → Create Key</strong>.</li>
-  <li>
-    Under <strong>Permissions</strong>, check every box under
-    <strong>Chatflows</strong>, <strong>Agentflows</strong>, <strong>Credentials</strong>,
-    and <strong>Variables</strong> — that's everything this GUI actually calls. Leave
-    other categories (Tools, Document Stores, Assistants, …) unchecked; nothing here
-    uses them.
-  </li>
-  <li>Paste the key below.</li>
+  <li>{{ t('flowise_step1') }}</li>
+  <li>{{ t('flowise_step2_pre') }} <strong>{{ t('flowise_step2_path') }}</strong>.</li>
+  <li>{{ t('flowise_step3')|safe }}</li>
+  <li>{{ t('flowise_step4') }}</li>
 </ol>
 
 {% if already_set %}
-<p class="success">A Flowise API key is already saved. Paste a new one below to replace it.</p>
+<p class="success">{{ t('flowise_already_set') }}</p>
 {% endif %}
 
 <form method="post">
-  <label for="api_key">Flowise API key</label>
+  <label for="api_key">{{ t('flowise_key_label') }}</label>
   <input type="password" id="api_key" name="api_key" required autofocus>
-  <button type="submit">Save and verify</button>
+  <button type="submit">{{ t('flowise_submit') }}</button>
 </form>
 {% endblock %}

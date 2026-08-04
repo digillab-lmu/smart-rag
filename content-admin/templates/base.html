@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ lang }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}SMART RAG — Content Admin{% endblock %}</title>
+  <title>{% block title %}{{ t('app_name') }} — {{ t('app_subtitle') }}{% endblock %}</title>
   <style>
     /* Roboto: LMU's own web typeface (their print corporate font "Compatil
        Fact" is licensed for print only — LMU's brand guide names Roboto as
@@ -131,25 +131,40 @@
     }
     footer.site-footer .digillab-badge img { height: 28px; width: auto; display: block; }
     footer.site-footer .footer-text { font-size: 0.8rem; opacity: 0.65; }
+
+    .lang-switch { margin-left: auto; display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; }
+    .lang-switch a { text-decoration: none; opacity: 0.6; font-weight: 500; }
+    .lang-switch a:hover { opacity: 1; }
+    .lang-switch a.active { opacity: 1; font-weight: 700; text-decoration: underline; }
+    .lang-switch .sep { opacity: 0.35; }
   </style>
 </head>
 <body>
   <div class="brand-header">
     <img class="lmu-logo" src="{{ url_for('static', filename='img/lmu-logo.png') }}" alt="LMU München">
     <div>
-      <div class="brand-title">SMART RAG</div>
-      <div class="brand-subtitle">Content Admin</div>
+      <div class="brand-title">{{ t('app_name') }}</div>
+      <div class="brand-subtitle">{{ t('app_subtitle') }}</div>
     </div>
+    <span class="lang-switch" role="navigation" aria-label="{{ t('lang_switch_label') }}">
+      {% for code in languages %}
+      {% if not loop.first %}<span class="sep">|</span>{% endif %}
+      <a href="{{ url_for('set_language', lang=code) }}"
+         class="{% if code == lang %}active{% endif %}"
+         {% if code == lang %}aria-current="true"{% endif %}
+         hreflang="{{ code }}">{{ code|upper }}</a>
+      {% endfor %}
+    </span>
   </div>
 
   {% if session.get('logged_in') %}
   <nav>
-    <a href="{{ url_for('dashboard') }}">Agents</a>
-    <a href="{{ url_for('upload') }}">Documents</a>
-    <a href="{{ url_for('graph_guidance') }}">Knowledge Graph</a>
-    <a href="{{ url_for('flowise_setup') }}">Flowise Connection</a>
+    <a href="{{ url_for('dashboard') }}">{{ t('nav_agents') }}</a>
+    <a href="{{ url_for('upload') }}">{{ t('nav_documents') }}</a>
+    <a href="{{ url_for('graph_guidance') }}">{{ t('nav_graph') }}</a>
+    <a href="{{ url_for('flowise_setup') }}">{{ t('nav_flowise') }}</a>
     <span style="flex:1"></span>
-    <a href="{{ url_for('logout') }}">Log out</a>
+    <a href="{{ url_for('logout') }}">{{ t('nav_logout') }}</a>
   </nav>
   {% endif %}
 
@@ -162,7 +177,7 @@
     <span class="digillab-badge">
       <img src="{{ url_for('static', filename='img/digillab-logo.png') }}" alt="DigiLLab, der LMU">
     </span>
-    <span class="footer-text">SMART RAG is an initiative of DigiLLab, LMU München.</span>
+    <span class="footer-text">{{ t('footer_credit') }}</span>
   </footer>
 </body>
 </html>

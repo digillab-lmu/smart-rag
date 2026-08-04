@@ -1,0 +1,405 @@
+"""
+UI translations (English + German) for the content-admin GUI.
+
+Mirrors scripts/lib/messages.sh's approach deliberately — one dict per
+language, keys looked up by name, English as the fallback when a German
+key is missing — so anyone who has worked on the shell side finds the
+same shape here. check_translations() is the Python counterpart of the
+shell function with the same name.
+
+Language is per-user, not per-installation: it comes from a cookie the
+DE|EN switch sets, falling back to the browser's Accept-Language header
+on a first visit. That means two people can use the GUI in different
+languages at the same time — which a single .env setting couldn't do.
+
+Content-side strings (archetype descriptions, per-field help and worked
+examples) live in agent_templates.py, not here, since they belong with
+the templates they describe.
+"""
+
+from __future__ import annotations
+
+LANGUAGES = ("en", "de")
+DEFAULT_LANGUAGE = "en"
+LANGUAGE_COOKIE = "smartrag_lang"
+# Ten years — this is a UI preference, not session state; there's nothing
+# to expire and re-picking it on every visit would be a nuisance.
+LANGUAGE_COOKIE_MAX_AGE = 10 * 365 * 24 * 60 * 60
+
+
+MSG_EN: dict[str, str] = {
+    # --- chrome ---------------------------------------------------------
+    "app_name": "SMART RAG",
+    "app_subtitle": "Content Admin",
+    "nav_agents": "Agents",
+    "nav_documents": "Documents",
+    "nav_graph": "Knowledge Graph",
+    "nav_flowise": "Flowise Connection",
+    "nav_logout": "Log out",
+    "footer_credit": "SMART RAG is an initiative of DigiLLab, LMU München.",
+    "lang_switch_label": "Language",
+
+    # --- first-run setup ------------------------------------------------
+    "setup_title": "First-time setup",
+    "setup_heading": "Welcome — create your admin account",
+    "setup_intro": "This is separate from your Flowise login — it only protects this content-authoring tool.",
+    "setup_username": "Username",
+    "setup_password": "Password (min. 12 characters)",
+    "setup_confirm": "Confirm password",
+    "setup_submit": "Create account",
+    "setup_err_required": "Username and password are required.",
+    "setup_err_mismatch": "Passwords do not match.",
+    "setup_err_too_short": "Password must be at least 12 characters.",
+
+    # --- login ----------------------------------------------------------
+    "login_title": "Log in",
+    "login_heading": "Content Admin",
+    "login_username": "Username",
+    "login_password": "Password",
+    "login_submit": "Log in",
+    "login_err_invalid": "Invalid username or password.",
+
+    # --- Flowise connection ---------------------------------------------
+    "flowise_title": "Flowise Connection",
+    "flowise_heading": "Connect to Flowise",
+    "flowise_intro": "Flowise has no supported way to hand out an API key automatically — a one-time manual step is unavoidable:",
+    "flowise_step1": "Open your Flowise instance and create your admin account, if you haven't already.",
+    "flowise_step2_pre": "Go to",
+    "flowise_step2_path": "Settings → API Keys → Create Key",
+    "flowise_step3": "Under <strong>Permissions</strong>, check every box under <strong>Chatflows</strong>, <strong>Agentflows</strong>, <strong>Credentials</strong>, and <strong>Variables</strong> — that's everything this GUI actually calls. Leave other categories (Tools, Document Stores, Assistants, …) unchecked; nothing here uses them.",
+    "flowise_step4": "Paste the key below.",
+    "flowise_already_set": "A Flowise API key is already saved. Paste a new one below to replace it.",
+    "flowise_key_label": "Flowise API key",
+    "flowise_submit": "Save and verify",
+    "flowise_err_required": "API key is required.",
+    "flowise_err_connect": "Could not connect to Flowise with this key: %s",
+    "flowise_saved": "Connected — Flowise API key saved.",
+
+    # --- dashboard ------------------------------------------------------
+    "dash_title": "Agents",
+    "dash_heading": "Agents (up to 10)",
+    "dash_not_connected": 'Flowise isn\'t connected yet. <a href="%s">Set it up first</a> — you can still fill in content below, but importing needs the connection.',
+    "dash_col_slot": "Slot",
+    "dash_col_name": "Name",
+    "dash_col_archetype": "Archetype",
+    "dash_col_status": "Status",
+    "dash_status_imported": "Imported",
+    "dash_status_saved": "Content saved, not imported",
+    "dash_status_empty": "Empty",
+    "dash_edit": "Edit",
+
+    # --- slot / agent editing -------------------------------------------
+    "slot_title": "Slot %s",
+    "slot_heading": "Slot %s",
+    "slot_back": "← back to agents",
+    "slot_choose_archetype": "Choose an archetype",
+    "slot_rag_note": 'All except Backup Assistant use RAG (retrieval over your course documents). Once this agent is set up, add its documents on the <a href="%s">Documents</a> page.',
+    "slot_continue": "Continue",
+    "slot_archetype_label": "Archetype",
+    "slot_imported_as": "imported (chatflow id: %s)",
+    "slot_name_label": "Agent Name",
+    "slot_name_help": 'A unique name for this agent, so it\'s easy to tell apart from your other agents — this becomes the chatflow\'s name in Flowise. Example: "Chapter 4 Tutor" or "Sarah the Statistics Expert". Must be different from every other agent\'s name.',
+    "slot_examples_note": "Each field below shows a complete worked example as gray placeholder text (it disappears once you start typing) — write your own course content following that same pattern.",
+    "slot_optimize": "Optimize with AI",
+    "slot_optimizing": "Optimizing…",
+    "slot_suggestion": "AI suggestion",
+    "slot_use_this": "Use this",
+    "slot_discard": "Discard",
+    "slot_close": "Close",
+    "slot_save": "Save",
+    "slot_import": "Save and import to Flowise",
+    "slot_err_name_required": "Please give this agent a name.",
+    "slot_err_name_taken": 'The name "%s" is already used by another agent — each agent needs a unique name.',
+    "slot_err_not_connected": "Flowise isn't connected yet — set it up first.",
+    "slot_err_import_failed": "Flowise import failed: %s",
+    "slot_err_template": "Could not load agent template: %s",
+    "slot_imported_ok": "Imported into Flowise.",
+    "slot_err_missing_content": "Missing content for: %s — fill in the form and save first.",
+    "slot_err_invalid": "Invalid slot",
+    "slot_err_unknown_field": "Unknown field.",
+    "slot_err_request_failed": "Something went wrong.",
+
+    # --- document upload -------------------------------------------------
+    "upload_title": "Upload Documents",
+    "upload_heading": "Upload Course Documents",
+    "upload_no_agents": 'No agents are configured yet. A document has to belong to a specific agent, so <a href="%s">set one up first</a> — then come back here.',
+    "upload_intro": "Upload a document and it becomes searchable by the agent you assign it to. Everything after that runs automatically in the background: text and table extraction (including OCR for scanned pages), AI descriptions of any figures and diagrams so they're searchable too, then chunking and indexing.",
+    "upload_timing": "Processing is <strong>not</strong> instant — a short text document takes about a minute, a long scanned one with many figures can take considerably longer. You don't need to keep this page open; you'll get an email when the document is ready.",
+    "upload_slot_label": "Which agent is this document for?",
+    "upload_slot_help": "Only this agent will retrieve it. Course-wide agents (Universal Assistant, Knowledge Test) search everything regardless of this setting.",
+    "upload_slot_placeholder": "— choose an agent —",
+    "upload_slot_option": "Slot %s — %s",
+    "upload_unnamed": "unnamed",
+    "upload_file_label": "Document",
+    "upload_file_help": "PDF, Word, PowerPoint, Excel, HTML, Markdown, or an image (PNG/JPEG/TIFF).",
+    "upload_doc_title_label": "Title",
+    "upload_doc_title_help": 'How this source is cited when an agent quotes it. Leave empty to use the filename. Example: "Mayer (2009): Multimedia Learning, Chapter 3"',
+    "upload_authors_label": "Authors",
+    "upload_authors_help": 'Semicolon-separated, surname first. Example: "Mayer, Richard E.; Moreno, Roxana"',
+    "upload_year_label": "Year",
+    "upload_year_help": "Publication year. Example: 2009",
+    "upload_topic_label": "Keywords",
+    "upload_topic_help": "A few comma-separated terms describing what this document covers. Example: Cognitive Load, Multimedia Learning, Working Memory",
+    "upload_language_label": "Language",
+    "upload_language_de": "German",
+    "upload_language_en": "English",
+    "upload_email_label": "Notification email",
+    "upload_email_help": 'Where to send the "done" message. Leave empty to use the system\'s admin address.',
+    "upload_ocr_label": "This is a scanned document",
+    "upload_ocr_help": "Forces optical character recognition on every page. Only tick this if the PDF is a scan or photo of pages — it's slower, and unnecessary for documents that already contain real text.",
+    "upload_submit": "Upload and process",
+    "upload_err_no_slot": "Please choose which agent this document belongs to.",
+    "upload_err_no_file": "Please choose a file to upload.",
+    "upload_err_bad_type": "'%s' isn't a supported format. Allowed: %s",
+    "upload_err_bad_year": "Year must be a number (or left empty).",
+    "upload_err_too_large": "That file is too large — the limit is %s MB.",
+    "upload_err_failed": "Upload failed: %s",
+    "upload_ok": "'%s' was handed to the ingest pipeline for %s. Processing runs in the background — a large scanned document with many figures can take a while. You'll get an email when it's searchable.",
+
+    # --- knowledge graph -------------------------------------------------
+    "graph_title": "Knowledge Graph",
+    "graph_heading": "Knowledge Graph",
+    "graph_intro": "Guided, manual process for now — no LLM call happens from this GUI. A fully automated builder (the GUI proposes concepts and prerequisite edges itself, with a review step before writing) is planned for a later batch.",
+    "graph_h_model": "1. The data model",
+    "graph_model_topic": "a high-level topic in the course (chapter / unit)",
+    "graph_model_concept": "a specific learning concept (theory, method, idea)",
+    "graph_model_props": "Concept properties: <code>name</code> (required, unique), <code>chapter</code> (optional), <code>section_id</code> (optional), <code>description</code> (optional).",
+    "graph_h_prompt": "2. Prompt template",
+    "graph_prompt_intro": "Copy this into an AI assistant of your choice, together with your course documents (or a summary of their chapter/section structure):",
+    "graph_h_run": "3. Review, then run it",
+    "graph_run_intro": "Read through what the AI produced before running it — this step exists so a bad suggestion doesn't quietly land in the graph the tutoring agents rely on for scaffolding. Paste the (reviewed) Cypher below.",
+    "graph_cypher_label": "Cypher statements",
+    "graph_submit": "Run against Neo4j",
+    "graph_ok": "Executed %s statement(s) successfully.",
+}
+
+
+MSG_DE: dict[str, str] = {
+    # --- chrome ---------------------------------------------------------
+    "app_name": "SMART RAG",
+    "app_subtitle": "Inhaltsverwaltung",
+    "nav_agents": "Agenten",
+    "nav_documents": "Dokumente",
+    "nav_graph": "Wissensgraph",
+    "nav_flowise": "Flowise-Verbindung",
+    "nav_logout": "Abmelden",
+    "footer_credit": "SMART RAG ist eine Initiative des DigiLLab, LMU München.",
+    "lang_switch_label": "Sprache",
+
+    # --- first-run setup ------------------------------------------------
+    "setup_title": "Ersteinrichtung",
+    "setup_heading": "Willkommen — Administrationskonto anlegen",
+    "setup_intro": "Dieses Konto ist unabhängig von deinem Flowise-Login — es schützt ausschließlich diese Oberfläche zur Inhaltspflege.",
+    "setup_username": "Benutzername",
+    "setup_password": "Passwort (mind. 12 Zeichen)",
+    "setup_confirm": "Passwort bestätigen",
+    "setup_submit": "Konto anlegen",
+    "setup_err_required": "Benutzername und Passwort sind erforderlich.",
+    "setup_err_mismatch": "Die Passwörter stimmen nicht überein.",
+    "setup_err_too_short": "Das Passwort muss mindestens 12 Zeichen lang sein.",
+
+    # --- login ----------------------------------------------------------
+    "login_title": "Anmelden",
+    "login_heading": "Inhaltsverwaltung",
+    "login_username": "Benutzername",
+    "login_password": "Passwort",
+    "login_submit": "Anmelden",
+    "login_err_invalid": "Benutzername oder Passwort ist falsch.",
+
+    # --- Flowise connection ---------------------------------------------
+    "flowise_title": "Flowise-Verbindung",
+    "flowise_heading": "Mit Flowise verbinden",
+    "flowise_intro": "Flowise bietet keine Möglichkeit, einen API-Schlüssel automatisch bereitzustellen — ein einmaliger manueller Schritt lässt sich nicht vermeiden:",
+    "flowise_step1": "Öffne deine Flowise-Instanz und lege dort dein Administrationskonto an, falls noch nicht geschehen.",
+    "flowise_step2_pre": "Gehe zu",
+    "flowise_step2_path": "Settings → API Keys → Create Key",
+    "flowise_step3": "Setze unter <strong>Permissions</strong> in den Kategorien <strong>Chatflows</strong>, <strong>Agentflows</strong>, <strong>Credentials</strong> und <strong>Variables</strong> jeweils alle Häkchen — mehr ruft diese Oberfläche nicht auf. Die übrigen Kategorien (Tools, Document Stores, Assistants, …) bleiben leer, sie werden hier nicht verwendet.",
+    "flowise_step4": "Füge den Schlüssel unten ein.",
+    "flowise_already_set": "Es ist bereits ein Flowise-API-Schlüssel gespeichert. Zum Ersetzen unten einen neuen einfügen.",
+    "flowise_key_label": "Flowise-API-Schlüssel",
+    "flowise_submit": "Speichern und prüfen",
+    "flowise_err_required": "Der API-Schlüssel ist erforderlich.",
+    "flowise_err_connect": "Verbindung zu Flowise mit diesem Schlüssel fehlgeschlagen: %s",
+    "flowise_saved": "Verbunden — Flowise-API-Schlüssel gespeichert.",
+
+    # --- dashboard ------------------------------------------------------
+    "dash_title": "Agenten",
+    "dash_heading": "Agenten (bis zu 10)",
+    "dash_not_connected": 'Flowise ist noch nicht verbunden. <a href="%s">Zuerst einrichten</a> — Inhalte kannst du auch jetzt schon eintragen, für den Import wird die Verbindung aber benötigt.',
+    "dash_col_slot": "Platz",
+    "dash_col_name": "Name",
+    "dash_col_archetype": "Agententyp",
+    "dash_col_status": "Status",
+    "dash_status_imported": "Importiert",
+    "dash_status_saved": "Inhalte gespeichert, nicht importiert",
+    "dash_status_empty": "Leer",
+    "dash_edit": "Bearbeiten",
+
+    # --- slot / agent editing -------------------------------------------
+    "slot_title": "Platz %s",
+    "slot_heading": "Platz %s",
+    "slot_back": "← zurück zur Übersicht",
+    "slot_choose_archetype": "Agententyp wählen",
+    "slot_rag_note": 'Alle Typen außer dem Ausweich-Assistenten nutzen RAG (Recherche in deinen Kursdokumenten). Sobald dieser Agent eingerichtet ist, kannst du seine Dokumente unter <a href="%s">Dokumente</a> hochladen.',
+    "slot_continue": "Weiter",
+    "slot_archetype_label": "Agententyp",
+    "slot_imported_as": "importiert (Chatflow-ID: %s)",
+    "slot_name_label": "Name des Agenten",
+    "slot_name_help": 'Ein eindeutiger Name, an dem du diesen Agenten von deinen anderen unterscheiden kannst — er wird zugleich der Name des Chatflows in Flowise. Beispiel: "Tutor Kapitel 4" oder "Sarah, Statistik-Expertin". Muss sich von allen anderen Agentennamen unterscheiden.',
+    "slot_examples_note": "Jedes Feld unten zeigt ein vollständig ausformuliertes Beispiel als grauen Platzhaltertext (er verschwindet, sobald du zu tippen beginnst) — schreibe deine eigenen Kursinhalte nach demselben Muster.",
+    "slot_optimize": "Mit KI verbessern",
+    "slot_optimizing": "Wird verbessert…",
+    "slot_suggestion": "KI-Vorschlag",
+    "slot_use_this": "Übernehmen",
+    "slot_discard": "Verwerfen",
+    "slot_close": "Schließen",
+    "slot_save": "Speichern",
+    "slot_import": "Speichern und nach Flowise importieren",
+    "slot_err_name_required": "Bitte gib diesem Agenten einen Namen.",
+    "slot_err_name_taken": 'Der Name "%s" wird bereits von einem anderen Agenten verwendet — jeder Agent braucht einen eindeutigen Namen.',
+    "slot_err_not_connected": "Flowise ist noch nicht verbunden — bitte zuerst einrichten.",
+    "slot_err_import_failed": "Flowise-Import fehlgeschlagen: %s",
+    "slot_err_template": "Agentenvorlage konnte nicht geladen werden: %s",
+    "slot_imported_ok": "Nach Flowise importiert.",
+    "slot_err_missing_content": "Es fehlen noch Inhalte für: %s — bitte im Formular ergänzen und speichern.",
+    "slot_err_invalid": "Ungültiger Platz",
+    "slot_err_unknown_field": "Unbekanntes Feld.",
+    "slot_err_request_failed": "Da ist etwas schiefgegangen.",
+
+    # --- document upload -------------------------------------------------
+    "upload_title": "Dokumente hochladen",
+    "upload_heading": "Kursdokumente hochladen",
+    "upload_no_agents": 'Es ist noch kein Agent eingerichtet. Ein Dokument gehört immer zu einem bestimmten Agenten — <a href="%s">richte also zuerst einen ein</a> und komm dann hierher zurück.',
+    "upload_intro": "Lade ein Dokument hoch, und es wird für den Agenten durchsuchbar, dem du es zuordnest. Alles Weitere läuft automatisch im Hintergrund: Text- und Tabellenerkennung (bei Scans einschließlich Texterkennung), KI-Beschreibungen von Abbildungen und Diagrammen, damit auch diese auffindbar werden, danach Zerlegung und Indexierung.",
+    "upload_timing": "Die Verarbeitung ist <strong>nicht</strong> sofort fertig — ein kurzes Textdokument dauert etwa eine Minute, ein langes eingescanntes mit vielen Abbildungen deutlich länger. Du musst diese Seite nicht offen lassen; du bekommst eine E-Mail, sobald das Dokument bereitsteht.",
+    "upload_slot_label": "Für welchen Agenten ist dieses Dokument?",
+    "upload_slot_help": "Nur dieser Agent greift darauf zu. Kursweite Agenten (Universal-Assistent, Wissenstest) durchsuchen unabhängig von dieser Einstellung alle Dokumente.",
+    "upload_slot_placeholder": "— Agent auswählen —",
+    "upload_slot_option": "Platz %s — %s",
+    "upload_unnamed": "ohne Namen",
+    "upload_file_label": "Dokument",
+    "upload_file_help": "PDF, Word, PowerPoint, Excel, HTML, Markdown oder ein Bild (PNG/JPEG/TIFF).",
+    "upload_doc_title_label": "Titel",
+    "upload_doc_title_help": 'So wird diese Quelle zitiert, wenn ein Agent daraus antwortet. Leer lassen, um den Dateinamen zu verwenden. Beispiel: "Mayer (2009): Multimedia Learning, Kapitel 3"',
+    "upload_authors_label": "Autorinnen und Autoren",
+    "upload_authors_help": 'Mit Semikolon getrennt, Nachname zuerst. Beispiel: "Mayer, Richard E.; Moreno, Roxana"',
+    "upload_year_label": "Jahr",
+    "upload_year_help": "Erscheinungsjahr. Beispiel: 2009",
+    "upload_topic_label": "Schlagwörter",
+    "upload_topic_help": "Einige durch Komma getrennte Begriffe, die den Inhalt beschreiben. Beispiel: Cognitive Load, Multimediales Lernen, Arbeitsgedächtnis",
+    "upload_language_label": "Sprache",
+    "upload_language_de": "Deutsch",
+    "upload_language_en": "Englisch",
+    "upload_email_label": "E-Mail für Benachrichtigung",
+    "upload_email_help": "Wohin die Fertigmeldung geschickt wird. Leer lassen, um die Administrationsadresse des Systems zu verwenden.",
+    "upload_ocr_label": "Dies ist ein eingescanntes Dokument",
+    "upload_ocr_help": "Erzwingt die Texterkennung auf jeder Seite. Nur ankreuzen, wenn das PDF ein Scan oder Foto von Seiten ist — es dauert länger und ist bei Dokumenten mit echtem Text unnötig.",
+    "upload_submit": "Hochladen und verarbeiten",
+    "upload_err_no_slot": "Bitte wähle aus, zu welchem Agenten dieses Dokument gehört.",
+    "upload_err_no_file": "Bitte wähle eine Datei zum Hochladen aus.",
+    "upload_err_bad_type": "'%s' ist kein unterstütztes Format. Erlaubt sind: %s",
+    "upload_err_bad_year": "Das Jahr muss eine Zahl sein (oder leer bleiben).",
+    "upload_err_too_large": "Diese Datei ist zu groß — das Limit liegt bei %s MB.",
+    "upload_err_failed": "Hochladen fehlgeschlagen: %s",
+    "upload_ok": "'%s' wurde an die Verarbeitung für %s übergeben. Sie läuft im Hintergrund — ein großes eingescanntes Dokument mit vielen Abbildungen kann eine Weile dauern. Du bekommst eine E-Mail, sobald es durchsuchbar ist.",
+
+    # --- knowledge graph -------------------------------------------------
+    "graph_title": "Wissensgraph",
+    "graph_heading": "Wissensgraph",
+    "graph_intro": "Vorerst ein angeleiteter, manueller Ablauf — diese Oberfläche ruft selbst keine KI auf. Ein vollautomatischer Aufbau (die Oberfläche schlägt Konzepte und Voraussetzungsbeziehungen selbst vor, mit Prüfschritt vor dem Schreiben) ist für einen späteren Ausbau vorgesehen.",
+    "graph_h_model": "1. Das Datenmodell",
+    "graph_model_topic": "ein übergeordnetes Thema des Kurses (Kapitel / Einheit)",
+    "graph_model_concept": "ein einzelnes Lernkonzept (Theorie, Methode, Idee)",
+    "graph_model_props": "Eigenschaften von Concept: <code>name</code> (erforderlich, eindeutig), <code>chapter</code> (optional), <code>section_id</code> (optional), <code>description</code> (optional).",
+    "graph_h_prompt": "2. Prompt-Vorlage",
+    "graph_prompt_intro": "Kopiere den folgenden Text in eine KI deiner Wahl, zusammen mit deinen Kursdokumenten (oder einer Übersicht ihrer Kapitel- und Abschnittsstruktur):",
+    "graph_h_run": "3. Prüfen, dann ausführen",
+    "graph_run_intro": "Lies das Ergebnis der KI durch, bevor du es ausführst — dieser Schritt sorgt dafür, dass kein fehlerhafter Vorschlag unbemerkt in dem Graphen landet, auf den sich die Tutor-Agenten beim Lernaufbau stützen. Füge das (geprüfte) Cypher unten ein.",
+    "graph_cypher_label": "Cypher-Anweisungen",
+    "graph_submit": "In Neo4j ausführen",
+    "graph_ok": "%s Anweisung(en) erfolgreich ausgeführt.",
+}
+
+
+_CATALOG: dict[str, dict[str, str]] = {"en": MSG_EN, "de": MSG_DE}
+
+
+def normalize_language(value: str | None) -> str:
+    """Maps anything user- or browser-supplied onto a language we have."""
+    if not value:
+        return DEFAULT_LANGUAGE
+    candidate = value.strip().lower()[:2]
+    return candidate if candidate in LANGUAGES else DEFAULT_LANGUAGE
+
+
+def language_from_accept_header(header: str | None) -> str:
+    """
+    Picks the best supported language out of an Accept-Language header,
+    honouring its q-weights ("de;q=0.9, en;q=0.8" → de).
+
+    Hand-parsed rather than using Werkzeug's accept_languages so this
+    function stays testable without a request context — and so the
+    fallback is our DEFAULT_LANGUAGE rather than whatever the header's
+    first unsupported entry happens to be.
+    """
+    if not header:
+        return DEFAULT_LANGUAGE
+
+    best: tuple[float, str] | None = None
+    for part in header.split(","):
+        piece = part.strip()
+        if not piece:
+            continue
+        tag, _, params = piece.partition(";")
+        quality = 1.0
+        if params.strip().startswith("q="):
+            try:
+                quality = float(params.strip()[2:])
+            except ValueError:
+                quality = 0.0
+        code = tag.strip().lower()[:2]
+        if code not in LANGUAGES:
+            continue
+        if best is None or quality > best[0]:
+            best = (quality, code)
+
+    return best[1] if best else DEFAULT_LANGUAGE
+
+
+def t(key: str, *args, lang: str = DEFAULT_LANGUAGE) -> str:
+    """
+    Looks up `key`, falling back to English and then to the key itself so a
+    missing translation degrades to something readable rather than raising
+    mid-render. %s substitution mirrors messages.sh's printf-style usage.
+    """
+    catalog = _CATALOG.get(lang, MSG_EN)
+    text = catalog.get(key) or MSG_EN.get(key) or key
+    if args:
+        try:
+            return text % args
+        except TypeError:
+            # Wrong number of placeholders — show the unsubstituted string
+            # rather than blowing up the whole page.
+            return text
+    return text
+
+
+def check_translations() -> list[str]:
+    """
+    Python counterpart of messages.sh's check_translations — reports keys
+    present in English but missing in another language (which would
+    silently fall back and look like an untranslated page). Used by the
+    test suite; returns an empty list when everything is covered.
+    """
+    problems: list[str] = []
+    for lang in LANGUAGES:
+        if lang == "en":
+            continue
+        catalog = _CATALOG[lang]
+        for key in MSG_EN:
+            if key not in catalog:
+                problems.append(f"{lang}: missing key {key!r}")
+        for key in catalog:
+            if key not in MSG_EN:
+                problems.append(f"{lang}: key {key!r} has no English original")
+    return problems

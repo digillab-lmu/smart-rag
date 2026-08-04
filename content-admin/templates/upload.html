@@ -1,100 +1,68 @@
 {% extends "base.html" %}
-{% block title %}Upload Documents — SMART RAG Content Admin{% endblock %}
+{% block title %}{{ t('upload_title') }} — {{ t('app_name') }} {{ t('app_subtitle') }}{% endblock %}
 {% block content %}
-<h1>Upload Course Documents</h1>
+<h1>{{ t('upload_heading') }}</h1>
 
 {% if not configured %}
-<p class="note">
-  No agents are configured yet. A document has to belong to a specific agent, so
-  <a href="{{ url_for('dashboard') }}">set one up first</a> — then come back here.
-</p>
+<p class="note">{{ t('upload_no_agents', url_for('dashboard'))|safe }}</p>
 {% else %}
 
-<p class="note">
-  Upload a document and it becomes searchable by the agent you assign it to.
-  Everything after that runs automatically in the background: text and table
-  extraction (including OCR for scanned pages), AI descriptions of any figures
-  and diagrams so they're searchable too, then chunking and indexing.
-</p>
-<p class="note">
-  Processing is <strong>not</strong> instant — a short text document takes about
-  a minute, a long scanned one with many figures can take considerably longer.
-  You don't need to keep this page open; you'll get an email when the document
-  is ready.
-</p>
+<p class="note">{{ t('upload_intro') }}</p>
+<p class="note">{{ t('upload_timing')|safe }}</p>
 
 <form method="post" enctype="multipart/form-data">
-  <label for="slot">Which agent is this document for?</label>
-  <p class="note" style="margin-top: 0.15rem;">
-    Only this agent will retrieve it. Course-wide agents (Universal Assistant,
-    Knowledge Test) search everything regardless of this setting.
-  </p>
+  <label for="slot">{{ t('upload_slot_label') }}</label>
+  <p class="note" style="margin-top: 0.15rem;">{{ t('upload_slot_help') }}</p>
   <select id="slot" name="slot" required>
-    <option value="">— choose an agent —</option>
+    <option value="">{{ t('upload_slot_placeholder') }}</option>
     {% for num, data in configured.items() %}
     <option value="{{ num }}" {% if form.get('slot') == num %}selected{% endif %}>
-      Slot {{ num }} — {{ data.get('name') or 'unnamed' }}
+      {{ t('upload_slot_option', num, data.get('name') or t('upload_unnamed')) }}
     </option>
     {% endfor %}
   </select>
 
-  <label for="document">Document</label>
-  <p class="note" style="margin-top: 0.15rem;">
-    PDF, Word, PowerPoint, Excel, HTML, Markdown, or an image (PNG/JPEG/TIFF).
-  </p>
+  <label for="document">{{ t('upload_file_label') }}</label>
+  <p class="note" style="margin-top: 0.15rem;">{{ t('upload_file_help') }}</p>
   <input type="file" id="document" name="document" required
          accept=".pdf,.docx,.xlsx,.pptx,.html,.htm,.md,.adoc,.asciidoc,.png,.jpg,.jpeg,.tiff,.tif,.bmp">
 
-  <label for="title">Title</label>
-  <p class="note" style="margin-top: 0.15rem;">
-    How this source is cited when an agent quotes it. Leave empty to use the
-    filename. Example: "Mayer (2009): Multimedia Learning, Chapter 3"
-  </p>
+  <label for="title">{{ t('upload_doc_title_label') }}</label>
+  <p class="note" style="margin-top: 0.15rem;">{{ t('upload_doc_title_help') }}</p>
   <input type="text" id="title" name="title" value="{{ form.get('title', '') }}">
 
-  <label for="authors">Authors</label>
-  <p class="note" style="margin-top: 0.15rem;">
-    Semicolon-separated, surname first. Example: "Mayer, Richard E.; Moreno, Roxana"
-  </p>
+  <label for="authors">{{ t('upload_authors_label') }}</label>
+  <p class="note" style="margin-top: 0.15rem;">{{ t('upload_authors_help') }}</p>
   <input type="text" id="authors" name="authors" value="{{ form.get('authors', '') }}">
 
-  <label for="year">Year</label>
-  <p class="note" style="margin-top: 0.15rem;">Publication year. Example: 2009</p>
+  <label for="year">{{ t('upload_year_label') }}</label>
+  <p class="note" style="margin-top: 0.15rem;">{{ t('upload_year_help') }}</p>
   <input type="text" id="year" name="year" value="{{ form.get('year', '') }}" inputmode="numeric">
 
-  <label for="topic">Keywords</label>
-  <p class="note" style="margin-top: 0.15rem;">
-    A few comma-separated terms describing what this document covers. Example:
-    Cognitive Load, Multimedia Learning, Working Memory
-  </p>
+  <label for="topic">{{ t('upload_topic_label') }}</label>
+  <p class="note" style="margin-top: 0.15rem;">{{ t('upload_topic_help') }}</p>
   <input type="text" id="topic" name="topic" value="{{ form.get('topic', '') }}">
 
-  <label for="language">Language</label>
+  <label for="language">{{ t('upload_language_label') }}</label>
   <select id="language" name="language">
-    <option value="de" {% if form.get('language', 'de') == 'de' %}selected{% endif %}>German</option>
-    <option value="en" {% if form.get('language') == 'en' %}selected{% endif %}>English</option>
+    <option value="de" {% if form.get('language', lang) == 'de' %}selected{% endif %}>{{ t('upload_language_de') }}</option>
+    <option value="en" {% if form.get('language', lang) == 'en' %}selected{% endif %}>{{ t('upload_language_en') }}</option>
   </select>
 
-  <label for="notify_email">Notification email</label>
-  <p class="note" style="margin-top: 0.15rem;">
-    Where to send the "done" message. Leave empty to use the system's admin address.
-  </p>
+  <label for="notify_email">{{ t('upload_email_label') }}</label>
+  <p class="note" style="margin-top: 0.15rem;">{{ t('upload_email_help') }}</p>
   <input type="email" id="notify_email" name="notify_email" value="{{ form.get('notify_email', '') }}">
 
   <label style="font-weight: normal; display: flex; gap: 0.6rem; align-items: flex-start;">
     <input type="checkbox" name="force_ocr" style="width: auto; margin-top: 0.3rem;"
            {% if form.get('force_ocr') %}checked{% endif %}>
     <span>
-      <strong>This is a scanned document</strong><br>
-      <span class="note">
-        Forces optical character recognition on every page. Only tick this if the
-        PDF is a scan or photo of pages — it's slower, and unnecessary for
-        documents that already contain real text.
-      </span>
+      <strong>{{ t('upload_ocr_label') }}</strong><br>
+      <span class="note">{{ t('upload_ocr_help') }}</span>
     </span>
   </label>
 
-  <button type="submit">Upload and process</button>
+  <button type="submit">{{ t('upload_submit') }}</button>
 </form>
 {% endif %}
 {% endblock %}

@@ -119,54 +119,115 @@ EMBEDDING_PROVIDER_MAP: dict[str, dict[str, str]] = {
 
 PLACEHOLDER_RE = re.compile(r"\{\{([A-Z0-9_]+)\}\}")
 
+# Everything below is operator-facing copy, so it exists per language.
+# Structure mirrors i18n.py's MSG_EN/MSG_DE (English is the fallback when a
+# language is missing an entry) — but lives here rather than there because
+# it describes these specific templates and their placeholders, and has to
+# stay in step with the JSON files next to it.
+
 # Display name shown in the archetype picker, and which template file backs it.
-ARCHETYPES: dict[str, str] = {
-    "agent-01-universal.json": "Universal Assistant",
-    "agent-10-persona.json": "Persona Agent",
-    "agent-11-expert-feedback.json": "Expert Feedback Agent",
-    "agent-13-knowledge-test.json": "Knowledge Test Agent",
-    "agent-14-backup.json": "Backup Assistant",
-    "agent-topic-template.json": "Topic Agent",
+ARCHETYPES_BY_LANG: dict[str, dict[str, str]] = {
+    "en": {
+        "agent-01-universal.json": "Universal Assistant",
+        "agent-10-persona.json": "Persona Agent",
+        "agent-11-expert-feedback.json": "Expert Feedback Agent",
+        "agent-13-knowledge-test.json": "Knowledge Test Agent",
+        "agent-14-backup.json": "Backup Assistant",
+        "agent-topic-template.json": "Topic Agent",
+    },
+    "de": {
+        "agent-01-universal.json": "Universal-Assistent",
+        "agent-10-persona.json": "Persona-Agent",
+        "agent-11-expert-feedback.json": "Experten-Feedback-Agent",
+        "agent-13-knowledge-test.json": "Wissenstest-Agent",
+        "agent-14-backup.json": "Ausweich-Assistent",
+        "agent-topic-template.json": "Themen-Agent",
+    },
 }
+
+# Canonical (English) names — used where a stable, language-independent
+# label is needed, e.g. the chatflow name written into Flowise.
+ARCHETYPES: dict[str, str] = ARCHETYPES_BY_LANG["en"]
 
 # Shown next to each archetype in the picker — purpose, typical use case,
 # whether it needs RAG (course documents retrieved from Weaviate). All but
 # Backup Assistant do; those agents have nothing to retrieve until documents
 # are uploaded for them on the Documents page (/upload).
-ARCHETYPE_DESCRIPTIONS: dict[str, str] = {
-    "agent-01-universal.json": (
-        "General-purpose course assistant — answers questions across the "
-        "whole course. Uses RAG (course documents). Good as a default or "
-        "your only agent for a small course."
-    ),
-    "agent-10-persona.json": (
-        "Simulates a specific character or role (e.g. a struggling student, "
-        "a stakeholder in a case study) for perspective-taking exercises. "
-        "Uses RAG, scoped to what that persona would plausibly know."
-    ),
-    "agent-11-expert-feedback.json": (
-        "Simulates a domain expert giving feedback on student work within "
-        "one specific field. Uses RAG, drawing on materials relevant to "
-        "that expert domain."
-    ),
-    "agent-13-knowledge-test.json": (
-        "Adaptive, scenario-based knowledge assessment — poses practice "
-        "tasks and adjusts difficulty from the student's answers. Uses RAG "
-        "across the whole course. Typically one per course, not one per "
-        "topic — it also references your other configured agents "
-        "automatically."
-    ),
-    "agent-14-backup.json": (
-        "Plain fallback chat agent — no RAG, no course-document retrieval. "
-        "Use for general conversation when a materials-grounded answer "
-        "isn't needed, or as a safety-net slot."
-    ),
-    "agent-topic-template.json": (
-        "Focused on one course chapter/topic — meant to be reused, one per "
-        "chapter. Uses RAG, scoped to that chapter's material. Most of "
-        "your 10 slots will likely be this type."
-    ),
+ARCHETYPE_DESCRIPTIONS_BY_LANG: dict[str, dict[str, str]] = {
+    "en": {
+        "agent-01-universal.json": (
+            "General-purpose course assistant — answers questions across the "
+            "whole course. Uses RAG (course documents). Good as a default or "
+            "your only agent for a small course."
+        ),
+        "agent-10-persona.json": (
+            "Simulates a specific character or role (e.g. a struggling student, "
+            "a stakeholder in a case study) for perspective-taking exercises. "
+            "Uses RAG, scoped to what that persona would plausibly know."
+        ),
+        "agent-11-expert-feedback.json": (
+            "Simulates a domain expert giving feedback on student work within "
+            "one specific field. Uses RAG, drawing on materials relevant to "
+            "that expert domain."
+        ),
+        "agent-13-knowledge-test.json": (
+            "Adaptive, scenario-based knowledge assessment — poses practice "
+            "tasks and adjusts difficulty from the student's answers. Uses RAG "
+            "across the whole course. Typically one per course, not one per "
+            "topic — it also references your other configured agents "
+            "automatically."
+        ),
+        "agent-14-backup.json": (
+            "Plain fallback chat agent — no RAG, no course-document retrieval. "
+            "Use for general conversation when a materials-grounded answer "
+            "isn't needed, or as a safety-net slot."
+        ),
+        "agent-topic-template.json": (
+            "Focused on one course chapter/topic — meant to be reused, one per "
+            "chapter. Uses RAG, scoped to that chapter's material. Most of "
+            "your 10 slots will likely be this type."
+        ),
+    },
+    "de": {
+        "agent-01-universal.json": (
+            "Allgemeiner Kursassistent — beantwortet Fragen zum gesamten Kurs. "
+            "Nutzt RAG (Kursdokumente). Gut geeignet als Standardagent oder als "
+            "einziger Agent eines kleinen Kurses."
+        ),
+        "agent-10-persona.json": (
+            "Verkörpert eine bestimmte Rolle oder Figur (z. B. eine Lernende mit "
+            "Schwierigkeiten, eine beteiligte Person in einer Fallstudie) für "
+            "Übungen zum Perspektivwechsel. Nutzt RAG, beschränkt auf das, was "
+            "diese Person plausibel wissen kann."
+        ),
+        "agent-11-expert-feedback.json": (
+            "Verkörpert eine Fachexpertin bzw. einen Fachexperten und gibt "
+            "Rückmeldung zu studentischen Arbeiten in einem bestimmten "
+            "Fachgebiet. Nutzt RAG mit den für dieses Fachgebiet relevanten "
+            "Materialien."
+        ),
+        "agent-13-knowledge-test.json": (
+            "Adaptive, szenariobasierte Wissensüberprüfung — stellt Übungsaufgaben "
+            "und passt den Schwierigkeitsgrad an die Antworten der Lernenden an. "
+            "Nutzt RAG über den gesamten Kurs. Üblicherweise einmal pro Kurs, "
+            "nicht pro Thema — er bezieht sich zudem automatisch auf deine "
+            "übrigen eingerichteten Agenten."
+        ),
+        "agent-14-backup.json": (
+            "Einfacher Ausweich-Chatagent — ohne RAG, ohne Zugriff auf "
+            "Kursdokumente. Für allgemeine Gespräche, bei denen keine auf "
+            "Materialien gestützte Antwort nötig ist, oder als Reserveplatz."
+        ),
+        "agent-topic-template.json": (
+            "Auf ein einzelnes Kapitel bzw. Thema des Kurses ausgerichtet — "
+            "gedacht zur Mehrfachverwendung, einmal pro Kapitel. Nutzt RAG, "
+            "beschränkt auf das Material dieses Kapitels. Die meisten deiner "
+            "10 Plätze werden vermutlich von diesem Typ sein."
+        ),
+    },
 }
+
+ARCHETYPE_DESCRIPTIONS: dict[str, str] = ARCHETYPE_DESCRIPTIONS_BY_LANG["en"]
 
 # Fields whose value is derived from other slots, not asked in that slot's own
 # form — see derive_translation_tables(). Only relevant for agent-13.
@@ -187,112 +248,287 @@ AUTO_FILLED_FIELDS = {"COURSE_NAME", "WEAVIATE_COLLECTION_NAME", "EMBEDDING_MODE
 # the same field means the same thing everywhere it appears. Kept short —
 # the worked example in FIELD_EXAMPLES (shown as the field's placeholder
 # text) is what actually shows the operator what a good answer looks like.
-FIELD_HELP: dict[str, str] = {
-    "CONCEPT_LIST": "The specific concepts this agent should know about, one per line or comma-separated.",
-    "CONCEPT_EXAMPLE": "One concrete concept this persona might mention or struggle with, to make their dialogue feel grounded.",
-    "COURSE_KNOWLEDGE_DESCRIPTION": "A short paragraph summarizing what the whole course covers — gives the agent context for what it's retrieving.",
-    "EXPERT_DOMAIN": "The specific field of expertise this agent should respond as an expert in.",
-    "EXPERT_KNOWLEDGE_DESCRIPTION": "What this expert knows and can give feedback on.",
-    "PERSONA_CONCEPTS": "Which course concepts this persona is familiar with (or struggling with) — shapes what they can meaningfully discuss.",
-    "PERSONA_CONTEXT": "Background situation — who this persona is, why they're in this conversation.",
-    "PERSONA_DESCRIPTION": "A short character description — personality, tone, how they talk.",
-    "PERSONA_KNOWLEDGE_DESCRIPTION": "What this persona's own background/expertise consists of, if relevant to their role.",
-    "PERSONA_KNOWLEDGE_NAME": "A short label for that background, used when the agent refers back to it.",
-    "PERSONA_NAME": "The persona's name, as students will see it.",
-    "PERSONA_SITUATION": "The specific scenario this persona is currently facing — gives the roleplay a concrete starting point.",
-    "PERSONA_STYLE_DESCRIPTION": "How this persona communicates — formal or casual, short or long answers, etc.",
-    "RESPONSE_LANGUAGE_RULE": "One sentence telling the agent which language to answer in.",
-    "STUDENT_ROLE": "Who the students using this agent are — shapes how it addresses them.",
-    "STUDENT_ROLE_CONTEXT": "A slightly longer version of Student Role, used to generate realistic practice scenarios.",
-    "TOPIC_KNOWLEDGE_DESCRIPTION": "A short paragraph summarizing what this specific chapter covers — scopes the agent's retrieval to it.",
-    "TOPIC_NAME": "The name of this chapter/topic, as it appears in your course.",
-    "TOPIC_SUBTOPICS": "The subtopics/sections within this chapter, one per line.",
+FIELD_HELP_BY_LANG: dict[str, dict[str, str]] = {
+    "en": {
+        "CONCEPT_LIST": "The specific concepts this agent should know about, one per line or comma-separated.",
+        "CONCEPT_EXAMPLE": "One concrete concept this persona might mention or struggle with, to make their dialogue feel grounded.",
+        "COURSE_KNOWLEDGE_DESCRIPTION": "A short paragraph summarizing what the whole course covers — gives the agent context for what it's retrieving.",
+        "EXPERT_DOMAIN": "The specific field of expertise this agent should respond as an expert in.",
+        "EXPERT_KNOWLEDGE_DESCRIPTION": "What this expert knows and can give feedback on.",
+        "PERSONA_CONCEPTS": "Which course concepts this persona is familiar with (or struggling with) — shapes what they can meaningfully discuss.",
+        "PERSONA_CONTEXT": "Background situation — who this persona is, why they're in this conversation.",
+        "PERSONA_DESCRIPTION": "A short character description — personality, tone, how they talk.",
+        "PERSONA_KNOWLEDGE_DESCRIPTION": "What this persona's own background/expertise consists of, if relevant to their role.",
+        "PERSONA_KNOWLEDGE_NAME": "A short label for that background, used when the agent refers back to it.",
+        "PERSONA_NAME": "The persona's name, as students will see it.",
+        "PERSONA_SITUATION": "The specific scenario this persona is currently facing — gives the roleplay a concrete starting point.",
+        "PERSONA_STYLE_DESCRIPTION": "How this persona communicates — formal or casual, short or long answers, etc.",
+        "RESPONSE_LANGUAGE_RULE": "One sentence telling the agent which language to answer in.",
+        "STUDENT_ROLE": "Who the students using this agent are — shapes how it addresses them.",
+        "STUDENT_ROLE_CONTEXT": "A slightly longer version of Student Role, used to generate realistic practice scenarios.",
+        "TOPIC_KNOWLEDGE_DESCRIPTION": "A short paragraph summarizing what this specific chapter covers — scopes the agent's retrieval to it.",
+        "TOPIC_NAME": "The name of this chapter/topic, as it appears in your course.",
+        "TOPIC_SUBTOPICS": "The subtopics/sections within this chapter, one per line.",
+    },
+    "de": {
+        "CONCEPT_LIST": "Die konkreten Konzepte, die dieser Agent kennen soll — eines pro Zeile oder durch Komma getrennt.",
+        "CONCEPT_EXAMPLE": "Ein konkretes Konzept, das diese Person ansprechen könnte oder mit dem sie Schwierigkeiten hat — macht den Dialog greifbarer.",
+        "COURSE_KNOWLEDGE_DESCRIPTION": "Ein kurzer Absatz dazu, was der gesamte Kurs behandelt — gibt dem Agenten den Rahmen für seine Recherche.",
+        "EXPERT_DOMAIN": "Das Fachgebiet, in dem dieser Agent als Expertin bzw. Experte antworten soll.",
+        "EXPERT_KNOWLEDGE_DESCRIPTION": "Worüber diese Fachperson Bescheid weiß und wozu sie Rückmeldung geben kann.",
+        "PERSONA_CONCEPTS": "Mit welchen Kurskonzepten diese Person vertraut ist (oder womit sie sich schwertut) — bestimmt, worüber sie sinnvoll sprechen kann.",
+        "PERSONA_CONTEXT": "Die Ausgangslage — wer diese Person ist und warum sie in diesem Gespräch ist.",
+        "PERSONA_DESCRIPTION": "Eine kurze Charakterbeschreibung — Persönlichkeit, Tonfall, Sprechweise.",
+        "PERSONA_KNOWLEDGE_DESCRIPTION": "Welchen fachlichen Hintergrund diese Person mitbringt, soweit für ihre Rolle relevant.",
+        "PERSONA_KNOWLEDGE_NAME": "Eine kurze Bezeichnung für diesen Hintergrund, auf die sich der Agent beziehen kann.",
+        "PERSONA_NAME": "Der Name der Person, so wie die Lernenden ihn sehen.",
+        "PERSONA_SITUATION": "Die konkrete Situation, in der diese Person gerade steckt — gibt dem Rollenspiel einen greifbaren Ausgangspunkt.",
+        "PERSONA_STYLE_DESCRIPTION": "Wie diese Person kommuniziert — förmlich oder locker, kurze oder ausführliche Antworten usw.",
+        "RESPONSE_LANGUAGE_RULE": "Ein Satz, der dem Agenten vorgibt, in welcher Sprache er antworten soll.",
+        "STUDENT_ROLE": "Wer die Lernenden sind, die diesen Agenten nutzen — bestimmt, wie er sie anspricht.",
+        "STUDENT_ROLE_CONTEXT": "Eine etwas ausführlichere Fassung der Lernendenrolle, aus der realistische Übungsszenarien erzeugt werden.",
+        "TOPIC_KNOWLEDGE_DESCRIPTION": "Ein kurzer Absatz dazu, was dieses Kapitel behandelt — grenzt die Recherche des Agenten darauf ein.",
+        "TOPIC_NAME": "Der Name dieses Kapitels bzw. Themas, so wie er in deinem Kurs vorkommt.",
+        "TOPIC_SUBTOPICS": "Die Unterabschnitte innerhalb dieses Kapitels, einer pro Zeile.",
+    },
 }
+
+FIELD_HELP: dict[str, str] = FIELD_HELP_BY_LANG["en"]
 
 # Shown as the field's placeholder text (grayed-out, inside the box) — a
 # complete, realistic worked example the operator can read, then overwrite
 # with their own course content ("nachbauen" — rebuild the same shape with
-# their own ideas). All examples share one fictional course (a teacher-
-# training module on cognitive load theory) so they read as one coherent,
-# copyable pattern rather than disconnected one-liners.
-FIELD_EXAMPLES: dict[str, str] = {
-    "CONCEPT_LIST": (
-        "Working Memory\nCognitive Load Theory\nIntrinsic, Extraneous, and "
-        "Germane Load\nMultimedia Learning Principles"
-    ),
-    "CONCEPT_EXAMPLE": (
-        "Confusing intrinsic load (the inherent difficulty of the material) "
-        "with extraneous load (poor instructional design)"
-    ),
-    "COURSE_KNOWLEDGE_DESCRIPTION": (
-        "This course introduces educational psychology for future teachers. "
-        "It covers major learning theories (behaviorism, cognitivism, "
-        "constructivism), motivation and self-regulation, cognitive load "
-        "theory, and how to design and evaluate assessments. Students apply "
-        "these theories to real classroom scenarios throughout the "
-        "semester."
-    ),
-    "EXPERT_DOMAIN": "Cognitive load theory in multimedia learning design",
-    "EXPERT_KNOWLEDGE_DESCRIPTION": (
-        "Reviews instructional materials for excessive extraneous cognitive "
-        "load and suggests concrete redesigns — e.g. splitting a dense "
-        "slide into sequential steps, replacing redundant on-screen text "
-        "with narration, or removing decorative elements that add no "
-        "learning value."
-    ),
-    "PERSONA_CONCEPTS": (
-        "Comfortable with basic learning theories (behaviorism, "
-        "cognitivism) from her teacher training, but has never formally "
-        "studied cognitive load theory or multimedia design principles."
-    ),
-    "PERSONA_CONTEXT": (
-        "A first-year secondary school teacher preparing her first "
-        "multimedia-based lesson on the water cycle for a 7th-grade class."
-    ),
-    "PERSONA_DESCRIPTION": (
-        "Enthusiastic and eager to use technology in her teaching, but "
-        "easily overwhelmed by too much theoretical jargon. Asks a lot of "
-        "clarifying, practical \"so what should I actually do\" questions."
-    ),
-    "PERSONA_KNOWLEDGE_DESCRIPTION": (
-        "Three years of classroom teaching experience and a completed "
-        "teacher-training degree, but no formal background in "
-        "instructional design or media psychology."
-    ),
-    "PERSONA_KNOWLEDGE_NAME": "classroom teaching experience",
-    "PERSONA_NAME": "Sarah, a first-year secondary school teacher",
-    "PERSONA_SITUATION": (
-        "Sarah has just built a 20-slide presentation on the water cycle, "
-        "packed with text, diagrams, and animations, and isn't sure why her "
-        "students seem confused instead of engaged."
-    ),
-    "PERSONA_STYLE_DESCRIPTION": (
-        "Casual, conversational tone. Short messages, occasional "
-        "teacher-lounge small talk. Avoids academic jargon unless the "
-        "student introduces it first."
-    ),
-    "RESPONSE_LANGUAGE_RULE": (
-        "Always respond in German, regardless of the language the student "
-        "writes in."
-    ),
-    "STUDENT_ROLE": "trainee secondary school teachers in their second year of teacher training",
-    "STUDENT_ROLE_CONTEXT": (
-        "Trainee secondary school teachers who are currently completing "
-        "their practical teaching placement and need to design real lesson "
-        "materials for their mentor teacher to review."
-    ),
-    "TOPIC_KNOWLEDGE_DESCRIPTION": (
-        "Covers Baddeley's working memory model, Sweller's cognitive load "
-        "theory (intrinsic, extraneous, germane load), and Mayer's "
-        "multimedia learning principles (coherence, signaling, redundancy, "
-        "spatial and temporal contiguity)."
-    ),
-    "TOPIC_NAME": "Chapter 4: Cognitive Prerequisites for Learning",
-    "TOPIC_SUBTOPICS": (
-        "4.1 The Three-Store Model of Memory\n4.2 Cognitive Load Theory\n"
-        "4.3 Principles of Multimedia Learning"
-    ),
+# their own ideas). Within each language, all examples share one fictional
+# course (a teacher-training module on cognitive load theory) so they read
+# as one coherent, copyable pattern rather than disconnected one-liners.
+# The German set is written natively rather than translated — a translated
+# example reads like a translation, which is exactly the wrong model for
+# someone about to write their own.
+FIELD_EXAMPLES_BY_LANG: dict[str, dict[str, str]] = {
+    "en": {
+        "CONCEPT_LIST": (
+            "Working Memory\nCognitive Load Theory\nIntrinsic, Extraneous, and "
+            "Germane Load\nMultimedia Learning Principles"
+        ),
+        "CONCEPT_EXAMPLE": (
+            "Confusing intrinsic load (the inherent difficulty of the material) "
+            "with extraneous load (poor instructional design)"
+        ),
+        "COURSE_KNOWLEDGE_DESCRIPTION": (
+            "This course introduces educational psychology for future teachers. "
+            "It covers major learning theories (behaviorism, cognitivism, "
+            "constructivism), motivation and self-regulation, cognitive load "
+            "theory, and how to design and evaluate assessments. Students apply "
+            "these theories to real classroom scenarios throughout the "
+            "semester."
+        ),
+        "EXPERT_DOMAIN": "Cognitive load theory in multimedia learning design",
+        "EXPERT_KNOWLEDGE_DESCRIPTION": (
+            "Reviews instructional materials for excessive extraneous cognitive "
+            "load and suggests concrete redesigns — e.g. splitting a dense "
+            "slide into sequential steps, replacing redundant on-screen text "
+            "with narration, or removing decorative elements that add no "
+            "learning value."
+        ),
+        "PERSONA_CONCEPTS": (
+            "Comfortable with basic learning theories (behaviorism, "
+            "cognitivism) from her teacher training, but has never formally "
+            "studied cognitive load theory or multimedia design principles."
+        ),
+        "PERSONA_CONTEXT": (
+            "A first-year secondary school teacher preparing her first "
+            "multimedia-based lesson on the water cycle for a 7th-grade class."
+        ),
+        "PERSONA_DESCRIPTION": (
+            "Enthusiastic and eager to use technology in her teaching, but "
+            "easily overwhelmed by too much theoretical jargon. Asks a lot of "
+            "clarifying, practical \"so what should I actually do\" questions."
+        ),
+        "PERSONA_KNOWLEDGE_DESCRIPTION": (
+            "Three years of classroom teaching experience and a completed "
+            "teacher-training degree, but no formal background in "
+            "instructional design or media psychology."
+        ),
+        "PERSONA_KNOWLEDGE_NAME": "classroom teaching experience",
+        "PERSONA_NAME": "Sarah, a first-year secondary school teacher",
+        "PERSONA_SITUATION": (
+            "Sarah has just built a 20-slide presentation on the water cycle, "
+            "packed with text, diagrams, and animations, and isn't sure why her "
+            "students seem confused instead of engaged."
+        ),
+        "PERSONA_STYLE_DESCRIPTION": (
+            "Casual, conversational tone. Short messages, occasional "
+            "teacher-lounge small talk. Avoids academic jargon unless the "
+            "student introduces it first."
+        ),
+        "RESPONSE_LANGUAGE_RULE": (
+            "Always respond in German, regardless of the language the student "
+            "writes in."
+        ),
+        "STUDENT_ROLE": "trainee secondary school teachers in their second year of teacher training",
+        "STUDENT_ROLE_CONTEXT": (
+            "Trainee secondary school teachers who are currently completing "
+            "their practical teaching placement and need to design real lesson "
+            "materials for their mentor teacher to review."
+        ),
+        "TOPIC_KNOWLEDGE_DESCRIPTION": (
+            "Covers Baddeley's working memory model, Sweller's cognitive load "
+            "theory (intrinsic, extraneous, germane load), and Mayer's "
+            "multimedia learning principles (coherence, signaling, redundancy, "
+            "spatial and temporal contiguity)."
+        ),
+        "TOPIC_NAME": "Chapter 4: Cognitive Prerequisites for Learning",
+        "TOPIC_SUBTOPICS": (
+            "4.1 The Three-Store Model of Memory\n4.2 Cognitive Load Theory\n"
+            "4.3 Principles of Multimedia Learning"
+        ),
+    },
+    "de": {
+        "CONCEPT_LIST": (
+            "Arbeitsgedächtnis\nCognitive Load Theory\nIntrinsische, extrinsische "
+            "und lernbezogene Belastung\nPrinzipien multimedialen Lernens"
+        ),
+        "CONCEPT_EXAMPLE": (
+            "Verwechslung von intrinsischer Belastung (der Schwierigkeit des "
+            "Stoffes selbst) mit extrinsischer Belastung (schlechter didaktischer "
+            "Aufbereitung)"
+        ),
+        "COURSE_KNOWLEDGE_DESCRIPTION": (
+            "Dieser Kurs führt angehende Lehrkräfte in die Pädagogische "
+            "Psychologie ein. Behandelt werden die zentralen Lerntheorien "
+            "(Behaviorismus, Kognitivismus, Konstruktivismus), Motivation und "
+            "Selbstregulation, die Cognitive Load Theory sowie die Gestaltung "
+            "und Auswertung von Leistungsüberprüfungen. Die Studierenden wenden "
+            "diese Theorien über das Semester hinweg auf reale "
+            "Unterrichtssituationen an."
+        ),
+        "EXPERT_DOMAIN": "Cognitive Load Theory in der Gestaltung multimedialer Lernangebote",
+        "EXPERT_KNOWLEDGE_DESCRIPTION": (
+            "Prüft Unterrichtsmaterialien auf übermäßige extrinsische kognitive "
+            "Belastung und schlägt konkrete Überarbeitungen vor — etwa eine "
+            "überladene Folie in aufeinander aufbauende Schritte zu zerlegen, "
+            "redundanten Bildschirmtext durch gesprochene Erläuterung zu "
+            "ersetzen oder rein dekorative Elemente ohne Lernwert zu entfernen."
+        ),
+        "PERSONA_CONCEPTS": (
+            "Mit den grundlegenden Lerntheorien (Behaviorismus, Kognitivismus) "
+            "aus dem Studium vertraut, hat sich aber nie systematisch mit der "
+            "Cognitive Load Theory oder mit Gestaltungsprinzipien multimedialen "
+            "Lernens befasst."
+        ),
+        "PERSONA_CONTEXT": (
+            "Eine Lehrerin im ersten Berufsjahr, die ihre erste "
+            "medienbasierte Unterrichtsstunde zum Wasserkreislauf für eine "
+            "7. Klasse vorbereitet."
+        ),
+        "PERSONA_DESCRIPTION": (
+            "Begeistert davon, digitale Medien im Unterricht einzusetzen, aber "
+            "schnell überfordert, wenn es zu theoretisch wird. Fragt viel nach "
+            "und will vor allem wissen: „Was heißt das jetzt konkret für meinen "
+            "Unterricht?“"
+        ),
+        "PERSONA_KNOWLEDGE_DESCRIPTION": (
+            "Drei Jahre Unterrichtserfahrung und ein abgeschlossenes "
+            "Lehramtsstudium, aber keine fachliche Vorbildung in "
+            "Instruktionsdesign oder Medienpsychologie."
+        ),
+        "PERSONA_KNOWLEDGE_NAME": "Unterrichtserfahrung",
+        "PERSONA_NAME": "Sarah, Lehrerin im ersten Berufsjahr",
+        "PERSONA_SITUATION": (
+            "Sarah hat gerade eine 20-seitige Präsentation zum Wasserkreislauf "
+            "erstellt, voll mit Text, Grafiken und Animationen, und wundert "
+            "sich, warum ihre Klasse eher verwirrt als interessiert wirkt."
+        ),
+        "PERSONA_STYLE_DESCRIPTION": (
+            "Lockerer, gesprächiger Ton. Kurze Nachrichten, gelegentlich etwas "
+            "Smalltalk aus dem Lehrerzimmer. Vermeidet Fachjargon, solange ihr "
+            "Gegenüber ihn nicht selbst einbringt."
+        ),
+        "RESPONSE_LANGUAGE_RULE": (
+            "Antworte immer auf Deutsch, unabhängig davon, in welcher Sprache "
+            "die Lernenden schreiben."
+        ),
+        "STUDENT_ROLE": "Lehramtsstudierende im zweiten Studienjahr",
+        "STUDENT_ROLE_CONTEXT": (
+            "Lehramtsstudierende, die gerade ihr Praxissemester absolvieren und "
+            "echte Unterrichtsmaterialien entwerfen müssen, die ihre "
+            "Mentorinnen und Mentoren anschließend begutachten."
+        ),
+        "TOPIC_KNOWLEDGE_DESCRIPTION": (
+            "Behandelt Baddeleys Arbeitsgedächtnismodell, Swellers Cognitive "
+            "Load Theory (intrinsische, extrinsische und lernbezogene "
+            "Belastung) sowie Mayers Prinzipien multimedialen Lernens "
+            "(Kohärenz, Signalgebung, Redundanz, räumliche und zeitliche Nähe)."
+        ),
+        "TOPIC_NAME": "Kapitel 4: Kognitive Lernvoraussetzungen",
+        "TOPIC_SUBTOPICS": (
+            "4.1 Das Drei-Speicher-Modell des Gedächtnisses\n"
+            "4.2 Cognitive Load Theory\n"
+            "4.3 Prinzipien multimedialen Lernens"
+        ),
+    },
 }
+
+FIELD_EXAMPLES: dict[str, str] = FIELD_EXAMPLES_BY_LANG["en"]
+
+# The form's visible label for each field. Without this the label is derived
+# from the placeholder name (TOPIC_NAME -> "Topic Name"), which is fine in
+# English and nonsense in German.
+FIELD_LABELS_BY_LANG: dict[str, dict[str, str]] = {
+    # English labels stay derived from the field name — listing them here
+    # would just be the same strings twice, and any field added to a
+    # template later then works without a code change.
+    "en": {},
+    "de": {
+        "CONCEPT_LIST": "Konzeptliste",
+        "CONCEPT_EXAMPLE": "Beispielkonzept",
+        "COURSE_KNOWLEDGE_DESCRIPTION": "Beschreibung des Kursinhalts",
+        "EXPERT_DOMAIN": "Fachgebiet",
+        "EXPERT_KNOWLEDGE_DESCRIPTION": "Beschreibung des Expertenwissens",
+        "PERSONA_CONCEPTS": "Konzepte der Person",
+        "PERSONA_CONTEXT": "Hintergrund der Person",
+        "PERSONA_DESCRIPTION": "Beschreibung der Person",
+        "PERSONA_KNOWLEDGE_DESCRIPTION": "Fachlicher Hintergrund der Person",
+        "PERSONA_KNOWLEDGE_NAME": "Bezeichnung des Hintergrunds",
+        "PERSONA_NAME": "Name der Person",
+        "PERSONA_SITUATION": "Situation der Person",
+        "PERSONA_STYLE_DESCRIPTION": "Kommunikationsstil der Person",
+        "RESPONSE_LANGUAGE_RULE": "Sprachregel für Antworten",
+        "STUDENT_ROLE": "Rolle der Lernenden",
+        "STUDENT_ROLE_CONTEXT": "Kontext der Lernendenrolle",
+        "TOPIC_KNOWLEDGE_DESCRIPTION": "Beschreibung des Kapitelinhalts",
+        "TOPIC_NAME": "Name des Kapitels",
+        "TOPIC_SUBTOPICS": "Unterabschnitte",
+    },
+}
+
+
+def _for_lang(catalog: dict[str, dict[str, str]], lang: str) -> dict[str, str]:
+    """English entries merged under the requested language, so a key only
+    present in English still resolves instead of vanishing from the form."""
+    merged = dict(catalog.get("en", {}))
+    merged.update(catalog.get(lang, {}))
+    return merged
+
+
+def archetypes_for(lang: str = "en") -> dict[str, str]:
+    return _for_lang(ARCHETYPES_BY_LANG, lang)
+
+
+def archetype_descriptions_for(lang: str = "en") -> dict[str, str]:
+    return _for_lang(ARCHETYPE_DESCRIPTIONS_BY_LANG, lang)
+
+
+def field_help_for(lang: str = "en") -> dict[str, str]:
+    return _for_lang(FIELD_HELP_BY_LANG, lang)
+
+
+def field_examples_for(lang: str = "en") -> dict[str, str]:
+    return _for_lang(FIELD_EXAMPLES_BY_LANG, lang)
+
+
+def field_labels_for(lang: str = "en") -> dict[str, str]:
+    return _for_lang(FIELD_LABELS_BY_LANG, lang)
 
 
 def placeholders_for(archetype_file: str) -> list[str]:
