@@ -201,8 +201,15 @@ action_n8n_workflows() {
     info "$(t admin_n8n_intro)"
     echo
     if confirm admin_n8n_confirm "n"; then
-        bash "$SCRIPT_DIR/deploy-n8n-workflows.sh" --lang "$LANG_CHOICE" \
-            || err "$(t admin_n8n_failed)"
+        # EXIT_SKIPPED means "n8n has no owner account yet", which the
+        # script has already explained on screen. Calling that "failed"
+        # would send the operator looking for a broken import instead of
+        # the browser step they still have to do.
+        rc=0
+        bash "$SCRIPT_DIR/deploy-n8n-workflows.sh" --lang "$LANG_CHOICE" || rc=$?
+        if (( rc != 0 && rc != EXIT_SKIPPED )); then
+            err "$(t admin_n8n_failed)"
+        fi
     fi
     press_enter
 }
