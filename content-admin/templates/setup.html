@@ -1,18 +1,18 @@
 {% extends "base.html" %}
-{% block title %}First-time setup — SMART RAG Content Admin{% endblock %}
+{% block title %}{{ t('setup_title') }} — {{ t('app_name') }} {{ t('app_subtitle') }}{% endblock %}
 {% block content %}
-<h1>Welcome — create your admin account</h1>
-<p class="note">This is separate from your Flowise login — it only protects this content-authoring tool.</p>
+<h1>{{ t('setup_heading') }}</h1>
+<p class="note">{{ t('setup_intro') }}</p>
 <form method="post">
-  <label for="username">Username</label>
+  <label for="username">{{ t('setup_username') }}</label>
   <input type="text" id="username" name="username" required autofocus>
 
-  <label for="password">Password (min. 12 characters)</label>
+  <label for="password">{{ t('setup_password') }}</label>
   <input type="password" id="password" name="password" minlength="12" required>
 
-  <label for="confirm">Confirm password</label>
+  <label for="confirm">{{ t('setup_confirm') }}</label>
   <input type="password" id="confirm" name="confirm" minlength="12" required>
 
-  <button type="submit">Create account</button>
+  <button type="submit">{{ t('setup_submit') }}</button>
 </form>
 {% endblock %}

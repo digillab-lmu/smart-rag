@@ -1,16 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Slot {{ slot }} — SMART RAG Content Admin{% endblock %}
+{% block title %}{{ t('slot_title', slot) }} — {{ t('app_name') }} {{ t('app_subtitle') }}{% endblock %}
 {% block content %}
-<h1>Slot {{ slot }}</h1>
-<p><a href="{{ url_for('dashboard') }}">&larr; back to agents</a></p>
+<h1>{{ t('slot_heading', slot) }}</h1>
+<p><a href="{{ url_for('dashboard') }}">{{ t('slot_back') }}</a></p>
 
 {% if not existing.get('archetype') %}
-<h2>Choose an archetype</h2>
-<p class="note">
-  All except Backup Assistant use RAG (retrieval over your course documents).
-  Once this agent is set up, add its documents on the
-  <a href="{{ url_for('upload') }}">Documents</a> page.
-</p>
+<h2>{{ t('slot_choose_archetype') }}</h2>
+<p class="note">{{ t('slot_rag_note', url_for('upload'))|safe }}</p>
 <form method="post">
   <input type="hidden" name="action" value="choose_archetype">
   {% for file, label in archetypes.items() %}
@@ -22,54 +18,54 @@
     </span>
   </label>
   {% endfor %}
-  <button type="submit">Continue</button>
+  <button type="submit">{{ t('slot_continue') }}</button>
 </form>
 
 {% else %}
 <p class="note">
-  Archetype: <strong>{{ archetypes.get(existing.archetype, existing.archetype) }}</strong>
-  {% if existing.get('chatflow_id') %} — imported (chatflow id: <code>{{ existing.chatflow_id }}</code>){% endif %}
+  {{ t('slot_archetype_label') }}: <strong>{{ archetypes.get(existing.archetype, existing.archetype) }}</strong>
+  {% if existing.get('chatflow_id') %} — {{ t('slot_imported_as', existing.chatflow_id) }}{% endif %}
 </p>
 
 <form method="post">
   <input type="hidden" name="archetype" value="{{ existing.archetype }}">
 
-  <label for="name">Agent Name</label>
-  <p class="note" style="margin-top: 0.15rem;">
-    A unique name for this agent, so it's easy to tell apart from your other
-    agents — this becomes the chatflow's name in Flowise. Example: "Chapter 4
-    Tutor" or "Sarah the Statistics Expert". Must be different from every
-    other agent's name.
-  </p>
+  <label for="name">{{ t('slot_name_label') }}</label>
+  <p class="note" style="margin-top: 0.15rem;">{{ t('slot_name_help') }}</p>
   <input type="text" id="name" name="name" value="{{ existing.get('name', '') }}" required>
 
-  <p class="note">
-    Each field below shows a complete worked example as gray placeholder
-    text (it disappears once you start typing) — write your own course
-    content following that same pattern.
-  </p>
+  <p class="note">{{ t('slot_examples_note') }}</p>
 
   {% for field in fields %}
-  <label for="{{ field }}">{{ field.replace('_', ' ').title() }}</label>
+  <label for="{{ field }}">{{ field_labels.get(field) or field.replace('_', ' ').title() }}</label>
   {% if field_help.get(field) %}
   <p class="note" style="margin-top: 0.15rem;">{{ field_help.get(field) }}</p>
   {% endif %}
   <textarea id="{{ field }}" name="{{ field }}" placeholder="{{ field_examples.get(field, '') }}">{{ existing.content.get(field, '') }}</textarea>
-  <button type="button" class="optimize-btn" data-field="{{ field }}">Optimize with AI</button>
+  <button type="button" class="optimize-btn" data-field="{{ field }}">{{ t('slot_optimize') }}</button>
   <div class="optimize-result" id="optimize-result-{{ field }}" hidden>
-    <p class="note" style="margin-top: 0;"><strong>AI suggestion</strong></p>
+    <p class="note" style="margin-top: 0;"><strong>{{ t('slot_suggestion') }}</strong></p>
     <div class="suggestion-text"></div>
     <p class="note rationale" style="margin-top: 0.5rem;"></p>
-    <button type="button" class="optimize-accept">Use this</button>
-    <button type="button" class="secondary optimize-discard">Discard</button>
+    <button type="button" class="optimize-accept">{{ t('slot_use_this') }}</button>
+    <button type="button" class="secondary optimize-discard">{{ t('slot_discard') }}</button>
   </div>
   {% endfor %}
 
-  <button type="submit" name="action" value="save" class="secondary">Save</button>
-  <button type="submit" name="action" value="import">Save and import to Flowise</button>
+  <button type="submit" name="action" value="save" class="secondary">{{ t('slot_save') }}</button>
+  <button type="submit" name="action" value="import">{{ t('slot_import') }}</button>
 </form>
 
 <script>
+// Labels the handler swaps in at runtime — rendered here rather than
+// hardcoded in the script so they follow the GUI language like everything else.
+var OPTIMIZE_LABELS = {
+  working: {{ t('slot_optimizing')|tojson }},
+  discard: {{ t('slot_discard')|tojson }},
+  close: {{ t('slot_close')|tojson }},
+  failed: {{ t('slot_err_request_failed')|tojson }}
+};
+
 document.addEventListener('click', function (e) {
   var btn = e.target.closest('.optimize-btn');
   if (btn) {
@@ -78,7 +74,7 @@ document.addEventListener('click', function (e) {
     var box = document.getElementById('optimize-result-' + field);
     var originalLabel = btn.textContent;
     btn.disabled = true;
-    btn.textContent = 'Optimizing…';
+    btn.textContent = OPTIMIZE_LABELS.working;
     fetch(window.location.pathname + '/optimize', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -94,9 +90,9 @@ document.addEventListener('click', function (e) {
         var discard = box.querySelector('.optimize-discard');
         if (!res.ok) {
           box.querySelector('.suggestion-text').textContent = '';
-          box.querySelector('.rationale').textContent = res.data.error || 'Something went wrong.';
+          box.querySelector('.rationale').textContent = res.data.error || OPTIMIZE_LABELS.failed;
           accept.hidden = true;
-          discard.textContent = 'Close';
+          discard.textContent = OPTIMIZE_LABELS.close;
           box.hidden = false;
           return;
         }
@@ -104,16 +100,16 @@ document.addEventListener('click', function (e) {
         box.querySelector('.suggestion-text').textContent = res.data.suggestion;
         box.querySelector('.rationale').textContent = res.data.rationale;
         accept.hidden = false;
-        discard.textContent = 'Discard';
+        discard.textContent = OPTIMIZE_LABELS.discard;
         box.hidden = false;
       })
       .catch(function (err) {
         btn.disabled = false;
         btn.textContent = originalLabel;
         box.querySelector('.suggestion-text').textContent = '';
-        box.querySelector('.rationale').textContent = 'Request failed: ' + err;
+        box.querySelector('.rationale').textContent = OPTIMIZE_LABELS.failed + ' ' + err;
         box.querySelector('.optimize-accept').hidden = true;
-        box.querySelector('.optimize-discard').textContent = 'Close';
+        box.querySelector('.optimize-discard').textContent = OPTIMIZE_LABELS.close;
         box.hidden = false;
       });
     return;

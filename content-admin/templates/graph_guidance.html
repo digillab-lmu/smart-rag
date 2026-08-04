@@ -1,24 +1,20 @@
 {% extends "base.html" %}
-{% block title %}Knowledge Graph — SMART RAG Content Admin{% endblock %}
+{% block title %}{{ t('graph_title') }} — {{ t('app_name') }} {{ t('app_subtitle') }}{% endblock %}
 {% block content %}
-<h1>Knowledge Graph</h1>
-<p class="note">
-  Guided, manual process for now — no LLM call happens from this GUI. A fully
-  automated builder (the GUI proposes concepts and prerequisite edges itself,
-  with a review step before writing) is planned for a later batch.
-</p>
+<h1>{{ t('graph_heading') }}</h1>
+<p class="note">{{ t('graph_intro') }}</p>
 
-<h2>1. The data model</h2>
+<h2>{{ t('graph_h_model') }}</h2>
 <ul>
-  <li><code>(Topic)</code> — a high-level topic in the course (chapter / unit)</li>
-  <li><code>(Concept)</code> — a specific learning concept (theory, method, idea)</li>
+  <li><code>(Topic)</code> — {{ t('graph_model_topic') }}</li>
+  <li><code>(Concept)</code> — {{ t('graph_model_concept') }}</li>
   <li><code>(:Concept)-[:BELONGS_TO]-&gt;(:Topic)</code></li>
   <li><code>(:Concept)-[:PREREQUISITE_FOR]-&gt;(:Concept)</code></li>
 </ul>
-<p>Concept properties: <code>name</code> (required, unique), <code>chapter</code> (optional), <code>section_id</code> (optional), <code>description</code> (optional).</p>
+<p>{{ t('graph_model_props')|safe }}</p>
 
-<h2>2. Prompt template</h2>
-<p>Copy this into an AI assistant of your choice, together with your course documents (or a summary of their chapter/section structure):</p>
+<h2>{{ t('graph_h_prompt') }}</h2>
+<p>{{ t('graph_prompt_intro') }}</p>
 <pre id="prompt-template">I'm building a concept-prerequisite graph for a course, to be loaded into Neo4j.
 
 Data model:
@@ -50,15 +46,11 @@ MERGE (a:Concept {name: "..."})-[:PREREQUISITE_FOR]->(b:Concept {name: "..."});
 
 Output ONLY the Cypher statements, nothing else.</pre>
 
-<h2>3. Review, then run it</h2>
-<p>
-  Read through what the AI produced before running it — this step exists so a
-  bad suggestion doesn't quietly land in the graph the tutoring agents rely on
-  for scaffolding. Paste the (reviewed) Cypher below.
-</p>
+<h2>{{ t('graph_h_run') }}</h2>
+<p>{{ t('graph_run_intro') }}</p>
 <form method="post">
-  <label for="cypher">Cypher statements</label>
+  <label for="cypher">{{ t('graph_cypher_label') }}</label>
   <textarea id="cypher" name="cypher" style="min-height: 14rem;" required placeholder="MERGE (t:Topic {name: &quot;...&quot;});"></textarea>
-  <button type="submit">Run against Neo4j</button>
+  <button type="submit">{{ t('graph_submit') }}</button>
 </form>
 {% endblock %}

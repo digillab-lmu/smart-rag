@@ -31,11 +31,27 @@ class LLMError(Exception):
     pass
 
 
-def optimize_field(field_name: str, field_purpose: str, current_text: str, env: dict) -> dict:
+_LANGUAGE_NAMES = {"en": "English", "de": "German"}
+
+
+def optimize_field(
+    field_name: str,
+    field_purpose: str,
+    current_text: str,
+    env: dict,
+    language: str = "en",
+) -> dict:
     """
     Returns {"suggestion": str, "rationale": str}. Raises LLMError on any
     failure (missing config, network error, unexpected response shape) —
     the caller surfaces the message directly to the operator.
+
+    `language` is the GUI language the operator is working in. It decides
+    the language of the suggestion when the field is still empty, and the
+    language of the rationale always — an operator using the German GUI
+    shouldn't get an English explanation of what was changed. Existing
+    text keeps its own language regardless, so improving a German draft
+    never silently translates it.
     """
     provider = env.get("LLM_PROVIDER", "anthropic")
     api_key = env.get("LLM_API_KEY", "")
@@ -45,17 +61,18 @@ def optimize_field(field_name: str, field_purpose: str, current_text: str, env: 
     if not model:
         raise LLMError("No LLM model configured (LLM_MODEL_STRONG is empty in .env).")
 
+    language_name = _LANGUAGE_NAMES.get(language, "English")
     system_prompt = (
         "You help course creators write content for an AI teaching assistant. "
         "You will be given the name and purpose of one form field, and what "
         "the course creator has written for it so far (it may be empty, a "
         "rough note, or already good). Expand or improve it into complete, "
         "well-written content suitable for that field. Keep the same "
-        "language the input is written in (or English if the input is "
-        "empty). Respond with ONLY a JSON object with exactly two keys: "
-        '"suggestion" (the improved field content, nothing else — no quotes '
-        'or markdown around it) and "rationale" (1-2 sentences, in the same '
-        "language as the suggestion, explaining what you changed and why). "
+        f"language the input is written in; if the input is empty, write in "
+        f"{language_name}. Respond with ONLY a JSON object with exactly two "
+        'keys: "suggestion" (the improved field content, nothing else — no '
+        'quotes or markdown around it) and "rationale" (1-2 sentences, '
+        f"written in {language_name}, explaining what you changed and why). "
         "Output nothing before or after the JSON object."
     )
     user_prompt = (

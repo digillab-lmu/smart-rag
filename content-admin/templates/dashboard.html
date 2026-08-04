@@ -1,17 +1,20 @@
 {% extends "base.html" %}
-{% block title %}Agents — SMART RAG Content Admin{% endblock %}
+{% block title %}{{ t('dash_title') }} — {{ t('app_name') }} {{ t('app_subtitle') }}{% endblock %}
 {% block content %}
-<h1>Agents (up to 10)</h1>
+<h1>{{ t('dash_heading') }}</h1>
 
 {% if not flowise_configured %}
-<div class="error">
-  Flowise isn't connected yet. <a href="{{ url_for('flowise_setup') }}">Set it up first</a> —
-  you can still fill in content below, but importing needs the connection.
-</div>
+<div class="error">{{ t('dash_not_connected', url_for('flowise_setup'))|safe }}</div>
 {% endif %}
 
 <table>
-  <tr><th>Slot</th><th>Name</th><th>Archetype</th><th>Status</th><th></th></tr>
+  <tr>
+    <th>{{ t('dash_col_slot') }}</th>
+    <th>{{ t('dash_col_name') }}</th>
+    <th>{{ t('dash_col_archetype') }}</th>
+    <th>{{ t('dash_col_status') }}</th>
+    <th></th>
+  </tr>
   {% for num in range(1, 11) %}
   {% set s = slots[num|string] %}
   <tr>
@@ -19,11 +22,11 @@
     <td>{{ s.get('name') or '—' }}</td>
     <td>{{ archetypes.get(s.get('archetype'), '—') }}</td>
     <td>
-      {% if s.get('chatflow_id') %}Imported
-      {% elif s.get('archetype') %}Content saved, not imported
-      {% else %}Empty{% endif %}
+      {% if s.get('chatflow_id') %}{{ t('dash_status_imported') }}
+      {% elif s.get('archetype') %}{{ t('dash_status_saved') }}
+      {% else %}{{ t('dash_status_empty') }}{% endif %}
     </td>
-    <td><a href="{{ url_for('slot_view', slot=num) }}">Edit</a></td>
+    <td><a href="{{ url_for('slot_view', slot=num) }}">{{ t('dash_edit') }}</a></td>
   </tr>
   {% endfor %}
 </table>
