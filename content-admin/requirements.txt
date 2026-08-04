@@ -1,3 +1,8 @@
 flask==3.1.3
 gunicorn==25.1.0
 requests==2.32.3
+# Reads a DOI/ISBN out of an uploaded PDF's front matter (citation.py).
+# pypdf specifically: pure Python with no required dependencies of its own,
+# and BSD-3-Clause. PyMuPDF is faster but AGPL, which would be a licensing
+# problem for this repo; pdfminer.six pulls in cryptography for no gain here.
+pypdf==6.14.2

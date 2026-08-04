@@ -27,6 +27,27 @@
   <input type="file" id="document" name="document" required
          accept=".pdf,.docx,.xlsx,.pptx,.html,.htm,.md,.adoc,.asciidoc,.png,.jpg,.jpeg,.tiff,.tif,.bmp">
 
+  <div class="lookup-box">
+    <p class="note" style="margin-top: 0;"><strong>{{ t('lookup_heading') }}</strong></p>
+    <p class="note">{{ t('lookup_intro') }}</p>
+
+    <button type="button" id="lookup-scan" class="optimize-btn">{{ t('lookup_scan_btn') }}</button>
+
+    <label for="lookup-id" style="margin-top: 0.9rem;">{{ t('lookup_id_label') }}</label>
+    <p class="note" style="margin-top: 0.15rem;">{{ t('lookup_id_help') }}</p>
+    <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+      <input type="text" id="lookup-id" placeholder="10.3389/fpsyg.2019.02364">
+      <button type="button" id="lookup-go" class="optimize-btn" style="margin-top: 0.25rem; white-space: nowrap;">{{ t('lookup_btn') }}</button>
+    </div>
+
+    <div class="optimize-result" id="lookup-result" hidden>
+      <p class="note lookup-source" style="margin-top: 0;"></p>
+      <div class="suggestion-text lookup-citation"></div>
+      <button type="button" id="lookup-apply">{{ t('lookup_apply') }}</button>
+      <button type="button" id="lookup-dismiss" class="secondary">{{ t('lookup_dismiss') }}</button>
+    </div>
+  </div>
+
   <label for="title">{{ t('upload_doc_title_label') }}</label>
   <p class="note" style="margin-top: 0.15rem;">{{ t('upload_doc_title_help') }}</p>
   <input type="text" id="title" name="title" value="{{ form.get('title', '') }}">
@@ -64,5 +85,119 @@
 
   <button type="submit">{{ t('upload_submit') }}</button>
 </form>
+
+<script>
+var LOOKUP = {
+  scanIdle:  {{ t('lookup_scan_btn')|tojson }},
+  scanning:  {{ t('lookup_scanning')|tojson }},
+  goIdle:    {{ t('lookup_btn')|tojson }},
+  looking:   {{ t('lookup_looking')|tojson }},
+  foundVia:  {{ t('lookup_found', '@@')|tojson }},
+  noFile:    {{ t('lookup_err_no_file')|tojson }},
+  notPdf:    {{ t('lookup_err_not_pdf')|tojson }},
+  noId:      {{ t('lookup_err_no_identifier')|tojson }},
+  failed:    {{ t('slot_err_request_failed')|tojson }},
+  dismiss:   {{ t('lookup_dismiss')|tojson }},
+  close:     {{ t('slot_close')|tojson }}
+};
+
+(function () {
+  var box     = document.getElementById('lookup-result');
+  var srcLine = box.querySelector('.lookup-source');
+  var citLine = box.querySelector('.lookup-citation');
+  var applyBtn = document.getElementById('lookup-apply');
+  var dismissBtn = document.getElementById('lookup-dismiss');
+  var pending = null;
+
+  function showError(message) {
+    pending = null;
+    srcLine.textContent = message;
+    citLine.textContent = '';
+    applyBtn.hidden = true;
+    dismissBtn.textContent = LOOKUP.close;
+    box.hidden = false;
+  }
+
+  function showResult(data) {
+    pending = data;
+    srcLine.textContent = LOOKUP.foundVia.replace('@@', data.source || '');
+    citLine.textContent = data.citation || '';
+    applyBtn.hidden = false;
+    dismissBtn.textContent = LOOKUP.dismiss;
+    box.hidden = false;
+  }
+
+  function handle(response, button, idleLabel) {
+    return response.json()
+      .then(function (data) {
+        button.disabled = false;
+        button.textContent = idleLabel;
+        if (!response.ok) { showError(data.error || LOOKUP.failed); return; }
+        showResult(data);
+      });
+  }
+
+  // Read a DOI/ISBN out of the PDF the operator already picked. The file
+  // is sent again for this — it never touched the server on selection —
+  // which is why it's an explicit button rather than something automatic.
+  document.getElementById('lookup-scan').addEventListener('click', function () {
+    var input = document.getElementById('document');
+    var file = input.files && input.files[0];
+    if (!file) { showError(LOOKUP.noFile); return; }
+    if (!/\.pdf$/i.test(file.name)) { showError(LOOKUP.notPdf); return; }
+
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = LOOKUP.scanning;
+    var body = new FormData();
+    body.append('document', file);
+    fetch("{{ url_for('upload_lookup') }}", { method: 'POST', body: body })
+      .then(function (r) { return handle(r, btn, LOOKUP.scanIdle); })
+      .catch(function (err) {
+        btn.disabled = false; btn.textContent = LOOKUP.scanIdle;
+        showError(LOOKUP.failed + ' ' + err);
+      });
+  });
+
+  document.getElementById('lookup-go').addEventListener('click', function () {
+    var value = document.getElementById('lookup-id').value.trim();
+    if (!value) { showError(LOOKUP.noId); return; }
+
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = LOOKUP.looking;
+    fetch("{{ url_for('upload_lookup') }}", {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({identifier: value})
+    })
+      .then(function (r) { return handle(r, btn, LOOKUP.goIdle); })
+      .catch(function (err) {
+        btn.disabled = false; btn.textContent = LOOKUP.goIdle;
+        showError(LOOKUP.failed + ' ' + err);
+      });
+  });
+
+  // Only fills fields the lookup actually has a value for, and never
+  // overwrites something already typed — a lookup shouldn't quietly
+  // discard the operator's own wording.
+  applyBtn.addEventListener('click', function () {
+    if (!pending) return;
+    [['title', 'title'], ['authors', 'authors'], ['year', 'year'], ['topic', 'topic']]
+      .forEach(function (pair) {
+        var field = document.getElementById(pair[0]);
+        var value = pending[pair[1]];
+        if (field && value && !field.value.trim()) { field.value = value; }
+      });
+    box.hidden = true;
+    pending = null;
+  });
+
+  dismissBtn.addEventListener('click', function () {
+    box.hidden = true;
+    pending = null;
+  });
+})();
+</script>
 {% endif %}
 {% endblock %}
