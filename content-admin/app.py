@@ -29,7 +29,7 @@ import i18n
 import storage
 from env_file import read_env, set_env_var
 from flowise_client import FlowiseClient, FlowiseError
-from llm_client import LLMError, optimize_field
+from llm_client import LLMError, optimize_field, suggest_keywords
 from n8n_client import N8nClient, N8nError
 from neo4j_client import Neo4jClient, Neo4jError
 
@@ -555,6 +555,11 @@ def upload_lookup():
     upload_file = request.files.get("document")
     if upload_file and upload_file.filename:
         identifiers = citation.scan_pdf(upload_file.stream)
+        # Stash the extracted front matter so "suggest keywords" can work
+        # from it without a second upload of the same file. Session-scoped
+        # and capped: it's a convenience cache, not storage.
+        if identifiers.get("text"):
+            session["last_scan_text"] = identifiers["text"][:20000]
         # Rewind: this same stream is not reused here, but leaving a
         # consumed file object behind is a trap for any later handler.
         try:
@@ -589,6 +594,30 @@ def upload_lookup():
 
     result["identifier"] = identifier
     return result
+
+
+@app.route("/upload/keywords", methods=["POST"])
+@auth.login_required
+def upload_keywords():
+    """
+    Proposes subject keywords from what the form already knows plus, when
+    the document was scanned earlier in this session, its front matter.
+    Same suggest-then-confirm contract as everything else here: this only
+    returns a list, the page decides what to do with it.
+    """
+    payload = request.get_json(silent=True) or {}
+    title = (payload.get("title") or "").strip()
+    authors = (payload.get("authors") or "").strip()
+    excerpt = session.get("last_scan_text", "")
+
+    try:
+        keywords = suggest_keywords(
+            title, authors, excerpt, read_env(), language=current_language()
+        )
+    except LLMError as exc:
+        logger.error("Keyword suggestion failed: %s", exc)
+        return {"error": str(exc)}, 502
+    return {"keywords": keywords}
 
 
 @app.errorhandler(413)

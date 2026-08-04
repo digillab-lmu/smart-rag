@@ -31,6 +31,60 @@ class LLMError(Exception):
     pass
 
 
+def _complete(system_prompt: str, user_prompt: str, env: dict) -> str:
+    """
+    One chat completion against whichever provider is configured, returning
+    the assistant's raw text. Extracted so every AI-assist feature shares a
+    single provider dispatch — a new one (keyword suggestions, prompt
+    translation) doesn't mean another copy of this ladder to keep in step.
+    """
+    provider = env.get("LLM_PROVIDER", "anthropic")
+    api_key = env.get("LLM_API_KEY", "")
+    model = env.get("LLM_MODEL_STRONG", "")
+    if not api_key:
+        raise LLMError("No LLM API key configured (LLM_API_KEY is empty in .env).")
+    if not model:
+        raise LLMError("No LLM model configured (LLM_MODEL_STRONG is empty in .env).")
+
+    if provider == "anthropic":
+        return _call_anthropic(api_key, model, system_prompt, user_prompt)
+    if provider == "openai":
+        # OpenAI's newer models (o-series/reasoning, and now some current
+        # chat models too) reject the classic "max_tokens" field outright —
+        # live error: "Unsupported parameter: 'max_tokens' is not supported
+        # with this model. Use 'max_completion_tokens' instead." OpenAI's own
+        # docs mark max_completion_tokens as the current field for all
+        # models, so use it unconditionally here rather than guessing per
+        # model name.
+        return _call_openai_compatible(
+            "https://api.openai.com/v1/chat/completions", api_key, model, system_prompt, user_prompt,
+            tokens_param="max_completion_tokens",
+        )
+    if provider == "google":
+        return _call_google(api_key, model, system_prompt, user_prompt)
+    if provider == "mistral":
+        return _call_openai_compatible(
+            "https://api.mistral.ai/v1/chat/completions", api_key, model, system_prompt, user_prompt
+        )
+    if provider == "cohere":
+        return _call_cohere(api_key, model, system_prompt, user_prompt)
+    if provider == "openrouter":
+        # config-wizard.sh already stores openrouter model strings with the
+        # required provider/ prefix (e.g. "anthropic/claude-sonnet-5") —
+        # nothing extra to do here.
+        return _call_openai_compatible(
+            "https://openrouter.ai/api/v1/chat/completions", api_key, model, system_prompt, user_prompt
+        )
+    if provider == "custom":
+        base_url = env.get("LLM_BASE_URL", "").rstrip("/")
+        if not base_url:
+            raise LLMError("LLM_PROVIDER is 'custom' but LLM_BASE_URL is empty in .env.")
+        return _call_openai_compatible(
+            f"{base_url}/chat/completions", api_key, model, system_prompt, user_prompt
+        )
+    raise LLMError(f"Unknown LLM_PROVIDER: {provider!r}")
+
+
 _LANGUAGE_NAMES = {"en": "English", "de": "German"}
 
 
@@ -53,14 +107,6 @@ def optimize_field(
     text keeps its own language regardless, so improving a German draft
     never silently translates it.
     """
-    provider = env.get("LLM_PROVIDER", "anthropic")
-    api_key = env.get("LLM_API_KEY", "")
-    model = env.get("LLM_MODEL_STRONG", "")
-    if not api_key:
-        raise LLMError("No LLM API key configured (LLM_API_KEY is empty in .env).")
-    if not model:
-        raise LLMError("No LLM model configured (LLM_MODEL_STRONG is empty in .env).")
-
     language_name = _LANGUAGE_NAMES.get(language, "English")
     system_prompt = (
         "You help course creators write content for an AI teaching assistant. "
@@ -81,46 +127,76 @@ def optimize_field(
         f"Current content (may be empty):\n{current_text or '(empty)'}"
     )
 
-    if provider == "anthropic":
-        text = _call_anthropic(api_key, model, system_prompt, user_prompt)
-    elif provider == "openai":
-        # OpenAI's newer models (o-series/reasoning, and now some current
-        # chat models too) reject the classic "max_tokens" field outright —
-        # live error: "Unsupported parameter: 'max_tokens' is not supported
-        # with this model. Use 'max_completion_tokens' instead." OpenAI's own
-        # docs mark max_completion_tokens as the current field for all
-        # models, so use it unconditionally here rather than guessing per
-        # model name.
-        text = _call_openai_compatible(
-            "https://api.openai.com/v1/chat/completions", api_key, model, system_prompt, user_prompt,
-            tokens_param="max_completion_tokens",
-        )
-    elif provider == "google":
-        text = _call_google(api_key, model, system_prompt, user_prompt)
-    elif provider == "mistral":
-        text = _call_openai_compatible(
-            "https://api.mistral.ai/v1/chat/completions", api_key, model, system_prompt, user_prompt
-        )
-    elif provider == "cohere":
-        text = _call_cohere(api_key, model, system_prompt, user_prompt)
-    elif provider == "openrouter":
-        # config-wizard.sh already stores openrouter model strings with the
-        # required provider/ prefix (e.g. "anthropic/claude-sonnet-5") —
-        # nothing extra to do here.
-        text = _call_openai_compatible(
-            "https://openrouter.ai/api/v1/chat/completions", api_key, model, system_prompt, user_prompt
-        )
-    elif provider == "custom":
-        base_url = env.get("LLM_BASE_URL", "").rstrip("/")
-        if not base_url:
-            raise LLMError("LLM_PROVIDER is 'custom' but LLM_BASE_URL is empty in .env.")
-        text = _call_openai_compatible(
-            f"{base_url}/chat/completions", api_key, model, system_prompt, user_prompt
-        )
-    else:
-        raise LLMError(f"Unknown LLM_PROVIDER: {provider!r}")
+    return _parse_suggestion(_complete(system_prompt, user_prompt, env))
 
-    return _parse_suggestion(text)
+
+def suggest_keywords(
+    title: str,
+    authors: str,
+    excerpt: str,
+    env: dict,
+    language: str = "en",
+    count: int = 8,
+) -> list[str]:
+    """
+    Proposes subject keywords for an uploaded document, from whatever is
+    known about it: its title, its authors, and — when the PDF was scanned
+    for a DOI/ISBN — the front-matter text that scan already extracted.
+    Reusing that text is deliberate: the operator uploaded the file once,
+    and asking them to do it again just to get keywords would be silly.
+
+    Returns a list of terms. Keywords are content, so they follow the GUI
+    language rather than the document's — an operator filing a German
+    course wants German keywords even for an English paper.
+    """
+    if not (title.strip() or excerpt.strip()):
+        raise LLMError("Nothing to work from — enter a title or scan the document first.")
+
+    language_name = _LANGUAGE_NAMES.get(language, "English")
+    system_prompt = (
+        "You extract subject keywords for a course document library. Given "
+        "what is known about one document, propose the terms a student or "
+        "lecturer would plausibly search for to find it. Prefer established "
+        "subject terminology over phrases lifted verbatim from the text, and "
+        "avoid near-duplicates. Respond with ONLY a JSON object with one key "
+        '"keywords": an array of at most '
+        f"{count} short strings, written in {language_name}. Output nothing "
+        "before or after the JSON object."
+    )
+    user_prompt = (
+        f"Title: {title or '(unknown)'}\n"
+        f"Authors: {authors or '(unknown)'}\n"
+        # Front matter is usually title page + abstract, which is exactly
+        # the useful part; the cap keeps a long scan from dominating the
+        # request.
+        f"Opening pages of the document:\n{excerpt[:6000] or '(not available)'}"
+    )
+
+    raw = _complete(system_prompt, user_prompt, env).strip()
+    if raw.startswith("```"):
+        raw = raw.strip("`")
+        if raw.lower().startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise LLMError(f"Could not parse the AI's response as JSON: {exc}") from exc
+
+    keywords = data.get("keywords") if isinstance(data, dict) else None
+    if not isinstance(keywords, list):
+        raise LLMError("The AI's response was missing a 'keywords' list.")
+
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in keywords:
+        term = str(item).strip().strip(",;")
+        if term and term.casefold() not in seen:
+            seen.add(term.casefold())
+            cleaned.append(term)
+    if not cleaned:
+        raise LLMError("The AI returned no usable keywords.")
+    return cleaned[:count]
 
 
 def _parse_suggestion(text: str) -> dict:

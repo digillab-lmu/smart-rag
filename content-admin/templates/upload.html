@@ -63,6 +63,12 @@
   <label for="topic">{{ t('upload_topic_label') }}</label>
   <p class="note" style="margin-top: 0.15rem;">{{ t('upload_topic_help') }}</p>
   <input type="text" id="topic" name="topic" value="{{ form.get('topic', '') }}">
+  <button type="button" id="topic-suggest" class="optimize-btn">{{ t('upload_topic_suggest') }}</button>
+  <div class="optimize-result" id="topic-result" hidden>
+    <div class="suggestion-text topic-suggestion"></div>
+    <button type="button" id="topic-apply">{{ t('lookup_apply') }}</button>
+    <button type="button" id="topic-dismiss" class="secondary">{{ t('lookup_dismiss') }}</button>
+  </div>
 
   <label for="language">{{ t('upload_language_label') }}</label>
   <select id="language" name="language">
@@ -194,6 +200,87 @@ var LOOKUP = {
   });
 
   dismissBtn.addEventListener('click', function () {
+    box.hidden = true;
+    pending = null;
+  });
+})();
+
+// ── Keyword suggestions ───────────────────────────────────────────────────
+(function () {
+  var LABELS = {
+    idle:    {{ t('upload_topic_suggest')|tojson }},
+    working: {{ t('upload_topic_suggesting')|tojson }},
+    failed:  {{ t('upload_topic_err', '@@')|tojson }},
+    close:   {{ t('slot_close')|tojson }},
+    dismiss: {{ t('lookup_dismiss')|tojson }}
+  };
+
+  var btn     = document.getElementById('topic-suggest');
+  var box     = document.getElementById('topic-result');
+  var text    = box.querySelector('.topic-suggestion');
+  var apply   = document.getElementById('topic-apply');
+  var dismiss = document.getElementById('topic-dismiss');
+  var pending = null;
+
+  btn.addEventListener('click', function () {
+    btn.disabled = true;
+    btn.textContent = LABELS.working;
+    fetch("{{ url_for('upload_keywords') }}", {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        title: document.getElementById('title').value,
+        authors: document.getElementById('authors').value
+      })
+    })
+      .then(function (r) { return r.json().then(function (d) { return {ok: r.ok, data: d}; }); })
+      .then(function (res) {
+        btn.disabled = false;
+        btn.textContent = LABELS.idle;
+        if (!res.ok) {
+          pending = null;
+          text.textContent = LABELS.failed.replace('@@', res.data.error || '');
+          apply.hidden = true;
+          dismiss.textContent = LABELS.close;
+          box.hidden = false;
+          return;
+        }
+        pending = (res.data.keywords || []).join(', ');
+        text.textContent = pending;
+        apply.hidden = false;
+        dismiss.textContent = LABELS.dismiss;
+        box.hidden = false;
+      })
+      .catch(function (err) {
+        btn.disabled = false;
+        btn.textContent = LABELS.idle;
+        pending = null;
+        text.textContent = LABELS.failed.replace('@@', err);
+        apply.hidden = true;
+        dismiss.textContent = LABELS.close;
+        box.hidden = false;
+      });
+  });
+
+  // Appends rather than replaces: keywords the operator already typed are
+  // their own judgement and shouldn't be thrown away by a suggestion.
+  apply.addEventListener('click', function () {
+    if (!pending) return;
+    var field = document.getElementById('topic');
+    var existing = field.value.trim();
+    if (!existing) {
+      field.value = pending;
+    } else {
+      var have = existing.split(',').map(function (s) { return s.trim().toLowerCase(); });
+      var added = pending.split(',').map(function (s) { return s.trim(); })
+        .filter(function (s) { return s && have.indexOf(s.toLowerCase()) === -1; });
+      field.value = added.length ? existing + ', ' + added.join(', ') : existing;
+    }
+    box.hidden = true;
+    pending = null;
+  });
+
+  dismiss.addEventListener('click', function () {
     box.hidden = true;
     pending = null;
   });
