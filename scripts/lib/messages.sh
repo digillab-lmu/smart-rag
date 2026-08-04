@@ -390,7 +390,7 @@ declare -A MSG_EN=(
     [orch_incomplete]="Setup INCOMPLETE — 2 manual steps left"
     [orch_incomplete_intro]="Everything installed and started correctly, but the document-ingest workflows could NOT be imported yet: n8n has no owner account until a human creates one in a browser. Until you finish the two steps below, uploading a document in the Content Admin GUI will fail with a 404."
     [orch_incomplete_step1]="1. Open https://%s and complete n8n's one-time owner setup (email + password)."
-    [orch_incomplete_step2]="2. Then run this command on this server:"
+    [orch_incomplete_step2]="2. Then open the admin menu (sudo smartrag) and choose \"Ingest — (re-)import n8n credentials + workflows\". It walks you through the rest. If you prefer the command line, this does the same:"
     [orch_incomplete_then]="That command imports and activates the workflows, and verifies the webhook is live before it reports success. Afterwards, open Flowise and complete its one-time admin setup as well; course content is then authored in the Content Admin GUI, whose \"System status\" page re-checks all of this at any time. Day-to-day admin: sudo bash scripts/admin.sh"
     [orch_next_finalize]="Next: open n8n and Flowise in a browser and complete their one-time owner/admin setup, then re-run this script (or scripts/deploy-n8n-workflows.sh) so the ingest workflows get imported. Course content is authored in the Content Admin GUI. Day-to-day admin: sudo bash scripts/admin.sh"
 
@@ -889,7 +889,7 @@ declare -A MSG_DE=(
     [orch_incomplete]="Einrichtung UNVOLLSTÄNDIG — 2 manuelle Schritte fehlen"
     [orch_incomplete_intro]="Alles wurde korrekt installiert und gestartet, aber die Ingest-Workflows konnten noch NICHT importiert werden: n8n hat kein Besitzerkonto, solange es nicht jemand im Browser anlegt. Bis die beiden Schritte unten erledigt sind, schlägt jeder Dokument-Upload in der Content-Admin-Oberfläche mit einem 404 fehl."
     [orch_incomplete_step1]="1. Öffne https://%s und schließe die einmalige Besitzer-Einrichtung von n8n ab (E-Mail + Passwort)."
-    [orch_incomplete_step2]="2. Führe danach diesen Befehl auf diesem Server aus:"
+    [orch_incomplete_step2]="2. Öffne danach das Admin-Menü (sudo smartrag) und wähle \"Ingest — n8n-Credentials + Workflows (neu) importieren\". Es führt dich durch den Rest. Wenn dir die Kommandozeile lieber ist, tut das hier dasselbe:"
     [orch_incomplete_then]="Dieser Befehl importiert und aktiviert die Workflows und prüft vor der Erfolgsmeldung nach, dass der Webhook wirklich erreichbar ist. Öffne anschließend auch Flowise und schließe dort die einmalige Admin-Einrichtung ab; Kursinhalte werden danach in der Content-Admin-Oberfläche gepflegt, deren Seite \"Systemstatus\" das alles jederzeit erneut prüft. Tagesbetrieb: sudo bash scripts/admin.sh"
     [orch_next_finalize]="Nächster Schritt: n8n und Flowise im Browser öffnen und dort die einmalige Besitzer-/Admin-Einrichtung abschließen, danach dieses Skript (oder scripts/deploy-n8n-workflows.sh) erneut ausführen, damit die Ingest-Workflows importiert werden. Kursinhalte werden in der Content-Admin-Oberfläche gepflegt. Tagesbetrieb: sudo bash scripts/admin.sh"
 

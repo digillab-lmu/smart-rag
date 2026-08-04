@@ -212,12 +212,18 @@ action_n8n_workflows() {
     info "$(t admin_n8n_intro)"
     echo
     if confirm admin_n8n_confirm "n"; then
-        # EXIT_SKIPPED means "n8n has no owner account yet", which the
-        # script has already explained on screen. Calling that "failed"
-        # would send the operator looking for a broken import instead of
-        # the browser step they still have to do.
+        # Same guided flow the installer uses: if n8n has no owner account
+        # yet, walk the admin through creating one and then finish the
+        # import here, rather than sending them to a shell command. This
+        # menu entry is meant to be the whole path — importing the ingest
+        # workflows belongs to a standard setup, and nothing in a standard
+        # setup should require typing a command by hand.
         rc=0
-        bash "$SCRIPT_DIR/deploy-n8n-workflows.sh" --lang "$LANG_CHOICE" || rc=$?
+        run_n8n_import_guided "$SCRIPT_DIR" "$LANG_CHOICE" || rc=$?
+        # EXIT_SKIPPED means the admin chose "not now"; the guided flow has
+        # already said so on screen. Calling that "failed" would send them
+        # looking for a broken import instead of the browser step they
+        # deferred.
         if (( rc != 0 && rc != EXIT_SKIPPED )); then
             err "$(t admin_n8n_failed)"
         fi
