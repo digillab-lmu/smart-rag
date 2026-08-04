@@ -195,6 +195,18 @@ action_ssl() {
     press_enter
 }
 
+action_n8n_workflows() {
+    clear
+    header "$(t admin_n8n_title)"
+    info "$(t admin_n8n_intro)"
+    echo
+    if confirm admin_n8n_confirm "n"; then
+        bash "$SCRIPT_DIR/deploy-n8n-workflows.sh" --lang "$LANG_CHOICE" \
+            || err "$(t admin_n8n_failed)"
+    fi
+    press_enter
+}
+
 action_mail() {
     clear
     header "$(t admin_mail_title)"
@@ -384,18 +396,19 @@ action_uninstall() {
 while true; do
     choice=""
     if ! choice=$(whiptail --title "$(t admin_title)" --menu "$(t admin_menu_prompt)" \
-        20 78 10 \
+        20 78 11 \
         "1"  "$(t admin_menu_status)" \
         "2"  "$(t admin_menu_logs)" \
         "3"  "$(t admin_menu_update)" \
         "4"  "$(t admin_menu_restart)" \
         "5"  "$(t admin_menu_ssl)" \
-        "6"  "$(t admin_menu_mail)" \
-        "7"  "$(t admin_menu_dns)" \
-        "8"  "$(t admin_menu_secrets)" \
-        "9"  "$(t admin_menu_config)" \
-        "10" "$(t admin_menu_uninstall)" \
-        "11" "$(t admin_menu_exit)" \
+        "6"  "$(t admin_menu_n8n)" \
+        "7"  "$(t admin_menu_mail)" \
+        "8"  "$(t admin_menu_dns)" \
+        "9"  "$(t admin_menu_secrets)" \
+        "10" "$(t admin_menu_config)" \
+        "11" "$(t admin_menu_uninstall)" \
+        "12" "$(t admin_menu_exit)" \
         3>&1 1>&2 2>&3); then
         clear
         break
@@ -407,11 +420,12 @@ while true; do
         3)  action_update ;;
         4)  action_restart ;;
         5)  action_ssl ;;
-        6)  action_mail ;;
-        7)  action_dns ;;
-        8)  action_secrets ;;
-        9)  action_config ;;
-        10) action_uninstall ;;
-        11) clear; break ;;
+        6)  action_n8n_workflows ;;
+        7)  action_mail ;;
+        8)  action_dns ;;
+        9)  action_secrets ;;
+        10) action_config ;;
+        11) action_uninstall ;;
+        12) clear; break ;;
     esac
 done
