@@ -103,6 +103,7 @@ var LOOKUP = {
   notPdf:    {{ t('lookup_err_not_pdf')|tojson }},
   noId:      {{ t('lookup_err_no_identifier')|tojson }},
   failed:    {{ t('slot_err_request_failed')|tojson }},
+  http:      {{ t('err_http', '@@')|tojson }},
   dismiss:   {{ t('lookup_dismiss')|tojson }},
   close:     {{ t('slot_close')|tojson }}
 };
@@ -133,13 +134,37 @@ var LOOKUP = {
     box.hidden = false;
   }
 
+  // Read the body as text first, then try to parse it. A reverse proxy
+  // returning its own HTML error page (502/504) or an unhandled server
+  // error is not JSON, and response.json() on that produces a bare
+  // "SyntaxError: unexpected character at line 1 column 1" — which tells
+  // the operator nothing about what actually went wrong. Showing the HTTP
+  // status and the start of the body instead makes the real failure
+  // visible.
+  function readBody(response) {
+    return response.text().then(function (text) {
+      try {
+        return { data: JSON.parse(text), raw: text };
+      } catch (e) {
+        return { data: null, raw: text };
+      }
+    });
+  }
+
+  function transportError(response, raw) {
+    var snippet = (raw || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    return LOOKUP.http.replace('@@', response.status + ' ' + (response.statusText || ''))
+         + (snippet ? ' — ' + snippet.slice(0, 200) : '');
+  }
+
   function handle(response, button, idleLabel) {
-    return response.json()
-      .then(function (data) {
+    return readBody(response)
+      .then(function (body) {
         button.disabled = false;
         button.textContent = idleLabel;
-        if (!response.ok) { showError(data.error || LOOKUP.failed); return; }
-        showResult(data);
+        if (body.data === null) { showError(transportError(response, body.raw)); return; }
+        if (!response.ok) { showError(body.data.error || LOOKUP.failed); return; }
+        showResult(body.data);
       });
   }
 
@@ -233,13 +258,23 @@ var LOOKUP = {
         authors: document.getElementById('authors').value
       })
     })
-      .then(function (r) { return r.json().then(function (d) { return {ok: r.ok, data: d}; }); })
+      // Same defensive read as the lookup box above: a non-JSON error
+      // page must surface as its status, not as a browser SyntaxError.
+      .then(function (r) {
+        return r.text().then(function (text) {
+          try { return {ok: r.ok, data: JSON.parse(text), raw: text, status: r.status, statusText: r.statusText}; }
+          catch (e) { return {ok: false, data: null, raw: text, status: r.status, statusText: r.statusText}; }
+        });
+      })
       .then(function (res) {
         btn.disabled = false;
         btn.textContent = LABELS.idle;
         if (!res.ok) {
           pending = null;
-          text.textContent = LABELS.failed.replace('@@', res.data.error || '');
+          var reason = res.data ? (res.data.error || '')
+                     : (res.status + ' ' + (res.statusText || '') + ' — '
+                        + (res.raw || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200));
+          text.textContent = LABELS.failed.replace('@@', reason);
           apply.hidden = true;
           dismiss.textContent = LABELS.close;
           box.hidden = false;

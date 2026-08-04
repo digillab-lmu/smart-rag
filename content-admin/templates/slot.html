@@ -151,7 +151,16 @@ document.addEventListener('click', function (e) {
       body: JSON.stringify({field: field, text: textarea.value})
     })
       .then(function (r) {
-        return r.json().then(function (data) { return {ok: r.ok, data: data}; });
+        // Read as text and parse defensively: an HTML error page from the
+        // proxy would otherwise surface as a bare browser SyntaxError,
+        // which says nothing about what actually failed.
+        return r.text().then(function (text) {
+          try { return {ok: r.ok, data: JSON.parse(text)}; }
+          catch (e) {
+            return {ok: false, data: {error: r.status + ' ' + (r.statusText || '') + ' — '
+              + text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200)}};
+          }
+        });
       })
       .then(function (res) {
         btn.disabled = false;
