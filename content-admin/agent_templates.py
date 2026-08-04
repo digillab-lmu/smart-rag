@@ -531,11 +531,57 @@ def field_labels_for(lang: str = "en") -> dict[str, str]:
     return _for_lang(FIELD_LABELS_BY_LANG, lang)
 
 
-def placeholders_for(archetype_file: str) -> list[str]:
-    """All {{PLACEHOLDER}} names a template references that the operator
-    actually needs to fill in — i.e. minus the derived and auto-filled
-    ones. Used to render the content form for a slot."""
+def _find_prompt_holder(flow_data: dict[str, Any]) -> dict | None:
+    """
+    Locates the message object holding the agent's system prompt.
+
+    Every shipped template happens to keep it at nodes[1], but that's
+    incidental — searching for the node that actually declares
+    agentMessages survives someone reordering nodes in the Flowise editor
+    and re-exporting.
+    """
+    for node in flow_data.get("nodes", []):
+        messages = node.get("data", {}).get("inputs", {}).get("agentMessages")
+        if isinstance(messages, list) and messages:
+            first = messages[0]
+            if isinstance(first, dict) and "content" in first:
+                return first
+    return None
+
+
+def default_prompt_for(archetype_file: str) -> str:
+    """The system prompt as it ships in the template, placeholders intact."""
+    holder = _find_prompt_holder(load_template(archetype_file))
+    return holder.get("content", "") if holder else ""
+
+
+def set_prompt(flow_data: dict[str, Any], prompt: str) -> bool:
+    """Replaces the system prompt in an already-loaded flow. Returns False
+    if this template has no prompt node to replace (agent-14 has one, but
+    a future template might not)."""
+    holder = _find_prompt_holder(flow_data)
+    if holder is None:
+        return False
+    holder["content"] = prompt
+    return True
+
+
+def placeholders_for(archetype_file: str, prompt_override: str | None = None) -> list[str]:
+    """
+    All {{PLACEHOLDER}} names the operator actually needs to fill in —
+    i.e. minus the derived and auto-filled ones. Drives the content form.
+
+    `prompt_override` is the slot's edited system prompt, when it has one.
+    The placeholder set is then read from the prompt the import will
+    actually use, not from the shipped template: adding {{MY_FIELD}} while
+    editing makes a matching input appear, and deleting a placeholder
+    retires the field that fed it. Without this the form would keep asking
+    for values the prompt no longer mentions — and silently fail at import
+    on ones it newly does.
+    """
     flow = load_template(archetype_file)
+    if prompt_override is not None:
+        set_prompt(flow, prompt_override)
     found = set(PLACEHOLDER_RE.findall(json.dumps(flow)))
     return sorted(found - DERIVED_FIELDS - AUTO_FILLED_FIELDS)
 

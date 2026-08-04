@@ -52,6 +52,20 @@
   </div>
   {% endfor %}
 
+  <details class="prompt-box" {% if prompt_is_customised %}open{% endif %}>
+    <summary><strong>{{ t('slot_prompt_heading') }}</strong> —
+      <span class="note">
+        {% if prompt_is_customised %}{{ t('slot_prompt_customised') }}
+        {% else %}{{ t('slot_prompt_default') }}{% endif %}
+      </span>
+    </summary>
+    <p class="note">{{ t('slot_prompt_intro') }}</p>
+    <p class="note">{{ t('slot_prompt_placeholders_note') }}</p>
+    <textarea id="system_prompt" name="system_prompt" class="prompt-editor"
+              spellcheck="false">{{ system_prompt }}</textarea>
+    <button type="submit" name="action" value="reset_prompt" class="secondary">{{ t('slot_prompt_reset') }}</button>
+  </details>
+
   <button type="submit" name="action" value="save" class="secondary">{{ t('slot_save') }}</button>
   <button type="submit" name="action" value="import">{{ t('slot_import') }}</button>
 </form>

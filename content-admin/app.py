@@ -251,10 +251,37 @@ def slot_view(slot: int):
             archetype = request.form.get("archetype", existing.get("archetype", ""))
 
             if action == "choose_archetype":
-                existing = {"archetype": archetype, "name": "", "content": {}, "chatflow_id": None}
+                existing = {
+                    "archetype": archetype,
+                    "name": "",
+                    "content": {},
+                    "system_prompt": None,
+                    "chatflow_id": None,
+                }
 
-            elif action in ("save", "import"):
-                fields = agent_templates.placeholders_for(archetype)
+            elif action in ("save", "import", "reset_prompt"):
+                submitted_prompt = request.form.get("system_prompt", "")
+                default_prompt = agent_templates.default_prompt_for(archetype)
+
+                if action == "reset_prompt":
+                    # Discard the edit and go back to the shipped wording.
+                    # Stored as None rather than a copy of the default, so
+                    # the slot resumes tracking the template.
+                    submitted_prompt = default_prompt
+                    system_prompt = None
+                else:
+                    # Only an actual change is stored; an untouched prompt
+                    # stays None so template updates keep reaching this slot.
+                    system_prompt = (
+                        submitted_prompt.strip()
+                        if submitted_prompt.strip()
+                        and submitted_prompt.strip() != default_prompt.strip()
+                        else None
+                    )
+
+                # Fields come from the prompt as edited, so a placeholder
+                # added here immediately gets an input of its own.
+                fields = agent_templates.placeholders_for(archetype, submitted_prompt)
                 content = {f: request.form.get(f, "") for f in fields}
                 name = request.form.get("name", "").strip()
 
@@ -270,11 +297,14 @@ def slot_view(slot: int):
                         "archetype": archetype,
                         "name": name,
                         "content": content,
+                        "system_prompt": system_prompt,
                         "chatflow_id": existing.get("chatflow_id"),
                     }
                 else:
-                    storage.save_slot(slot, archetype, content, name)
+                    storage.save_slot(slot, archetype, content, name, system_prompt)
                     existing = storage.get_slot(slot)
+                    if action == "reset_prompt":
+                        success = _t("slot_prompt_reset_ok")
 
                     if action == "import":
                         client = _flowise_client()
@@ -289,9 +319,13 @@ def slot_view(slot: int):
                             except FlowiseError as exc:
                                 error = _t("slot_err_import_failed", exc)
 
-        fields = agent_templates.placeholders_for(existing.get("archetype", "")) if existing.get(
-            "archetype"
-        ) else []
+        fields = (
+            agent_templates.placeholders_for(
+                existing.get("archetype", ""), existing.get("system_prompt")
+            )
+            if existing.get("archetype")
+            else []
+        )
     except agent_templates.TemplateError as exc:
         # Surfaces cleanly instead of a bare 500 — this is exactly the class
         # of error that hit in practice (SMARTRAG_TEMPLATES_DIR pointing at
@@ -311,6 +345,15 @@ def slot_view(slot: int):
         field_labels=agent_templates.field_labels_for(current_language()),
         existing=existing,
         fields=fields,
+        system_prompt=(
+            existing.get("system_prompt")
+            or (
+                agent_templates.default_prompt_for(existing["archetype"])
+                if existing.get("archetype")
+                else ""
+            )
+        ),
+        prompt_is_customised=bool(existing.get("system_prompt")),
         error=error,
         success=success,
     )
@@ -365,6 +408,12 @@ def _do_import(slot: int, archetype: str, client: FlowiseClient) -> str | None:
     )
 
     flow = agent_templates.load_template(archetype)
+    # An edited system prompt replaces the shipped one before any
+    # substitution runs, so its placeholders are filled like the
+    # template's own.
+    custom_prompt = slot_data.get("system_prompt")
+    if custom_prompt:
+        agent_templates.set_prompt(flow, custom_prompt)
     agent_templates.auto_fill_from_env(flow, env, slot=slot)
     missing = agent_templates.substitute_content(flow, content)
     if missing:
