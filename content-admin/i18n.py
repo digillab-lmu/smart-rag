@@ -245,6 +245,10 @@ MSG_EN: dict[str, str] = {
     "lookup_btn": "Look up",
     "lookup_looking": "Looking up…",
     "lookup_found": "Found via %s",
+    # Shown when the server answers with something that isn't JSON at all
+    # — a proxy error page, say. The raw status and body beat a bare
+    # "SyntaxError" from the browser, which names the symptom, not the cause.
+    "err_http": "The server answered with an error (%s).",
     "lookup_apply": "Use these details",
     "lookup_dismiss": "Discard",
     "lookup_err_no_identifier": "Enter a DOI or ISBN first.",
@@ -496,6 +500,7 @@ MSG_DE: dict[str, str] = {
     "lookup_btn": "Nachschlagen",
     "lookup_looking": "Wird nachgeschlagen…",
     "lookup_found": "Gefunden über %s",
+    "err_http": "Der Server hat mit einem Fehler geantwortet (%s).",
     "lookup_apply": "Angaben übernehmen",
     "lookup_dismiss": "Verwerfen",
     "lookup_err_no_identifier": "Bitte zuerst eine DOI oder ISBN eingeben.",
