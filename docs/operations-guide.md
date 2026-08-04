@@ -92,9 +92,31 @@ Weaviate services — and tells you which step is missing, at any time.
 
 ### MinIO console — `https://minio.your-domain.example`
 
-Logs in with `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` from
-`credentials.txt` — this one **does** work as documented, MinIO reads
-these directly from its container environment on every start.
+`MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` from `credentials.txt` are the
+real credentials — MinIO reads them from its container environment on
+every start, and everything that talks to MinIO over the S3 and admin
+APIs (the bucket setup, n8n, Langfuse) authenticates with them.
+
+**The web console itself is a different story, and may simply refuse to
+log you in.** In 2025 MinIO stripped the Community Edition console down to
+an object browser, removing roughly 110,000 lines of management UI; the
+management features moved to the paid edition, and the pinned image here
+(`RELEASE.2025-09-07`, the last one ever published to Docker Hub) is from
+after that change. A console login returning 401 while `mc` works with the
+same credentials is therefore not a sign that your credentials are wrong.
+
+Nothing in SMART RAG needs that console. If you want to look at what is
+actually in the buckets, use `mc` — the client is already on the host as a
+container image:
+
+```bash
+docker run --rm --network smart-rag-network -it minio/mc:latest sh -c \
+  'mc alias set s3 http://smartrag-minio:9000 "$USER" "$PASS" && mc ls --recursive s3/'
+```
+
+(substituting your own values for `$USER` / `$PASS`, or exporting them
+first). `mc ls`, `mc cp` and `mc du` cover browsing, downloading and size
+checks.
 
 ### Langfuse (if `observability` profile enabled) — `https://langfuse.your-domain.example`
 
