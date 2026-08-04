@@ -35,7 +35,8 @@ def _save(data: dict) -> None:
 
 def all_slots() -> dict[str, dict]:
     """Returns a dict for slots "1".."10", each either {} (unconfigured) or
-    {"archetype": ..., "name": ..., "content": {...}, "chatflow_id": ... | None}."""
+    {"archetype": ..., "name": ..., "content": {...},
+     "system_prompt": ... | None, "chatflow_id": ... | None}."""
     data = _load()
     return {str(i): data.get(str(i), {}) for i in range(1, MAX_SLOTS + 1)}
 
@@ -59,7 +60,20 @@ def name_taken(name: str, exclude_slot: int) -> bool:
     return False
 
 
-def save_slot(slot: int, archetype: str, content: dict[str, str], name: str) -> None:
+def save_slot(
+    slot: int,
+    archetype: str,
+    content: dict[str, str],
+    name: str,
+    system_prompt: str | None = None,
+) -> None:
+    """
+    `system_prompt` is the operator's edited version of the archetype's
+    system prompt, or None to keep using the shipped default. Stored as an
+    override rather than a copy of the default: a slot that was never
+    edited keeps tracking the template, so template improvements reach it,
+    and slots saved before this field existed simply read as None.
+    """
     if not (1 <= slot <= MAX_SLOTS):
         raise ValueError(f"slot must be 1..{MAX_SLOTS}, got {slot}")
     with _LOCK:
@@ -69,6 +83,7 @@ def save_slot(slot: int, archetype: str, content: dict[str, str], name: str) -> 
             "archetype": archetype,
             "name": name,
             "content": content,
+            "system_prompt": system_prompt,
             "chatflow_id": existing.get("chatflow_id"),
         }
         _save(data)
