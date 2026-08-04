@@ -70,8 +70,18 @@
     </ul>
     {% endif %}
 
+    {# A step the operator of this GUI cannot perform themselves. Leading
+       with the command would be telling a content author to do something
+       they have no shell access for; the ready-to-send message is the part
+       they can actually act on, so it comes first. #}
     {% if c.command and c.state != State.OK %}
-    <p class="note">{{ t('guide_command_intro') }}</p>
+    <p class="note">{{ t('guide_admin_needed') }}</p>
+
+    <p class="note">{{ t('guide_admin_forward') }}</p>
+    <textarea id="msg-{{ c.key }}" class="admin-message" rows="7" readonly>{{ t('guide_admin_message', c.command) }}</textarea>
+    <button type="button" class="copy-btn optimize-btn" data-copy="msg-{{ c.key }}">{{ t('guide_copy_message') }}</button>
+
+    <p class="note" style="margin-top: 1rem;">{{ t('guide_command_intro') }}</p>
     <div class="copy-row">
       <input type="text" id="cmd-{{ c.key }}" value="{{ c.command }}" readonly>
       <button type="button" class="copy-btn" data-copy="cmd-{{ c.key }}">{{ t('publish_copy') }}</button>

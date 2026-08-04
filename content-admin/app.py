@@ -531,7 +531,18 @@ def _do_import(slot: int, archetype: str, client: FlowiseClient) -> str | None:
         embed_map["credential_name"],
         {embed_map["credential_key"]: env.get("EMBEDDING_API_KEY", "")},
     )
-    agent_templates.set_credential_ids(flow, llm_cred_id, embed_cred_id)
+    # Weaviate is started with AUTHENTICATION_APIKEY_ENABLED=true, so the
+    # vector-store node needs its own credential. Names verified against
+    # Flowise's WeaviateApi.credential.ts (flowise@3.1.3): "weaviateApi"
+    # with a single "weaviateApiKey" input.
+    weaviate_cred_id = client.get_or_create_credential(
+        "smartrag-weaviate",
+        "weaviateApi",
+        {"weaviateApiKey": env.get("WEAVIATE_API_KEY", "")},
+    )
+    agent_templates.set_credential_ids(
+        flow, llm_cred_id, embed_cred_id, weaviate_cred_id
+    )
 
     # The 5 secrets the custom-function nodes read via Flowise "Variables"
     # ($vars?.X) rather than as node inputs — see flowise/agents/*.json's
