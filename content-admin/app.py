@@ -24,6 +24,7 @@ from flask import Flask, redirect, render_template, request, session, url_for
 
 import agent_templates
 import auth
+import citation
 import i18n
 import storage
 from env_file import read_env, set_env_var
@@ -482,6 +483,63 @@ def upload():
         error=error,
         success=success,
     )
+
+
+@app.route("/upload/lookup", methods=["POST"])
+@auth.login_required
+def upload_lookup():
+    """
+    Resolves bibliographic metadata so the operator doesn't retype it.
+
+    Two modes, both answering with the same shape so the page handles them
+    identically:
+      - JSON body {"identifier": "..."} — a DOI or ISBN typed/pasted in.
+      - multipart with a file — scan the PDF's front matter for a DOI or
+        ISBN, then look that up.
+
+    Nothing is written anywhere: the answer is a suggestion the operator
+    confirms before it touches a single form field.
+    """
+    identifier = ""
+    found_via = ""
+
+    upload_file = request.files.get("document")
+    if upload_file and upload_file.filename:
+        identifiers = citation.scan_pdf(upload_file.stream)
+        # Rewind: this same stream is not reused here, but leaving a
+        # consumed file object behind is a trap for any later handler.
+        try:
+            upload_file.stream.seek(0)
+        except (OSError, ValueError):
+            pass
+        identifier = identifiers.get("doi") or identifiers.get("isbn") or ""
+        if not identifier:
+            return {"error": _t("lookup_err_nothing_in_pdf")}, 404
+        found_via = "doi" if identifiers.get("doi") else "isbn"
+    else:
+        payload = request.get_json(silent=True) or {}
+        identifier = (payload.get("identifier") or "").strip()
+        if not identifier:
+            return {"error": _t("lookup_err_no_identifier")}, 400
+
+    try:
+        # A DOI always starts "10." — anything else is treated as an ISBN,
+        # which then has to survive its own checksum check.
+        if found_via == "isbn" or (
+            not found_via and not citation.DOI_RE.search(identifier)
+        ):
+            result = citation.lookup_isbn(identifier)
+        else:
+            result = citation.lookup_doi(identifier)
+    except citation.CitationNotFound as exc:
+        logger.info("Citation lookup found nothing for %r: %s", identifier, exc)
+        return {"error": str(exc)}, 404
+    except citation.CitationError as exc:
+        logger.error("Citation lookup failed for %r: %s", identifier, exc)
+        return {"error": str(exc)}, 502
+
+    result["identifier"] = identifier
+    return result
 
 
 @app.errorhandler(413)
