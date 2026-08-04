@@ -174,49 +174,13 @@ run_deployment_phases() {
     # first run, since creating that account is a manual browser step. The
     # rest of the install is unaffected, so we carry on and report it at the
     # end instead of aborting. `|| rc=$?` is required under `set -e`.
-    local n8n_rc=0 n8n_url
-    bash "$SCRIPT_DIR/deploy-n8n-workflows.sh"    --lang "$LANG_CHOICE" || n8n_rc=$?
+    # The guided version lives in common.sh so admin.sh's menu entry walks
+    # the admin through exactly the same owner-account step — nothing that
+    # belongs to a standard setup should need a hand-typed command.
+    local n8n_rc=0
+    run_n8n_import_guided "$SCRIPT_DIR" "$LANG_CHOICE" || n8n_rc=$?
     if (( n8n_rc != 0 && n8n_rc != EXIT_SKIPPED )); then
         die "$(t orch_n8n_failed)"
-    fi
-
-    # Rather than print instructions and walk away, wait here: the missing
-    # piece is one browser step, and the admin is at the keyboard right now.
-    # Sending them off to re-run a script later is how an install ends up
-    # half-finished, with the first symptom showing up much later as a 404
-    # in the Content Admin GUI. Offer to finish it instead.
-    if (( n8n_rc == EXIT_SKIPPED )); then
-        n8n_url="https://$(subdomain_host n8n "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")"
-        # Bounded on purpose. `confirm` falls back to its default ("y" here)
-        # on an empty read, and an empty read is exactly what happens at
-        # EOF — so an unbounded loop would spin forever the moment stdin
-        # isn't a terminal (a piped install, a Ctrl-D). After a few honest
-        # attempts, fall through to the INCOMPLETE block, which tells them
-        # how to finish it later.
-        local n8n_attempts=0
-        # `confirm` returns 1 both for "no" and for the wizard's `back`
-        # input; either way the answer here is "not now", so both leave
-        # the loop through the same path.
-        while (( n8n_rc == EXIT_SKIPPED && n8n_attempts < 3 )); do
-            n8n_attempts=$(( n8n_attempts + 1 ))
-            echo
-            info "$(t orch_n8n_owner_wait "$n8n_url")"
-            if ! confirm orch_n8n_owner_done "y"; then
-                info "$(t orch_n8n_owner_deferred)"
-                break
-            fi
-            n8n_rc=0
-            bash "$SCRIPT_DIR/deploy-n8n-workflows.sh" --lang "$LANG_CHOICE" || n8n_rc=$?
-            if (( n8n_rc != 0 && n8n_rc != EXIT_SKIPPED )); then
-                die "$(t orch_n8n_failed)"
-            fi
-            # Still no owner: they answered yes too early (or created the
-            # account on a different n8n). Say so and offer another go
-            # rather than silently giving up on the first try.
-            if (( n8n_rc == EXIT_SKIPPED )); then
-                warn "$(t orch_n8n_owner_still_missing)"
-            fi
-        done
     fi
 
     bash "$SCRIPT_DIR/generate-lti-keys.sh"       --lang "$LANG_CHOICE"

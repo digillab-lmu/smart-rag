@@ -65,6 +65,51 @@ n8n_webhook_state() {
     fi
 }
 
+# ─── Guided n8n workflow import ──────────────────────────────────────────────
+# Runs deploy-n8n-workflows.sh and, if it steps aside because n8n has no
+# owner account yet, walks the admin through creating one instead of just
+# naming the problem: the missing piece is a single browser step and the
+# admin is at the keyboard right now.
+#
+# Shared by bootstrap.sh and admin.sh so the TUI guides exactly as the
+# installer does. Anything that belongs to a standard setup should be
+# reachable from the menu — an admin should never have to type a command
+# by hand for it.
+#
+# Echoes nothing; returns the deploy script's own exit status (0, or
+# EXIT_SKIPPED if it still couldn't run).
+#
+# $1 = scripts dir, $2 = language
+run_n8n_import_guided() {
+    local script_dir="$1" lang="$2"
+    local rc=0 attempts=0 url
+
+    bash "$script_dir/deploy-n8n-workflows.sh" --lang "$lang" || rc=$?
+    (( rc == EXIT_SKIPPED )) || return "$rc"
+
+    url="https://$(subdomain_host n8n "${DOMAIN:-}" "${SUBDOMAIN_PREFIX:-}")"
+
+    # Bounded on purpose. `confirm` falls back to its default ("y" here) on
+    # an empty read, and an empty read is exactly what happens at EOF — so
+    # an unbounded loop would spin forever the moment stdin isn't a
+    # terminal (a piped install, a Ctrl-D).
+    while (( rc == EXIT_SKIPPED && attempts < 3 )); do
+        attempts=$(( attempts + 1 ))
+        echo
+        info "$(t orch_n8n_owner_wait "$url")"
+        # `confirm` returns 1 for "no" and for the wizard's `back` input;
+        # either way the answer is "not now", so both leave the same way.
+        if ! confirm orch_n8n_owner_done "y"; then
+            info "$(t orch_n8n_owner_deferred)"
+            return "$EXIT_SKIPPED"
+        fi
+        rc=0
+        bash "$script_dir/deploy-n8n-workflows.sh" --lang "$lang" || rc=$?
+        (( rc == EXIT_SKIPPED )) && warn "$(t orch_n8n_owner_still_missing)"
+    done
+    return "$rc"
+}
+
 # ─── Log file (set by bootstrap.sh; may be empty) ─────────────────────────────
 LOG_FILE="${LOG_FILE:-}"
 

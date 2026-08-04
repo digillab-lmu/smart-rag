@@ -61,19 +61,27 @@ Enter — the wizard then runs the import itself and you're done. If you
 answer too early, it says so and offers another attempt.
 
 If you'd rather not do it right now, answer `n`. Nothing else is affected,
-but the install then ends with `Setup INCOMPLETE — 2 manual steps left`,
-and you finish it later by creating the n8n owner account and running:
+but the install then ends with `Setup INCOMPLETE — 2 manual steps left`.
+
+To finish it later, use the admin menu — not a hand-typed command:
 
 ```bash
-sudo bash scripts/deploy-n8n-workflows.sh
+sudo smartrag
 ```
+
+→ *Ingest — (re-)import n8n credentials + workflows*. That menu entry runs
+the exact same guided flow as the installer: if n8n still has no owner
+account it names the URL, waits while you create one, and then does the
+import. Importing the ingest workflows is part of a standard setup, so it
+is meant to be reachable from the menu without touching the command line.
+(`sudo bash scripts/deploy-n8n-workflows.sh` does the same thing directly,
+if you prefer.)
 
 Either way, that imports the MinIO/SMTP credentials and both ingest workflows,
 activates the document-ingest workflow, restarts n8n, and then **verifies
 that the webhook is actually registered** before reporting success. It is
-re-runnable at any time (imports are keyed by fixed ids, so a re-run
-updates in place), and it's also available from `sudo smartrag` →
-*Ingest — (re-)import n8n credentials + workflows*.
+re-runnable at any time — imports are keyed by fixed ids, so a re-run
+updates in place rather than creating duplicates.
 
 **Until you do this, document upload will fail with a 404.** That 404 is
 the single most common symptom of a half-finished install: the Content
