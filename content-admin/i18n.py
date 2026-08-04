@@ -36,7 +36,11 @@ MSG_EN: dict[str, str] = {
     "nav_graph": "Knowledge Graph",
     "nav_flowise": "Flowise Connection",
     "nav_logout": "Log out",
-    "footer_credit": "SMART RAG is an initiative of DigiLLab, LMU München.",
+    # The chair's name is kept in German in both languages — it's a proper
+    # institutional name, and inventing an English rendering we haven't
+    # verified against LMU's own usage would be worse than leaving it.
+    "footer_credit": "SMART RAG is developed at DigiLLab | Lehrstuhl Empirische Pädagogik und Pädagogische Psychologie, Prof. Frank Fischer | LMU München.",
+    "footer_contact": 'Contact: <a href="mailto:benjamin.goetzinger@psy.lmu.de">Benjamin Götzinger</a>',
     "lang_switch_label": "Language",
 
     # --- first-run setup ------------------------------------------------
@@ -151,6 +155,9 @@ MSG_EN: dict[str, str] = {
     "upload_year_help": "Publication year. Example: 2009",
     "upload_topic_label": "Keywords",
     "upload_topic_help": "A few comma-separated terms describing what this document covers. Example: Cognitive Load, Multimedia Learning, Working Memory",
+    "upload_topic_suggest": "Suggest keywords",
+    "upload_topic_suggesting": "Thinking…",
+    "upload_topic_err": "Could not suggest keywords: %s",
     "upload_language_label": "Language",
     "upload_language_de": "German",
     "upload_language_en": "English",
@@ -211,7 +218,8 @@ MSG_DE: dict[str, str] = {
     "nav_graph": "Wissensgraph",
     "nav_flowise": "Flowise-Verbindung",
     "nav_logout": "Abmelden",
-    "footer_credit": "SMART RAG ist eine Initiative des DigiLLab, LMU München.",
+    "footer_credit": "SMART RAG ist eine Entwicklung des DigiLLab | Lehrstuhl Empirische Pädagogik und Pädagogische Psychologie, Prof. Frank Fischer | LMU München.",
+    "footer_contact": 'Kontakt: <a href="mailto:benjamin.goetzinger@psy.lmu.de">Benjamin Götzinger</a>',
     "lang_switch_label": "Sprache",
 
     # --- first-run setup ------------------------------------------------
@@ -326,6 +334,9 @@ MSG_DE: dict[str, str] = {
     "upload_year_help": "Erscheinungsjahr. Beispiel: 2009",
     "upload_topic_label": "Schlagwörter",
     "upload_topic_help": "Einige durch Komma getrennte Begriffe, die den Inhalt beschreiben. Beispiel: Cognitive Load, Multimediales Lernen, Arbeitsgedächtnis",
+    "upload_topic_suggest": "Schlagwörter vorschlagen",
+    "upload_topic_suggesting": "Wird überlegt…",
+    "upload_topic_err": "Schlagwörter konnten nicht vorgeschlagen werden: %s",
     "upload_language_label": "Sprache",
     "upload_language_de": "Deutsch",
     "upload_language_en": "Englisch",

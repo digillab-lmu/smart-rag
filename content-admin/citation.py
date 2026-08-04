@@ -124,9 +124,11 @@ def scan_pdf(file_stream, max_pages: int = 3) -> dict[str, str]:
     imprint page, and parsing a 900-page scan to find them would be a
     waste of the request's time.
 
-    Returns {"doi": ..., "isbn": ...} with only the keys actually found.
-    Never raises for an unreadable file — a scan that finds nothing is a
-    normal outcome, not an error.
+    Returns {"doi": ..., "isbn": ..., "text": ...} with only the keys
+    actually found; "text" is the extracted front matter, kept so a caller
+    can reuse it (keyword suggestions) without making the operator upload
+    the same file twice. Never raises for an unreadable file — a scan that
+    finds nothing is a normal outcome, not an error.
     """
     try:
         from pypdf import PdfReader
@@ -139,6 +141,8 @@ def scan_pdf(file_stream, max_pages: int = 3) -> dict[str, str]:
         return {}
 
     found: dict[str, str] = {}
+    if text.strip():
+        found["text"] = text
 
     doi_match = DOI_RE.search(text)
     if doi_match:
