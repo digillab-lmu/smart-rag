@@ -84,6 +84,30 @@ class FlowiseClient:
         payload = {"name": name, "flowData": flow_data}
         return self._request("PUT", f"/chatflows/{chatflow_id}", json=payload)
 
+    def get_chatflow(self, chatflow_id: str) -> dict | None:
+        """Returns the chatflow, or None if it no longer exists in Flowise —
+        which happens whenever someone deletes it there while slots.json still
+        remembers its id. Callers treat that as "not imported" rather than as
+        an error."""
+        try:
+            return self._request("GET", f"/chatflows/{chatflow_id}")
+        except FlowiseError as exc:
+            if "HTTP 404" in str(exc):
+                return None
+            raise
+
+    def set_chatflow_public(self, chatflow_id: str, is_public: bool) -> None:
+        """Toggles public access for one chatflow.
+
+        Only isPublic is sent. Flowise's updateChatflow merges the request
+        body into the stored entity (repository.merge), so everything not
+        named here — flowData, name, deployed, category — is preserved;
+        verified in the 3.1.3 source, not assumed. Sending flowData too would
+        mean re-uploading a flow this route never read, and any drift between
+        Flowise and slots.json would silently overwrite the live agent.
+        """
+        self._request("PUT", f"/chatflows/{chatflow_id}", json={"isPublic": is_public})
+
     def upsert_chatflow(self, name: str, flow_data: str) -> tuple[str, bool]:
         """Returns (chatflow_id, created). Re-importing an edited agent updates
         the existing flow in place rather than creating a second one with the

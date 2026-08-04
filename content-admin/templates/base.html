@@ -134,6 +134,24 @@
       min-height: 22rem; font-family: ui-monospace, monospace; font-size: 0.85rem;
       line-height: 1.45; white-space: pre; overflow-wrap: normal; overflow-x: auto;
     }
+    .publish-box {
+      margin-top: 1.75rem; padding: 0.75rem 1rem 1rem; border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+    .publish-box summary { cursor: pointer; }
+    .publish-state { font-size: 0.9rem; font-weight: 500; }
+    .publish-state.is-public { color: var(--accent); }
+    /* The warning is the one thing on this page that must not read as a
+       footnote — it is the only place where a click starts spending money
+       on behalf of strangers. */
+    .publish-warning {
+      border-left: 3px solid #c0392b; padding: 0.4rem 0 0.4rem 0.7rem;
+      opacity: 1; font-size: 0.85rem;
+    }
+    .copy-row { display: flex; gap: 0.5rem; align-items: stretch; }
+    .copy-row input { font-family: ui-monospace, monospace; font-size: 0.85rem; }
+    .copy-row .copy-btn { margin-top: 0.25rem; white-space: nowrap; flex-shrink: 0; }
+
     table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
     th { background: var(--accent-tint); font-weight: 500; }
     td, th { text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--border); }
