@@ -111,7 +111,8 @@ LMS URL, admin email, timezone). It offers to install itself as the
 global `smartrag` command the first time you run it. Runs entirely on the
 host as root over SSH — no extra container, no new network exposure.
 (Content authoring — agent prompts, RAG documents, the knowledge graph —
-is intentionally not here; see "What's NOT done" below.)
+is intentionally not here; it lives in the [Content Admin
+GUI](#content-admin-gui).)
 
 **Day-2 Docker operations** (pulling updated images, viewing logs, restarting):
 use `scripts/compose.sh` instead of calling `docker compose` directly — it's
@@ -200,6 +201,11 @@ once deployed) is where course-specific content gets filled in:
   Everything already known from the CLI wizard (course name, embedding
   model, LLM provider, …) is filled in automatically — the form only asks
   for what's genuinely new.
+- Uploading course documents for retrieval, with the bibliographic details
+  read out of the PDF or looked up from a DOI/ISBN, and suggested keywords.
+- A "Getting started" page that checks, live, what still has to be set up
+  (API keys, Flowise connection, agents, the n8n ingest webhook, the
+  conversion and search services) by asking each service at that moment.
 - A guided (not automated) path to seed the Neo4j concept graph: an
   explanation of the data model, a ready-to-copy prompt for an AI of your
   choice, and a box to paste + run the resulting Cypher. A fully automated
@@ -217,12 +223,12 @@ operations stay in the TUI (SSH-only, no network exposure); the content GUI
 only ever talks to Flowise/Neo4j over the internal Docker network, so a
 compromised GUI can't escalate to host control.
 
-**Still not done**: importing the 3 n8n core workflows (n8n's credential
-API has the same non-interactive-provisioning limitation, plus its own
-CLI-import reliability concerns — see the project's planning notes),
-and a RAG-document upload frontend (blocked on `n8n/workflows-ingest/`
-itself being generalized first — it currently references institution-
-specific hostnames and isn't meant to run on a fresh deployment).
+The n8n ingest workflows and their credentials are imported by
+`scripts/deploy-n8n-workflows.sh`, which the bootstrap runs for you —
+except on a first install, where n8n has no owner account yet and the
+import has to wait until you've created one in the browser. The bootstrap
+says so explicitly and prints the one command to run afterwards; see the
+[Operations Guide](docs/operations-guide.md#n8n-automation-httpsn8nyour-domainexample).
 
 ---
 
