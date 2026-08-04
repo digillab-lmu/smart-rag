@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Upload Documents — SMART RAG Content Admin{% endblock %}
+{% block content %}
+<h1>Upload Course Documents</h1>
+
+{% if not configured %}
+<p class="note">
+  No agents are configured yet. A document has to belong to a specific agent, so
+  <a href="{{ url_for('dashboard') }}">set one up first</a> — then come back here.
+</p>
+{% else %}
+
+<p class="note">
+  Upload a document and it becomes searchable by the agent you assign it to.
+  Everything after that runs automatically in the background: text and table
+  extraction (including OCR for scanned pages), AI descriptions of any figures
+  and diagrams so they're searchable too, then chunking and indexing.
+</p>
+<p class="note">
+  Processing is <strong>not</strong> instant — a short text document takes about
+  a minute, a long scanned one with many figures can take considerably longer.
+  You don't need to keep this page open; you'll get an email when the document
+  is ready.
+</p>
+
+<form method="post" enctype="multipart/form-data">
+  <label for="slot">Which agent is this document for?</label>
+  <p class="note" style="margin-top: 0.15rem;">
+    Only this agent will retrieve it. Course-wide agents (Universal Assistant,
+    Knowledge Test) search everything regardless of this setting.
+  </p>
+  <select id="slot" name="slot" required>
+    <option value="">— choose an agent —</option>
+    {% for num, data in configured.items() %}
+    <option value="{{ num }}" {% if form.get('slot') == num %}selected{% endif %}>
+      Slot {{ num }} — {{ data.get('name') or 'unnamed' }}
+    </option>
+    {% endfor %}
+  </select>
+
+  <label for="document">Document</label>
+  <p class="note" style="margin-top: 0.15rem;">
+    PDF, Word, PowerPoint, Excel, HTML, Markdown, or an image (PNG/JPEG/TIFF).
+  </p>
+  <input type="file" id="document" name="document" required
+         accept=".pdf,.docx,.xlsx,.pptx,.html,.htm,.md,.adoc,.asciidoc,.png,.jpg,.jpeg,.tiff,.tif,.bmp">
+
+  <label for="title">Title</label>
+  <p class="note" style="margin-top: 0.15rem;">
+    How this source is cited when an agent quotes it. Leave empty to use the
+    filename. Example: "Mayer (2009): Multimedia Learning, Chapter 3"
+  </p>
+  <input type="text" id="title" name="title" value="{{ form.get('title', '') }}">
+
+  <label for="authors">Authors</label>
+  <p class="note" style="margin-top: 0.15rem;">
+    Semicolon-separated, surname first. Example: "Mayer, Richard E.; Moreno, Roxana"
+  </p>
+  <input type="text" id="authors" name="authors" value="{{ form.get('authors', '') }}">
+
+  <label for="year">Year</label>
+  <p class="note" style="margin-top: 0.15rem;">Publication year. Example: 2009</p>
+  <input type="text" id="year" name="year" value="{{ form.get('year', '') }}" inputmode="numeric">
+
+  <label for="topic">Keywords</label>
+  <p class="note" style="margin-top: 0.15rem;">
+    A few comma-separated terms describing what this document covers. Example:
+    Cognitive Load, Multimedia Learning, Working Memory
+  </p>
+  <input type="text" id="topic" name="topic" value="{{ form.get('topic', '') }}">
+
+  <label for="language">Language</label>
+  <select id="language" name="language">
+    <option value="de" {% if form.get('language', 'de') == 'de' %}selected{% endif %}>German</option>
+    <option value="en" {% if form.get('language') == 'en' %}selected{% endif %}>English</option>
+  </select>
+
+  <label for="notify_email">Notification email</label>
+  <p class="note" style="margin-top: 0.15rem;">
+    Where to send the "done" message. Leave empty to use the system's admin address.
+  </p>
+  <input type="email" id="notify_email" name="notify_email" value="{{ form.get('notify_email', '') }}">
+
+  <label style="font-weight: normal; display: flex; gap: 0.6rem; align-items: flex-start;">
+    <input type="checkbox" name="force_ocr" style="width: auto; margin-top: 0.3rem;"
+           {% if form.get('force_ocr') %}checked{% endif %}>
+    <span>
+      <strong>This is a scanned document</strong><br>
+      <span class="note">
+        Forces optical character recognition on every page. Only tick this if the
+        PDF is a scan or photo of pages — it's slower, and unnecessary for
+        documents that already contain real text.
+      </span>
+    </span>
+  </label>
+
+  <button type="submit">Upload and process</button>
+</form>
+{% endif %}
+{% endblock %}

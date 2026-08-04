@@ -131,9 +131,8 @@ ARCHETYPES: dict[str, str] = {
 
 # Shown next to each archetype in the picker — purpose, typical use case,
 # whether it needs RAG (course documents retrieved from Weaviate). All but
-# Backup Assistant do; document upload/ingestion isn't in this GUI yet
-# (see docs/operations-guide.md) so those agents have nothing to retrieve
-# until documents exist in the course's Weaviate collection some other way.
+# Backup Assistant do; those agents have nothing to retrieve until documents
+# are uploaded for them on the Documents page (/upload).
 ARCHETYPE_DESCRIPTIONS: dict[str, str] = {
     "agent-01-universal.json": (
         "General-purpose course assistant — answers questions across the "

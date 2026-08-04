@@ -7,9 +7,9 @@
 {% if not existing.get('archetype') %}
 <h2>Choose an archetype</h2>
 <p class="note">
-  All except Backup Assistant use RAG (retrieval over your course documents in
-  Weaviate) — document upload isn't in this GUI yet, see
-  <code>docs/operations-guide.md</code> for how ingestion works today.
+  All except Backup Assistant use RAG (retrieval over your course documents).
+  Once this agent is set up, add its documents on the
+  <a href="{{ url_for('upload') }}">Documents</a> page.
 </p>
 <form method="post">
   <input type="hidden" name="action" value="choose_archetype">

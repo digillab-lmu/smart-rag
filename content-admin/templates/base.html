@@ -145,6 +145,7 @@
   {% if session.get('logged_in') %}
   <nav>
     <a href="{{ url_for('dashboard') }}">Agents</a>
+    <a href="{{ url_for('upload') }}">Documents</a>
     <a href="{{ url_for('graph_guidance') }}">Knowledge Graph</a>
     <a href="{{ url_for('flowise_setup') }}">Flowise Connection</a>
     <span style="flex:1"></span>
