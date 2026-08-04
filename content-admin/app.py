@@ -28,6 +28,7 @@ import storage
 from env_file import read_env, set_env_var
 from flowise_client import FlowiseClient, FlowiseError
 from llm_client import LLMError, optimize_field
+from n8n_client import N8nClient, N8nError
 from neo4j_client import Neo4jClient, Neo4jError
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-7s  %(message)s")
@@ -49,6 +50,21 @@ if not app.secret_key:
 # SSL would be a pointless detour (and a needless dependency on the cert
 # being valid) for a purely internal service-to-service call.
 FLOWISE_INTERNAL_URL = "http://smartrag-flowise:3000/api/v1"
+# Same reasoning — n8n's own container port (see docker-compose.yml's
+# comment on why N8N_PORT is pinned to 5678 internally regardless of the
+# host-side binding).
+N8N_INTERNAL_URL = "http://smartrag-n8n:5678"
+
+# Formats Docling accepts, mirrored from the upload form's accept attribute
+# so a file rejected here is never one the pipeline could have handled.
+ALLOWED_UPLOAD_EXTENSIONS = {
+    ".pdf", ".docx", ".xlsx", ".pptx", ".html", ".htm", ".md",
+    ".adoc", ".asciidoc", ".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp",
+}
+# Guards against a stray multi-GB upload wedging the single gunicorn
+# worker while it streams. Docling itself gets much longer to work.
+MAX_UPLOAD_BYTES = 200 * 1024 * 1024  # 200 MB
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
 
 
 def _flowise_client() -> FlowiseClient | None:
@@ -57,6 +73,10 @@ def _flowise_client() -> FlowiseClient | None:
     if not api_key:
         return None
     return FlowiseClient(FLOWISE_INTERNAL_URL, api_key)
+
+
+def _n8n_client() -> N8nClient:
+    return N8nClient(N8N_INTERNAL_URL)
 
 
 def _neo4j_client() -> Neo4jClient:
@@ -328,6 +348,106 @@ def _do_import(slot: int, archetype: str, client: FlowiseClient) -> str | None:
     storage.set_chatflow_id(slot, chatflow_id)
     set_env_var(f"CHATFLOW_AGENT{slot:02d}", chatflow_id)
     return None
+
+
+# ─── Document upload (RAG ingest) ───────────────────────────────────────────────
+@app.route("/upload", methods=["GET", "POST"])
+@auth.login_required
+def upload():
+    slots = storage.all_slots()
+    # Only slots that actually have an agent configured — uploading to an
+    # empty slot would tag chunks with an agent_id nothing retrieves.
+    configured = {
+        num: data for num, data in slots.items() if data.get("archetype")
+    }
+
+    error = None
+    success = None
+    form = {}
+
+    if request.method == "POST":
+        form = {
+            "slot": request.form.get("slot", ""),
+            "title": request.form.get("title", "").strip(),
+            "authors": request.form.get("authors", "").strip(),
+            "year": request.form.get("year", "").strip(),
+            "topic": request.form.get("topic", "").strip(),
+            "language": request.form.get("language", "de"),
+            "force_ocr": request.form.get("force_ocr") == "on",
+            "notify_email": request.form.get("notify_email", "").strip(),
+        }
+        upload_file = request.files.get("document")
+
+        if not form["slot"] or form["slot"] not in configured:
+            error = "Please choose which agent this document belongs to."
+        elif not upload_file or not upload_file.filename:
+            error = "Please choose a file to upload."
+        elif os.path.splitext(upload_file.filename)[1].lower() not in ALLOWED_UPLOAD_EXTENSIONS:
+            error = (
+                f"'{upload_file.filename}' isn't a supported format. Allowed: "
+                + ", ".join(sorted(ALLOWED_UPLOAD_EXTENSIONS))
+            )
+        elif form["year"] and not form["year"].isdigit():
+            error = "Year must be a number (or left empty)."
+        else:
+            try:
+                _n8n_client().upload_document(
+                    file_stream=upload_file.stream,
+                    filename=upload_file.filename,
+                    content_type=upload_file.mimetype or "application/octet-stream",
+                    agent_id=int(form["slot"]),
+                    # Falling back to the filename matches what the ingest
+                    # workflow does anyway if title is empty — doing it here
+                    # too just makes the value visible to the operator.
+                    title=form["title"] or os.path.splitext(upload_file.filename)[0],
+                    authors=form["authors"],
+                    year=form["year"],
+                    topic=form["topic"],
+                    language=form["language"],
+                    force_ocr=form["force_ocr"],
+                    notify_email=form["notify_email"],
+                )
+            except N8nError as exc:
+                logger.error("Upload failed for slot %s: %s", form["slot"], exc)
+                error = f"Upload failed: {exc}"
+            else:
+                agent_label = configured[form["slot"]].get("name") or f"Agent {form['slot']}"
+                success = (
+                    f"'{upload_file.filename}' was handed to the ingest pipeline for "
+                    f"{agent_label}. Processing runs in the background — a large "
+                    "scanned document with many figures can take a while. You'll get "
+                    "an email when it's searchable."
+                )
+                form = {}
+
+    return render_template(
+        "upload.html",
+        configured=configured,
+        form=form,
+        error=error,
+        success=success,
+    )
+
+
+@app.errorhandler(413)
+def upload_too_large(_exc):
+    """Flask aborts with 413 before the route ever runs when a request
+    exceeds MAX_CONTENT_LENGTH — without this the operator would get a bare
+    error page with no hint about what the limit is."""
+    return (
+        render_template(
+            "upload.html",
+            configured={
+                num: data
+                for num, data in storage.all_slots().items()
+                if data.get("archetype")
+            },
+            form={},
+            error=f"That file is too large — the limit is {MAX_UPLOAD_BYTES // (1024 * 1024)} MB.",
+            success=None,
+        ),
+        413,
+    )
 
 
 # ─── Knowledge-graph guidance ────────────────────────────────────────────────────
