@@ -143,6 +143,17 @@ action_status() {
             err "$svc: $(t admin_status_not_found)"
         fi
     done < <(_active_services)
+
+    # Container health alone says nothing about whether documents can
+    # actually be ingested: a perfectly healthy n8n with no active workflow
+    # looks green here, while every upload 404s. Ask the webhook itself.
+    echo
+    case "$(n8n_webhook_state)" in
+        registered)   ok "$(t admin_status_ingest_ok)" ;;
+        unregistered) err "$(t admin_status_ingest_missing)"
+                      dim "$(t admin_status_ingest_fix)" ;;
+        *)            warn "$(t admin_status_ingest_unknown)" ;;
+    esac
     press_enter
 }
 

@@ -203,7 +203,7 @@ once deployed) is where course-specific content gets filled in:
   for what's genuinely new.
 - Uploading course documents for retrieval, with the bibliographic details
   read out of the PDF or looked up from a DOI/ISBN, and suggested keywords.
-- A "Getting started" page that checks, live, what still has to be set up
+- A "System status" page that checks, live, what still has to be set up
   (API keys, Flowise connection, agents, the n8n ingest webhook, the
   conversion and search services) by asking each service at that moment.
 - A guided (not automated) path to seed the Neo4j concept graph: an

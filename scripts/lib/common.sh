@@ -31,6 +31,40 @@ fi
 # (126/127/128+n).
 readonly EXIT_SKIPPED=10
 
+# ─── n8n ingest webhook state ────────────────────────────────────────────────
+# Echoes one of: registered | unregistered | unreachable
+#
+# Probed with GET, which has no side effects — a POST would start a real
+# ingest run. n8n answers 404 in both interesting cases but with different
+# messages, and reading them the right way round is the whole check
+# (verified in n8n's packages/cli/src/errors/response-errors/
+# webhook-not-found.error.ts at tag n8n@1.123.0):
+#
+#   "This webhook is not registered for GET requests. Did you mean to make
+#    a POST request?"                → the POST webhook EXISTS: registered
+#   'The requested webhook "GET document-ingest" is not registered.'
+#                                    → missing or inactive workflow
+#
+# Shared by deploy-n8n-workflows.sh (verifying its own work) and admin.sh
+# (showing it in the status view), so the two can never disagree — and it
+# matches the Content Admin's System status page, which probes identically.
+n8n_webhook_state() {
+    local base="${1:-http://127.0.0.1:${N8N_PORT:-5678}}"
+    local body
+    body="$(curl -s --max-time 5 "${base%/}/webhook/document-ingest" 2>/dev/null)" || {
+        echo "unreachable"; return 0
+    }
+    if [[ -z "$body" ]]; then
+        echo "unreachable"
+    elif grep -q "not registered for GET requests" <<<"$body"; then
+        echo "registered"
+    elif grep -q "is not registered" <<<"$body"; then
+        echo "unregistered"
+    else
+        echo "unreachable"
+    fi
+}
+
 # ─── Log file (set by bootstrap.sh; may be empty) ─────────────────────────────
 LOG_FILE="${LOG_FILE:-}"
 

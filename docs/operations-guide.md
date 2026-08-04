@@ -41,27 +41,34 @@ chicken-and-egg as the admin account above).
 Same pattern as Flowise: the first visit prompts you to create the owner
 account, stored in n8n's own database, not `.env`.
 
-**This one is required, and it is why a fresh install finishes in two
-phases.** The ingest workflows are imported by a script, but that script
-needs an existing n8n owner to assign the imported credentials and
-workflows to — and that account can only be created in a browser. So on a
-first run, `bootstrap.sh` cannot complete this step and says so:
+**This one is required.** The ingest workflows are imported by a script,
+but that script needs an existing n8n owner to assign the imported
+credentials and workflows to — and that account can only be created in a
+browser. So `bootstrap.sh` stops at this point and asks you to do it now:
 
 ```
-━━━ Setup INCOMPLETE — 2 manual steps left ━━━
+ℹ  The ingest workflows still need to be imported, and that needs an n8n
+   owner account — which only you can create, in a browser. Open
+   https://n8n.your-domain.example now and complete its one-time owner
+   setup (email + password). This wizard will wait, and finish the import
+   for you afterwards.
+
+   Done — n8n owner account created? [Y/n]:
 ```
 
-Finish it in this order:
+Open the URL in another window, create the account, come back and press
+Enter — the wizard then runs the import itself and you're done. If you
+answer too early, it says so and offers another attempt.
 
-1. Open `https://n8n.your-domain.example` and complete n8n's one-time
-   owner setup (email + password).
-2. Back on the server, run:
+If you'd rather not do it right now, answer `n`. Nothing else is affected,
+but the install then ends with `Setup INCOMPLETE — 2 manual steps left`,
+and you finish it later by creating the n8n owner account and running:
 
-   ```bash
-   sudo bash scripts/deploy-n8n-workflows.sh
-   ```
+```bash
+sudo bash scripts/deploy-n8n-workflows.sh
+```
 
-That imports the MinIO/SMTP credentials and both ingest workflows,
+Either way, that imports the MinIO/SMTP credentials and both ingest workflows,
 activates the document-ingest workflow, restarts n8n, and then **verifies
 that the webhook is actually registered** before reporting success. It is
 re-runnable at any time (imports are keyed by fixed ids, so a re-run
@@ -71,7 +78,7 @@ updates in place), and it's also available from `sudo smartrag` →
 **Until you do this, document upload will fail with a 404.** That 404 is
 the single most common symptom of a half-finished install: the Content
 Admin GUI is working correctly and n8n simply has no webhook listening.
-The GUI's **Getting started** page checks this — along with the API keys,
+The GUI's **System status** page checks this — along with the API keys,
 the Flowise connection, your agents, and the Docling/markdowncleaner/
 Weaviate services — and tells you which step is missing, at any time.
 
@@ -117,7 +124,7 @@ What's in there:
 
 | Menu item | What it does |
 |---|---|
-| Status | Health of every running container |
+| Status | Health of every running container, plus whether the n8n ingest webhook is actually registered — a healthy n8n container with no active workflow looks fine but 404s every upload |
 | Logs | Tail one service's logs (`Ctrl+C` to stop) |
 | Update | `docker compose pull && up -d` — picks up new pinned image versions after a `git pull` |
 | Restart a service | `docker restart` on one container |
@@ -171,7 +178,7 @@ from the Flowise and n8n accounts above, and unrelated to `.env`.
 
 What you do there:
 
-- **Getting started** — a live checklist of everything that has to be in
+- **System status** — a live checklist of everything that has to be in
   place: API keys, the Flowise connection, your agents, the n8n ingest
   webhook, and the Docling/markdowncleaner/Weaviate services. Each line is
   checked by asking the service itself at that moment, so it is also the
