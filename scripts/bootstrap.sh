@@ -179,7 +179,7 @@ run_deployment_phases() {
     # belongs to a standard setup should need a hand-typed command.
     local n8n_rc=0
     run_n8n_import_guided "$SCRIPT_DIR" "$LANG_CHOICE" || n8n_rc=$?
-    if (( n8n_rc != 0 && n8n_rc != EXIT_SKIPPED )); then
+    if (( n8n_rc != 0 && n8n_rc != EXIT_SKIPPED && n8n_rc != EXIT_UNVERIFIED )); then
         die "$(t orch_n8n_failed)"
     fi
 
@@ -190,6 +190,18 @@ run_deployment_phases() {
     # banner either way and left the follow-up as one line of prose in a
     # long wall of text — which is exactly how an install reaches the point
     # where the first sign of trouble is a 404 in the Content Admin GUI.
+    # Ran, but n8n never came back to confirm it. Not a completed install
+    # either — say precisely that, instead of picking whichever of the two
+    # existing banners is less wrong.
+    if (( n8n_rc == EXIT_UNVERIFIED )); then
+        header "$(t orch_incomplete)"
+        echo "  $(t orch_n8n_unverified)"
+        echo
+        echo "  $(t orch_next_visit "$(subdomain_host smart-rag "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")")"
+        echo "  $(t orch_next_login)"
+        return 0
+    fi
+
     if (( n8n_rc == EXIT_SKIPPED )); then
         header "$(t orch_incomplete)"
         echo "  $(t orch_incomplete_intro)"
