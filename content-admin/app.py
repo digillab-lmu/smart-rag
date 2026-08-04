@@ -26,6 +26,7 @@ import agent_templates
 import auth
 import citation
 import i18n
+import setup_checks
 import storage
 from env_file import read_env, set_env_var
 from flowise_client import FlowiseClient, FlowiseError
@@ -732,6 +733,41 @@ def upload_too_large(_exc):
             success=None,
         ),
         413,
+    )
+
+
+# ─── Onboarding guide ────────────────────────────────────────────────────────────
+# The command an operator has to run on the host to import the n8n workflows
+# and credentials. It cannot be run from here by design: this container has
+# no Docker socket and no host filesystem (see the module docstring), and
+# handing a web GUI the ability to exec into other containers would trade
+# that boundary away for one saved copy-paste.
+DEPLOY_WORKFLOWS_COMMAND = "sudo bash scripts/deploy-n8n-workflows.sh"
+
+
+@app.route("/getting-started")
+@auth.login_required
+def getting_started():
+    checks = setup_checks.run_all(
+        env=read_env(),
+        slots=storage.all_slots(),
+        flowise_client=_flowise_client(),
+        n8n_base_url=N8N_INTERNAL_URL,
+        deploy_command=DEPLOY_WORKFLOWS_COMMAND,
+    )
+    # "Ready" means every check passed — a WARN is not a pass. Someone whose
+    # agents are saved but never imported does not have a working system, and
+    # a green banner would tell them they do.
+    ready = all(c.state == setup_checks.State.OK for c in checks)
+    return render_template(
+        "getting_started.html",
+        checks=checks,
+        ready=ready,
+        State=setup_checks.State,
+        first_blocker=next(
+            (c for c in checks if c.blocking and c.state != setup_checks.State.OK),
+            None,
+        ),
     )
 
 

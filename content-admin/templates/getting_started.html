@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}{{ t('guide_title') }} — {{ t('app_name') }} {{ t('app_subtitle') }}{% endblock %}
+{% block content %}
+<h1>{{ t('guide_heading') }}</h1>
+<p class="note">{{ t('guide_intro') }}</p>
+
+{% if ready %}
+<div class="success">{{ t('guide_ready') }}</div>
+{% elif first_blocker %}
+<div class="error">{{ t('guide_blocked', t('guide_' ~ first_blocker.key ~ '_title')) }}</div>
+{% endif %}
+
+<ol class="guide-steps">
+  {% for c in checks %}
+  <li class="guide-step state-{{ c.state.value }}">
+    <div class="guide-step-head">
+      <span class="guide-badge">
+        {% if c.state == State.OK %}{{ t('guide_state_ok') }}
+        {% elif c.state == State.WARN %}{{ t('guide_state_warn') }}
+        {% elif c.state == State.FAIL %}{{ t('guide_state_fail') }}
+        {% else %}{{ t('guide_state_unknown') }}{% endif %}
+      </span>
+      <strong>{{ t('guide_' ~ c.key ~ '_title') }}</strong>
+    </div>
+
+    <p class="note">{{ t('guide_' ~ c.key ~ '_help') }}</p>
+
+    {# Per-check result lines. Each says what was actually found, so the
+       operator never has to guess which of three services is down. #}
+    <p class="guide-result">
+      {% if c.key == 'llm_keys' %}
+        {% if c.state == State.OK %}{{ t('guide_llm_keys_ok', c.detail) }}
+        {% else %}{{ t('guide_llm_keys_fail', c.detail) }}{% endif %}
+
+      {% elif c.key == 'agents' %}
+        {% if c.state == State.FAIL %}{{ t('guide_agents_fail') }}
+        {% elif not c.extra.get('imported') %}{{ t('guide_agents_warn_unimported', c.extra.get('configured', 0)) }}
+        {% else %}
+          {{ t('guide_agents_ok', c.extra.get('imported', 0), c.extra.get('configured', 0)) }}
+          {% if c.extra.get('stale') %}<br>{{ t('guide_agents_warn_stale', c.extra.stale) }}{% endif %}
+        {% endif %}
+
+      {% elif c.key == 'n8n' %}
+        {% if c.state == State.OK %}{{ t('guide_n8n_ok') }}
+        {% elif c.state == State.FAIL %}{{ t('guide_n8n_fail') }}{% endif %}
+
+      {% elif c.key == 'ingest_services' %}
+        {% if c.state == State.OK %}{{ t('guide_ingest_services_ok') }}
+        {% else %}{{ t('guide_ingest_services_fail', c.detail) }}{% endif %}
+
+      {% elif c.state == State.OK %}{{ t('guide_state_ok') }}
+      {% endif %}
+    </p>
+
+    {# The service's own words, verbatim — during setup the raw error text
+       is usually the actual fix, and paraphrasing it loses that. Shown for
+       the checks whose detail isn't already spelled out above. #}
+    {% if c.detail and c.key not in ('llm_keys', 'ingest_services') %}
+    <pre class="guide-detail">{{ c.detail }}</pre>
+    {% endif %}
+
+    {% if c.key == 'ingest_services' and c.extra %}
+    <ul class="guide-substeps">
+      {% for name, r in c.extra.items() %}
+      <li class="{% if r.ok %}sub-ok{% else %}sub-fail{% endif %}">
+        <code>{{ name }}</code>
+        {% if not r.ok %}<span class="guide-detail-inline">{{ r.detail }}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if c.command and c.state != State.OK %}
+    <p class="note">{{ t('guide_command_intro') }}</p>
+    <div class="copy-row">
+      <input type="text" id="cmd-{{ c.key }}" value="{{ c.command }}" readonly>
+      <button type="button" class="copy-btn" data-copy="cmd-{{ c.key }}">{{ t('publish_copy') }}</button>
+    </div>
+    <p class="note guide-why">{{ t('guide_command_why') }}</p>
+    {% endif %}
+
+    {% if c.link and c.state != State.OK %}
+    <p><a href="{{ url_for(c.link) }}">{{ t('guide_' ~ c.key ~ '_link') }} →</a></p>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ol>
+
+<p>
+  <a href="{{ url_for('getting_started') }}"><button type="button" class="secondary">{{ t('guide_recheck') }}</button></a>
+</p>
+
+{% if ready %}
+<h2>{{ t('guide_next_title') }}</h2>
+<ul>
+  <li><a href="{{ url_for('upload') }}">{{ t('guide_next_upload') }}</a></li>
+  <li><a href="{{ url_for('graph_guidance') }}">{{ t('guide_next_graph') }}</a></li>
+</ul>
+{% endif %}
+
+<script>
+// Shared with the publish box on the slot page: select the text, copy it if
+// the Clipboard API is available (it needs a secure context), and say so.
+(function () {
+  var COPIED = {{ t('publish_copied')|tojson }};
+  var COPY = {{ t('publish_copy')|tojson }};
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.copy-btn');
+    if (!btn) return;
+    var field = document.getElementById(btn.dataset.copy);
+    if (!field) return;
+
+    field.select();
+    field.setSelectionRange(0, field.value.length);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(field.value).catch(function () {});
+    }
+    btn.textContent = COPIED;
+    setTimeout(function () { btn.textContent = COPY; }, 1500);
+  });
+})();
+</script>
+{% endblock %}
