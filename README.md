@@ -271,6 +271,7 @@ smart-rag/
 ├── content-admin/          # Flask app for course-content authoring
 ├── scripts/                # bootstrap.sh, admin.sh, uninstall.sh, compose.sh, lib/, standalone phase scripts
 ├── tests/                  # Regression suite — bash tests/run-tests.sh
+├── CHANGELOG.md            # What changed, and what an upgrade needs
 └── docs/                   # requirements, operations guide, architecture, runbook
 ```
 
