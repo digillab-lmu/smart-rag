@@ -587,6 +587,79 @@ check_nginx_config_valid() {
 }
 
 
+# ─── Memory ──────────────────────────────────────────────────────────────────
+# RAM, not CPU, is what this stack runs out of first. A deployment that fits
+# in neither RAM nor swap doesn't fail cleanly: it thrashes, and the symptoms
+# surface far from the cause — MinIO taking its own drive offline after a
+# 31-second write-read stall, n8n needing minutes to restart, containers
+# dying under an OOM kill. Every one of those reads as a bug in the thing
+# that reported it.
+#
+# Echoes total RAM in whole GB, or nothing if it can't be determined.
+detect_total_ram_gb() {
+    local kb
+    kb="$(awk '/^MemTotal:/ {print $2; exit}' /proc/meminfo 2>/dev/null)"
+    [[ "$kb" =~ ^[0-9]+$ ]] || return 0
+    # Round to nearest, not down: a 7.9 GB machine reporting "7" would fail an
+    # 8 GB check it effectively meets.
+    echo $(( (kb + 512 * 1024) / (1024 * 1024) ))
+}
+
+# What docs/requirements.md documents per profile combination. Kept here so
+# the check and that table have one source instead of drifting apart.
+required_ram_gb_for_profiles() {
+    case "$1" in
+        *observability*|*lti*) echo 12 ;;
+        *)                     echo 8  ;;
+    esac
+}
+
+check_memory() {
+    local required="${1:-8}"
+    local total_gb
+    total_gb="$(detect_total_ram_gb)"
+
+    if [[ -z "$total_gb" ]]; then
+        warn "$(t pf_ram_unknown)"
+        PREFLIGHT_WARN=$((PREFLIGHT_WARN+1))
+        return 0
+    fi
+
+    if (( total_gb < required )); then
+        warn "$(t pf_ram_low "$total_gb" "$required")"
+        PREFLIGHT_WARN=$((PREFLIGHT_WARN+1))
+    else
+        ok "$(t pf_ram_ok "$total_gb")"
+    fi
+}
+
+# Asked once the profile selection is known, so the number quoted is the one
+# that actually applies. Deliberately a stop-and-confirm rather than one more
+# line of warning text: an undersized machine should be a decision, not
+# something scrolled past.
+#
+# Returns 0 to continue, 1 if the operator wants to stop.
+confirm_memory_for_profiles() {
+    local profiles="$1"
+    local required total_gb
+    required="$(required_ram_gb_for_profiles "$profiles")"
+    total_gb="$(detect_total_ram_gb)"
+
+    # Unknown RAM is no reason to interrogate anyone — check_memory has
+    # already said it couldn't tell.
+    [[ -n "$total_gb" ]] || return 0
+    (( total_gb < required )) || return 0
+
+    echo
+    warn "$(t pf_ram_gate_warning "$profiles" "$required" "$total_gb")"
+    dim "$(t pf_ram_gate_detail)"
+    if [[ "$profiles" == *observability* ]]; then
+        dim "$(t pf_ram_gate_observability)"
+    fi
+    echo
+    confirm pf_ram_gate_continue "n"
+}
+
 # ─── Master runner — phase 1 (basic system checks only) ──────────────────────
 # Critical checks come first (will die() on failure).
 # Disk + DNS are warnings only.
@@ -599,6 +672,9 @@ run_preflight() {
     check_docker
     check_docker_compose
     check_disk_space "/"
+    # 8 GB = the `core` minimum. The profile-specific figure is confirmed
+    # later, once the wizard knows which profiles were chosen.
+    check_memory 8
     ensure_jq_installed
 }
 
