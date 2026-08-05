@@ -8,7 +8,14 @@ embedding → Weaviate write.
 |------|---------|
 | `ingest-document.json`          | Entry point. Webhook-triggered (`POST /webhook/document-ingest`), converts an uploaded file via Docling, describes any embedded images/diagrams using the course's configured `LLM_PROVIDER`, archives the result to MinIO, then calls the chunk+embed sub-workflow. |
 | `ingest-chunk-and-embed.json`   | Sub-workflow (`Execute Workflow Trigger`, not directly reachable via HTTP). Chunks the converted markdown, embeds each chunk via the course's configured `EMBEDDING_PROVIDER`, writes to Weaviate. |
-| `ingest-audio-transcription-(whisperx).json` | Audio/video transcription via WhisperX. Not yet generalized — still references a specific VHB deployment (GPU-bound WhisperX instance). Out of scope for the document-ingest generalization; do not import into a fresh deployment. |
+
+Audio/video transcription (WhisperX) used to live here as a third
+workflow. It was removed rather than generalized: it hard-coded the
+original deployment's hostnames, an internal IP and a personal email
+address, and it depended on a GPU-bound WhisperX instance that no fresh
+deployment has. Recovering it means `git log -- n8n/workflows-ingest/` —
+but generalizing it properly would mean choosing a transcription service
+first, which is a separate decision.
 
 ## What triggers `ingest-document.json`
 
