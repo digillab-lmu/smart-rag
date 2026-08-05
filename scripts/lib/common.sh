@@ -51,18 +51,61 @@ readonly EXIT_UNVERIFIED=11
 # Idempotent: an already-installed, already-joined node is left alone, so
 # stepping back and forth in the wizard costs nothing.
 #
-# Echoes the MagicDNS name on success, nothing on failure.
+# Echoes THIS machine's MagicDNS name, or nothing.
+#
+# Reads Self.DNSName explicitly. The first version grepped the whole JSON for
+# "DNSName" and took the first hit — but `tailscale status --json` lists every
+# peer as well, so on a tailnet with other machines that would have returned
+# somebody else's name, and the installation would have published its URLs
+# under a hostname belonging to a different device.
 tailscale_magicdns_name() {
-    tailscale status --json 2>/dev/null \
-        | grep -o '"DNSName":"[^"]*"' | head -1 | cut -d'"' -f4 | sed 's/\.$//'
+    local json; json="$(tailscale status --json 2>/dev/null)" || return 0
+    [[ -n "$json" ]] || return 0
+    local name
+    if command -v jq >/dev/null 2>&1; then
+        name="$(jq -r '.Self.DNSName // empty' <<<"$json" 2>/dev/null)"
+    else
+        # Fallback: cut the JSON down to the Self object first, so the match
+        # cannot come from a peer.
+        name="$(sed -n 's/.*"Self":{\([^}]*\)}.*/\1/p' <<<"$json" \
+                | grep -o '"DNSName":"[^"]*"' | head -1 | cut -d'"' -f4)"
+    fi
+    printf '%s' "${name%.}"
 }
 
 tailscale_backend_state() {
-    tailscale status --json 2>/dev/null \
-        | grep -o '"BackendState":"[^"]*"' | cut -d'"' -f4
+    local json; json="$(tailscale status --json 2>/dev/null)" || return 0
+    if command -v jq >/dev/null 2>&1; then
+        jq -r '.BackendState // empty' <<<"$json" 2>/dev/null
+    else
+        grep -o '"BackendState":"[^"]*"' <<<"$json" | head -1 | cut -d'"' -f4
+    fi
 }
 
-# Returns 0 and echoes the name; returns 1 if it could not be brought up.
+# Whether a certificate can be issued — which is the only honest test of
+# "HTTPS is enabled for this tailnet". The admin-console toggle is not
+# readable from here, so ask for the thing that depends on it.
+tailscale_https_ready() {
+    local name="$1"
+    [[ -n "$name" ]] || return 1
+    tailscale cert "$name" >/dev/null 2>&1
+}
+
+TAILSCALE_ADMIN_DNS_URL="https://login.tailscale.com/admin/dns"
+
+# Install, join, and make sure the two tailnet settings this deployment
+# depends on are actually on — walking the operator through them rather than
+# failing back to the menu with a sentence about what they should have done.
+#
+# Both settings live in the admin console and cannot be changed from here, so
+# this is a wait-and-confirm, the same shape as the n8n owner-account step:
+# say exactly what to click, wait, re-check, and say what is still missing.
+#
+# Bounded at three attempts: `confirm` falls back to its default on an empty
+# read, and an empty read is what happens at EOF, so an unbounded loop would
+# spin forever on a non-interactive stdin.
+#
+# Echoes the MagicDNS name on success; returns 1 if it could not be reached.
 tailscale_ensure_up() {
     if ! command -v tailscale >/dev/null 2>&1; then
         info "$(t ts_installing)" >&2
@@ -89,12 +132,34 @@ tailscale_ensure_up() {
         ok "$(t ts_already_up)" >&2
     fi
 
-    local name; name="$(tailscale_magicdns_name)"
-    if [[ -z "$name" ]]; then
-        err "$(t ts_no_magicdns)" >&2
-        return 1
-    fi
-    printf '%s' "$name"
+    local name attempts=0
+    name="$(tailscale_magicdns_name)"
+
+    while (( attempts < 3 )); do
+        if [[ -z "$name" ]]; then
+            echo >&2
+            warn "$(t ts_magicdns_missing)" >&2
+            dim "$(t ts_admin_open "$TAILSCALE_ADMIN_DNS_URL")" >&2
+            dim "$(t ts_magicdns_howto)" >&2
+        elif ! tailscale_https_ready "$name"; then
+            echo >&2
+            ok "$(t ts_hostname "$name")" >&2
+            warn "$(t ts_https_missing)" >&2
+            dim "$(t ts_admin_open "$TAILSCALE_ADMIN_DNS_URL")" >&2
+            dim "$(t ts_https_howto)" >&2
+        else
+            printf '%s' "$name"
+            return 0
+        fi
+
+        attempts=$(( attempts + 1 ))
+        echo >&2
+        confirm ts_settings_done "y" >&2 || { err "$(t ts_aborted)" >&2; return 1; }
+        name="$(tailscale_magicdns_name)"
+    done
+
+    err "$(t ts_settings_still_missing)" >&2
+    return 1
 }
 
 # ─── n8n ingest webhook state ────────────────────────────────────────────────
