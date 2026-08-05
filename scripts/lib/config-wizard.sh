@@ -306,6 +306,40 @@ prompt_and_validate_model() {
 # have one for this provider/tier, otherwise straight free-text entry (which
 # then goes through prompt_and_validate_model). Curated entries are never
 # validated — they're our own hardcoded strings, no typo risk from the user.
+# ─── Section: Deployment mode ────────────────────────────────────────────────
+# Asked first, because everything after it depends on the answer: whether a
+# domain is needed at all, whether DNS and certificates are checked, whether
+# nginx is deployed.
+ask_deployment_mode() {
+    header "$(t cfg_section_mode)"
+    info "$(t cfg_mode_intro)"
+    echo
+
+    local choice
+    choice="$(select_one_index cfg_mode_choice \
+        "$(t cfg_mode_domain)" \
+        "$(t cfg_mode_tailscale)")" || return 1
+
+    case "$choice" in
+        1) CFG_DEPLOYMENT_MODE="domain" ;;
+        2)
+            CFG_DEPLOYMENT_MODE="tailscale"
+            echo
+            warn "$(t cfg_mode_tailscale_warning)"
+            dim "$(t cfg_mode_tailscale_lti)"
+            echo
+            info "$(t cfg_mode_tailscale_prereq)"
+            dim "$(t cfg_mode_tailscale_prereq_1)"
+            dim "$(t cfg_mode_tailscale_prereq_2)"
+            dim "$(t cfg_mode_tailscale_prereq_3)"
+            echo
+            confirm cfg_mode_tailscale_ready "y" || return 1
+            ;;
+    esac
+    dim "$(t cfg_mode_chosen "$CFG_DEPLOYMENT_MODE")"
+}
+
+
 # Args: $1=provider  $2=strong|fast  $3=message key  $4=api_key
 ask_model_choice() {
     local provider="$1" tier="$2" msg_key="$3" api_key="$4"
@@ -361,17 +395,25 @@ ask_course_info() {
     CFG_COURSE_NAME="$(prompt cfg_course_name "${CFG_COURSE_NAME:-My Course}")" || return 1
     CFG_COURSE_ID="$(prompt_slug cfg_course_id "${CFG_COURSE_ID:-my-course}")" || return 1
 
-    # Try to pre-fill domain from reverse DNS — user always confirms
-    local domain_default="${CFG_DOMAIN:-example.com}"
-    if [[ -z "${CFG_DOMAIN:-}" ]]; then
-        local detected_domain
-        detected_domain="$(detect_base_domain 2>/dev/null || true)"
-        if [[ -n "$detected_domain" ]]; then
-            info "$(t cfg_domain_detected "$detected_domain")" >&2
-            domain_default="$detected_domain"
+    # In tailscale mode there is no domain to ask for: the hostname is the
+    # machine's MagicDNS name, which Tailscale assigns once it is up. It is
+    # filled in by install-tailscale.sh, not here.
+    if [[ "${CFG_DEPLOYMENT_MODE:-domain}" == "tailscale" ]]; then
+        CFG_DOMAIN=""
+        dim "$(t cfg_domain_from_tailscale)"
+    else
+        # Try to pre-fill domain from reverse DNS — user always confirms
+        local domain_default="${CFG_DOMAIN:-example.com}"
+        if [[ -z "${CFG_DOMAIN:-}" ]]; then
+            local detected_domain
+            detected_domain="$(detect_base_domain 2>/dev/null || true)"
+            if [[ -n "$detected_domain" ]]; then
+                info "$(t cfg_domain_detected "$detected_domain")" >&2
+                domain_default="$detected_domain"
+            fi
         fi
+        CFG_DOMAIN="$(prompt cfg_domain "$domain_default" validate_fqdn)" || return 1
     fi
-    CFG_DOMAIN="$(prompt cfg_domain "$domain_default" validate_fqdn)" || return 1
 
     CFG_ADMIN_EMAIL="$(prompt cfg_admin_email "${CFG_ADMIN_EMAIL:-}" validate_email)" || return 1
     info "$(t cfg_base_data_path_explain)"
@@ -695,7 +737,7 @@ EOF
 # nothing entered earlier is lost when stepping back and forward again.
 _wizard_step_loop() {
     local i="$1"
-    local steps=(ask_course_info ask_profiles ask_llm_config ask_embedding_config ask_reranker_config ask_mail_config)
+    local steps=(ask_deployment_mode ask_course_info ask_profiles ask_llm_config ask_embedding_config ask_reranker_config ask_mail_config)
     local n=${#steps[@]}
     while (( i < n )); do
         if "${steps[$i]}"; then
@@ -718,7 +760,7 @@ run_config_wizard() {
         if confirm cfg_review_confirm "y"; then
             return 0
         elif (( WIZARD_BACK )); then
-            _wizard_step_loop 5   # re-enter at the last section (mail relay)
+            _wizard_step_loop 6   # re-enter at the last section (mail relay)
         else
             die "$(t cfg_aborted)"
         fi

@@ -167,8 +167,23 @@ run_deployment_phases() {
 
     bash "$SCRIPT_DIR/install-system-packages.sh" --lang "$LANG_CHOICE"
     bash "$SCRIPT_DIR/install-postfix.sh"         --lang "$LANG_CHOICE"
-    bash "$SCRIPT_DIR/get-ssl-certs.sh"           --lang "$LANG_CHOICE"
-    bash "$SCRIPT_DIR/start-services.sh"          --lang "$LANG_CHOICE"
+
+    # In tailscale mode there is no domain of ours, so there is nothing for
+    # Let's Encrypt to validate over HTTP-01 and no vhost for nginx to serve.
+    # Tailscale terminates TLS itself, with its own certificate, and proxies
+    # straight to the containers' localhost bindings.
+    if [[ "${DEPLOYMENT_MODE:-domain}" == "tailscale" ]]; then
+        bash "$SCRIPT_DIR/start-services.sh"      --lang "$LANG_CHOICE"
+        bash "$SCRIPT_DIR/install-tailscale.sh"   --lang "$LANG_CHOICE"
+        # The URLs only exist once Tailscale has assigned the MagicDNS name,
+        # and several containers read them from the environment at start —
+        # so they are recreated with the values install-tailscale.sh wrote.
+        set -a; source "$REPO_ROOT/.env"; set +a
+        bash "$SCRIPT_DIR/compose.sh" up -d >/dev/null
+    else
+        bash "$SCRIPT_DIR/get-ssl-certs.sh"       --lang "$LANG_CHOICE"
+        bash "$SCRIPT_DIR/start-services.sh"      --lang "$LANG_CHOICE"
+    fi
     bash "$SCRIPT_DIR/deploy-schemas.sh"          --lang "$LANG_CHOICE"
     # Exits EXIT_SKIPPED if n8n has no owner account yet — expected on a
     # first run, since creating that account is a manual browser step. The
@@ -308,7 +323,14 @@ if [[ -f "$REPO_ROOT/.env.example" ]]; then
     done < <(grep -E '^[A-Z_]+_PORT=' "$REPO_ROOT/.env.example")
 fi
 
-run_coexistence_preflight
+# Port and subdomain coexistence only mean something when we are claiming
+# vhosts and ports on this host. In tailscale mode nothing is published on
+# 80/443 and there are no subdomains of ours to collide with.
+if [[ "$CFG_DEPLOYMENT_MODE" == "domain" ]]; then
+    run_coexistence_preflight
+else
+    info "$(t orch_tailscale_skip_coexist)"
+fi
 
 # Re-run DNS check now that we have a domain (warning only).
 # We check the actual subdomains, not the base domain (which we don't host).
@@ -316,7 +338,10 @@ run_coexistence_preflight
 # call below found a correct match — used further down to offer skipping
 # straight into --continue instead of making the user run a second command.
 DNS_ALL_OK=0
-if command -v dig >/dev/null 2>&1; then
+if [[ "$CFG_DEPLOYMENT_MODE" == "tailscale" ]]; then
+    # No records of ours to look up; Tailscale answers for its own name.
+    DNS_ALL_OK=1
+elif command -v dig >/dev/null 2>&1; then
     info "Checking DNS for required subdomains of $CFG_DOMAIN..."
     _warn_before_dns=$PREFLIGHT_WARN
     check_dns "$(subdomain_host smart-rag "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
@@ -342,7 +367,8 @@ header "$(t phase_templates)"
 DOMAIN="$CFG_DOMAIN"
 COURSE_ID="$CFG_COURSE_ID"
 ADMIN_EMAIL="$CFG_ADMIN_EMAIL"
-export DOMAIN COURSE_ID ADMIN_EMAIL
+DEPLOYMENT_MODE="$CFG_DEPLOYMENT_MODE"
+export DOMAIN COURSE_ID ADMIN_EMAIL DEPLOYMENT_MODE
 
 # Decide where to stage generated files
 STAGING_DIR="$CFG_BASE_DATA_PATH/staging"
@@ -355,7 +381,13 @@ write_weaviate_schema "$REPO_ROOT" "$STAGING_DIR/weaviate-schema.json"
 # we're not on a server where nginx is installed yet; the user will rerun
 # us later or copy manually).
 NGINX_TARGET="/etc/nginx/sites-available/smartrag-suite.conf"
-if [[ -d /etc/nginx/sites-available ]]; then
+if [[ "$CFG_DEPLOYMENT_MODE" == "tailscale" ]]; then
+    # Tailscale terminates TLS and proxies to the containers directly, so no
+    # vhost is written at all — writing one would leave a config on the host
+    # that nothing serves and that a later domain-mode switch would have to
+    # reconcile.
+    info "$(t orch_tailscale_skip_nginx)"
+elif [[ -d /etc/nginx/sites-available ]]; then
     write_nginx_config "$REPO_ROOT" "$NGINX_TARGET"
 else
     warn "nginx not yet installed — writing staged config to $STAGING_DIR/smartrag-suite.conf"
