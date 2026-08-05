@@ -1,0 +1,237 @@
+# Runbook
+
+What actually goes wrong, and what to do about it. Every entry here is a
+failure that has happened on a real deployment — the symptom is quoted as it
+appears, because that is what you will be searching for.
+
+**Start here:** the Content Admin GUI's **System status** page checks most of
+this live, and `sudo smartrag` → *Status* covers the rest. Between them they
+identify the cause of the first four entries without any of the commands
+below.
+
+---
+
+## Uploading a document fails with a 404
+
+**Symptom.** The upload page reports an error mentioning
+`/webhook/document-ingest` and HTTP 404. Everything else in the GUI works.
+
+**Cause.** n8n has no active ingest workflow. Almost always because the
+import step of the install has not been completed — it needs an n8n *owner*
+account, which can only be created in a browser, so a first install cannot
+finish it unattended.
+
+**Check.** `sudo smartrag` → *Status*, bottom line ("Document ingest"). Or:
+
+```bash
+curl -s http://127.0.0.1:${N8N_PORT:-5678}/webhook/document-ingest
+```
+
+`"not registered for GET requests"` means the webhook **is** fine — that is
+the method-mismatch answer, not an error. `The requested webhook … is not
+registered.` means it is genuinely missing.
+
+**Fix.** `sudo smartrag` → *Ingest — (re-)import n8n credentials +
+workflows*. If n8n still has no owner account, the entry walks you through
+creating one and finishes the import itself.
+
+---
+
+## An agent answers "Missing credentials … set the OPENAI_API_KEY"
+
+**Symptom.** In the chat: `Error in LLM node: Missing credentials. Please
+pass an apiKey, or set the OPENAI_API_KEY environment variable.` — even
+though the configured provider is not OpenAI.
+
+**Cause.** The chatflow in Flowise has no credential attached. The mention
+of OpenAI is a red herring: with no credential, the node falls back to the
+provider SDK's own environment variable, and that is the name OpenAI's SDK
+puts in the message.
+
+**Check.** Is the container running the current code?
+
+```bash
+docker exec smartrag-content-admin grep -c FLOWISE_CREDENTIAL_ID /app/agent_templates.py
+```
+
+A low number (1–2) means an old build.
+
+**Fix.** Rebuild, then **re-import the agent** — the fix only takes effect
+at import time, and the flow already in Flowise keeps its empty credential:
+
+```bash
+cd /srv/smart-rag && git pull
+bash scripts/compose.sh up -d --build smartrag-content-admin
+```
+
+Then in the GUI: open the agent → *Save and import to Flowise*. Publishing
+survives a re-import.
+
+---
+
+## An agent answers "Cannot read properties of undefined (reading 'env')"
+
+**Symptom.** `NodeVM Execution Error: TypeError: Cannot read properties of
+undefined (reading 'env')`.
+
+**Cause.** A custom-function node reached for `process.env`. Flowise's code
+sandbox sets `process` to `undefined`, so any `… || process.env.X || …`
+chain throws as soon as the value before it is empty — which
+`EMBEDDING_BASE_URL` is on every standard provider.
+
+**Fix.** `git pull` and re-import the agents. Custom code must read
+`$vars?.NAME || 'default'`. See
+[ARCHITECTURE.md § 7](ARCHITECTURE.md#7-flowises-code-sandbox-has-no-process).
+
+---
+
+## The agents retrieve nothing after an upgrade
+
+**Symptom.** Agents answer, but never cite or use any course document. No
+error anywhere.
+
+**Cause.** Course scoping. Every retrieval now filters on `course_id`, and
+data ingested before that change does not carry one. This is deliberately a
+hard stop rather than a filter that matches everything — the alternative
+would serve one course's material to another course's students silently.
+
+**Fix.**
+
+```bash
+sudo smartrag        # → Upgrade — apply pending migrations
+```
+
+It shows a dry run first. Afterwards, re-import the agents so their filters
+carry the course as well.
+
+---
+
+## MinIO's console will not log in
+
+**Symptom.** 401 at `https://minio.<domain>`, with the credentials from
+`credentials.txt`.
+
+**Cause — usually not the credentials.** Check whether they work at all:
+MinIO's own startup runs `mc` with the same values to create the buckets,
+so its log answers this (`docker logs smartrag-minio`, look for
+`Added 'smartrag' successfully` and the `Bucket created successfully`
+lines). If that worked, the credentials are fine.
+
+Then, in order:
+
+1. `MINIO_SERVER_URL` must be reachable **from inside the container** — that
+   is where the console sends the login:
+   ```bash
+   docker exec smartrag-minio curl -sS -o /dev/null -w '%{http_code}\n' \
+     "$(grep -oP '^MINIO_SERVER_URL="\K[^"]+' /srv/smart-rag/.env)/minio/health/live"
+   ```
+   A timeout points at hairpin NAT — the container cannot reach its own
+   public hostname.
+2. If `.env` predates the prefix fix, `MINIO_SERVER_URL` may point at a
+   hostname that does not exist at all. `sudo smartrag` → *Upgrade* repairs
+   it.
+
+**Worth knowing.** MinIO removed most of the Community Edition console's
+management features in 2025. Limited functionality there is expected;
+nothing in SMART RAG needs it. Use `mc` to browse buckets.
+
+---
+
+## Everything is slow, and services fail in unrelated ways
+
+**Symptom.** Any combination of: MinIO logging `taking drive /data offline:
+unable to write+read for 31.322s`, n8n taking minutes to restart, containers
+disappearing, `load average` far above the core count while CPU sits idle.
+
+**Cause.** Memory. Check first — this looks like a dozen different bugs and
+is one:
+
+```bash
+free -h && top -b -n1 | head -12
+```
+
+Swap at or near 100% is the tell. The documented minimum is 8 GB for `core`,
+12 GB with observability.
+
+**Immediate relief.** The observability profile (Langfuse + ClickHouse) is
+optional and is the largest consumer. In `.env`, set
+`COMPOSE_PROFILES="core"`, then:
+
+```bash
+docker stop smartrag-clickhouse smartrag-langfuse-web smartrag-langfuse-worker
+docker rm   smartrag-clickhouse smartrag-langfuse-web smartrag-langfuse-worker
+```
+
+Data stays in the volumes; the profile can be switched back on later.
+
+**Note.** The installer now warns about this before it happens — an
+installation predating that check got no warning at all.
+
+---
+
+## The GUI shows "SyntaxError: JSON.parse: unexpected character"
+
+**Symptom.** A browser error where a result was expected.
+
+**Cause.** The server answered with something that is not JSON — usually a
+proxy's error page (502/504), occasionally an unhandled server error. The
+message describes the parser, not the problem.
+
+**Fix.** Current versions show the HTTP status and a snippet of the body
+instead, which names the real failure. If you see the bare SyntaxError, the
+container is running older code — rebuild it. Then read the new message and
+check `docker logs smartrag-content-admin`.
+
+---
+
+## Upload fails with 413
+
+**Symptom.** `413 Request Entity Too Large` from nginx.
+
+**Cause.** `client_max_body_size` on the `content.` vhost is smaller than
+the file.
+
+**Fix.** It is set to 200M to match the GUI's own limit. If your nginx
+config predates that, `sudo smartrag` → *SSL* → regenerate the nginx config,
+or edit `client_max_body_size` in the `content.` server block and
+`systemctl reload nginx`.
+
+---
+
+## Certificates are about to expire
+
+**Check.** `sudo smartrag` → *SSL* shows status and expiry for every
+certificate.
+
+**Fix.** certbot renews automatically via its systemd timer. To force it:
+same menu, *renew*. If renewal fails, it is nearly always DNS or port 80 —
+`sudo smartrag` → *DNS check* verifies every subdomain still resolves here.
+
+---
+
+## No completion emails from the ingest
+
+**Symptom.** Documents process, but no notification arrives.
+
+**Cause.** `SMTP_HOST` is empty. That is a legitimate wizard outcome: if an
+existing mail server was detected, the wizard offers to leave it alone, and
+then SMART RAG deliberately does not use it.
+
+**Fix.** `sudo smartrag` → *Change configuration* → mail relay. With Postfix
+already on the host, the value is the pinned Docker gateway `172.28.92.1`,
+port 25. Ingest works either way — only the notifications are affected.
+
+---
+
+## Something else
+
+1. `sudo smartrag` → *Status* — containers **and** the ingest webhook.
+2. The GUI's **System status** page — API keys, Flowise, agents, and the
+   conversion services.
+3. `bash scripts/compose.sh logs -f <service>`.
+4. `bash tests/run-tests.sh` — if a suite fails on an unmodified checkout,
+   that is worth reporting rather than working around.
+
+When reporting a problem, the useful three things are: the exact message,
+which of the checks above were green, and whether the deployment was
+upgraded or installed fresh.

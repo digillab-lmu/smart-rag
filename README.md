@@ -58,6 +58,11 @@ Document **ingestion** (upload → Docling conversion → cleanup → chunking �
 embedding → Weaviate) runs as two n8n workflows in this repo, driven from the
 Content Admin GUI's upload page — see [`n8n/workflows-ingest/`](n8n/workflows-ingest/).
 
+**Working on this system?** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+records the decisions that are load-bearing and counterintuitive — each with
+what breaks if it is changed back. [`docs/RUNBOOK.md`](docs/RUNBOOK.md) covers
+the failures that have actually occurred, by the message they produce.
+
 ---
 
 ## Quick start
@@ -266,7 +271,7 @@ smart-rag/
 ├── content-admin/          # Flask app for course-content authoring
 ├── scripts/                # bootstrap.sh, admin.sh, uninstall.sh, compose.sh, lib/, standalone phase scripts
 ├── tests/                  # Regression suite — bash tests/run-tests.sh
-└── docs/                   # COEXISTENCE.md, requirements.md, operations-guide.md
+└── docs/                   # requirements, operations guide, architecture, runbook
 ```
 
 ---
