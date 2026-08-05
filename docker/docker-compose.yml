@@ -50,7 +50,10 @@ x-flowise-base: &flowise-base
 # ── Flowise environment (shared between main server and worker) ───────────────
 x-flowise-env: &flowise-env
   # ── Server ─────────────────────────────────────────────────────────────────
-  APP_URL: "https://${DOMAIN}"
+  # Resolved in .env (bootstrap applies SUBDOMAIN_PREFIX). Was
+  # "https://${DOMAIN}" — the bare domain, which is not where Flowise is
+  # served even without a prefix.
+  APP_URL: "${FLOWISE_PUBLIC_URL}"
   NUMBER_OF_PROXIES: "1"          # increase if behind Cloudflare + nginx (set to 2)
   TRUST_PROXY: "true"
   CORS_ORIGINS: "*"
@@ -256,8 +259,11 @@ services:
       MINIO_REGION_NAME: "${MINIO_REGION_NAME}"
       MINIO_NOTIFY_WEBHOOK_ENABLE_PRIMARY: "on"
       MINIO_NOTIFY_WEBHOOK_ENDPOINT_PRIMARY: "${MINIO_NOTIFY_WEBHOOK_ENDPOINT}"
-      MINIO_SERVER_URL: "https://s3.${DOMAIN}"
-      MINIO_BROWSER_REDIRECT_URL: "https://minio.${DOMAIN}"
+      # Both resolved in .env, because building them here from ${DOMAIN}
+      # dropped SUBDOMAIN_PREFIX and sent the console to a hostname that
+      # does not exist.
+      MINIO_SERVER_URL: "${MINIO_SERVER_URL}"
+      MINIO_BROWSER_REDIRECT_URL: "${MINIO_BROWSER_REDIRECT_URL}"
       TZ: "${TZ}"
     volumes:
       - ${BASE_DATA_PATH}/minio/data:/data
@@ -739,7 +745,7 @@ services:
     restart: unless-stopped
     env_file: ../.env
     environment:
-      FLOWISE_HOST: "https://smart-rag.${DOMAIN}"
+      FLOWISE_HOST: "${FLOWISE_PUBLIC_URL}"
       LMS_URL: "${LMS_URL:-https://lms.example.com}"
       REDIS_URL: "redis://:${REDIS_PASSWORD}@smartrag-redis:${REDIS_PORT}"
       SESSION_TTL_SEC: "3600"
