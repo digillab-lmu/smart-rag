@@ -97,17 +97,30 @@ real credentials — MinIO reads them from its container environment on
 every start, and everything that talks to MinIO over the S3 and admin
 APIs (the bucket setup, n8n, Langfuse) authenticates with them.
 
-**The web console itself is a different story, and may simply refuse to
-log you in.** In 2025 MinIO stripped the Community Edition console down to
-an object browser, removing roughly 110,000 lines of management UI; the
-management features moved to the paid edition, and the pinned image here
-(`RELEASE.2025-09-07`, the last one ever published to Docker Hub) is from
-after that change. A console login returning 401 while `mc` works with the
-same credentials is therefore not a sign that your credentials are wrong.
+**What the console can do is limited**, and that is expected: in 2025
+MinIO stripped the Community Edition console down to an object browser,
+moving user, policy and configuration management to the paid edition. You
+can still log in — the login itself was not removed — but most
+administration has to happen through `mc`.
 
-Nothing in SMART RAG needs that console. If you want to look at what is
-actually in the buckets, use `mc` — the client is already on the host as a
-container image:
+If the console *login* fails with a 401 while `mc` works with the same
+credentials, the credentials are not the problem. Two things worth
+checking, in this order:
+
+- `MINIO_SERVER_URL` (set to `https://s3.<domain>` here) has to be
+  reachable **from inside the MinIO container**, because that is where the
+  console sends the login. On a host without hairpin NAT, or with
+  split-horizon DNS, the container may not be able to reach its own public
+  hostname:
+  ```bash
+  docker exec smartrag-minio curl -sS -o /dev/null -w '%{http_code}\n' https://s3.your-domain.example/minio/health/live
+  ```
+- The `minio.<domain>` vhost must pass through the console's requests
+  unchanged, including its cookies.
+
+Nothing in SMART RAG needs that console — the pipeline talks to the S3 and
+admin APIs. To look at what is actually in the buckets, use `mc`, which is
+available as a container image:
 
 ```bash
 docker run --rm --network smart-rag-network -it minio/mc:latest sh -c \
