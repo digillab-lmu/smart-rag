@@ -258,6 +258,29 @@ _is_back_input() {
 # terminates the whole script immediately via die() — unlike back-navigation,
 # this needs no propagation through callers (die() never returns), so it's
 # checked and handled entirely inside the 4 primitives below, no other file
+# ─── Quitting from a prompt ──────────────────────────────────────────────────
+# Typing `exit` at any prompt has to end the whole installer. `die` does not
+# achieve that from most of them: prompt/select_one/select_one_index/
+# prompt_slug are all called as "$(prompt ...)", and inside a command
+# substitution `die` exits only the subshell. The wizard then saw a non-zero
+# return, read it as "go back", and re-asked the question it was just told to
+# abandon — the exit message appeared and nothing happened. (confirm was the
+# exception, because it is not called in a substitution, which is exactly why
+# this went unnoticed.)
+#
+# `$$` is the PID of the shell that started the script, even when read from
+# inside a command substitution, so a TERM sent to it reaches the process the
+# operator actually started. The trap below turns that into a clean exit
+# rather than bash printing "Terminated".
+wizard_quit() {
+    err "$(t wizard_exit)"
+    kill -TERM $$ 2>/dev/null
+    exit 130
+}
+
+# Installed at source time so every script using these prompts is covered.
+trap 'printf "\n"; exit 130' TERM
+
 # needs to know about it.
 _is_exit_input() {
     case "${1,,}" in
@@ -285,7 +308,7 @@ prompt() {
             printf "  %s: " "$question" >&2
         fi
         IFS= read -r input
-        _is_exit_input "$input" && die "$(t wizard_exit)"
+        _is_exit_input "$input" && wizard_quit
         if _is_back_input "$input"; then
             WIZARD_BACK=1
             return 1
@@ -316,7 +339,7 @@ prompt_password() {
     fi
     IFS= read -rs input
     printf "\n" >&2
-    _is_exit_input "$input" && die "$(t wizard_exit)"
+    _is_exit_input "$input" && wizard_quit
     if _is_back_input "$input"; then
         WIZARD_BACK=1
         return 1
@@ -336,7 +359,7 @@ confirm() {
     while true; do
         printf "  %s [%s]: " "$question" "$suffix" >&2
         IFS= read -r input
-        _is_exit_input "$input" && die "$(t wizard_exit)"
+        _is_exit_input "$input" && wizard_quit
         if _is_back_input "$input"; then
             WIZARD_BACK=1
             return 1
@@ -365,7 +388,7 @@ select_one_index() {
     while true; do
         printf "  ${DIM}%s${RESET} ${BOLD}[1]${RESET}: " "$(t enter_choice)" >&2
         IFS= read -r input
-        _is_exit_input "$input" && die "$(t wizard_exit)"
+        _is_exit_input "$input" && wizard_quit
         if _is_back_input "$input"; then
             WIZARD_BACK=1
             return 1
