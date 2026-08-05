@@ -39,20 +39,21 @@ write_env_file() {
     # supporting the conditional prefix logic.
     REPL[DEPLOYMENT_MODE]="${CFG_DEPLOYMENT_MODE:-domain}"
     REPL[SUBDOMAIN_PREFIX]="${CFG_SUBDOMAIN_PREFIX:-}"
-    # In tailscale mode these are left EMPTY here on purpose: the hostname is
-    # only assigned once Tailscale is up, so install-tailscale.sh fills them
-    # in afterwards. Guessing a value now would put a URL in front of an
-    # operator that looks authoritative and is wrong.
+    # In tailscale mode there are no subdomains: one certificate covers one
+    # MagicDNS name, so services are separated by port. The name is known by
+    # now — the wizard joined the tailnet before writing this file, precisely
+    # so these can be correct here rather than patched in later.
     if [[ "${CFG_DEPLOYMENT_MODE:-domain}" == "tailscale" ]]; then
-        REPL[TAILSCALE_HOSTNAME]=""
-        REPL[N8N_WEBHOOK_URL]=""
-        REPL[N8N_HOSTNAME]=""
-        REPL[NEXTAUTH_URL]=""
-        REPL[LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT]=""
-        REPL[MINIO_SERVER_URL]=""
-        REPL[MINIO_BROWSER_REDIRECT_URL]=""
-        REPL[FLOWISE_PUBLIC_URL]=""
-        REPL[CONTENT_ADMIN_PUBLIC_URL]=""
+        local ts="${CFG_TAILSCALE_HOSTNAME:-}"
+        REPL[TAILSCALE_HOSTNAME]="$ts"
+        REPL[FLOWISE_PUBLIC_URL]="https://$ts"
+        REPL[CONTENT_ADMIN_PUBLIC_URL]="https://$ts:8443"
+        REPL[N8N_WEBHOOK_URL]="https://$ts:8444"
+        REPL[N8N_HOSTNAME]="$ts"
+        REPL[NEXTAUTH_URL]="https://$ts:8445"
+        REPL[MINIO_BROWSER_REDIRECT_URL]="https://$ts:8446"
+        REPL[MINIO_SERVER_URL]="https://$ts:8447"
+        REPL[LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT]="https://$ts:8447"
     else
         REPL[TAILSCALE_HOSTNAME]=""
         REPL[N8N_WEBHOOK_URL]="https://$(subdomain_host n8n "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"

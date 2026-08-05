@@ -433,10 +433,14 @@ declare -A MSG_EN=(
     [cfg_mode_tailscale_prereq_3]="3. A browser on hand: joining the tailnet and enabling Funnel are approved there, and this installer will wait for you"
     [cfg_mode_tailscale_ready]="Ready to continue?"
     [cfg_mode_chosen]="Deployment mode: %s"
-    [cfg_domain_from_tailscale]="No domain needed — the hostname comes from Tailscale once it is up."
+    [cfg_domain_from_tailscale]="No domain needed — this installation answers as %s."
     [orch_tailscale_skip_coexist]="Tailscale mode: skipping the port and subdomain coexistence checks — nothing is published on 80/443 and there are no subdomains of ours."
     [orch_tailscale_skip_nginx]="Tailscale mode: no nginx configuration is written — Tailscale terminates TLS and reaches the containers directly."
 
+    [cfg_mode_tailscale_failed]="Tailscale could not be set up. Nothing has been configured yet — pick a mode again, or fix the tailnet (MagicDNS and HTTPS have to be enabled) and retry."
+    [cfg_mode_tailscale_host]="This machine will be reachable as: %s"
+    [ts_hostname_changed]="This machine's Tailscale name changed: .env says %s, Tailscale reports %s."
+    [ts_hostname_changed_continue]="Update .env to the new name? (URLs handed out earlier will stop working)"
     # --- tailscale deployment -------------------------------------------------
     [phase_tailscale]="Phase 6 · Tailscale"
     [ts_already_installed]="Tailscale is already installed (%s)"
@@ -1027,10 +1031,14 @@ declare -A MSG_DE=(
     [cfg_mode_tailscale_prereq_3]="3. Einen Browser griffbereit: Der Beitritt zum Tailnet und die Funnel-Freigabe werden dort bestätigt, und dieser Installer wartet so lange"
     [cfg_mode_tailscale_ready]="Bereit zum Fortfahren?"
     [cfg_mode_chosen]="Betriebsart: %s"
-    [cfg_domain_from_tailscale]="Keine Domain nötig — der Hostname kommt von Tailscale, sobald es läuft."
+    [cfg_domain_from_tailscale]="Keine Domain nötig — diese Installation antwortet als %s."
     [orch_tailscale_skip_coexist]="Tailscale-Betrieb: Port- und Subdomain-Prüfungen werden übersprungen — es wird nichts auf 80/443 veröffentlicht, und eigene Subdomains gibt es nicht."
     [orch_tailscale_skip_nginx]="Tailscale-Betrieb: Es wird keine nginx-Konfiguration geschrieben — Tailscale terminiert TLS und erreicht die Container direkt."
 
+    [cfg_mode_tailscale_failed]="Tailscale konnte nicht eingerichtet werden. Es wurde noch nichts konfiguriert — wähle die Betriebsart erneut, oder bring das Tailnet in Ordnung (MagicDNS und HTTPS müssen aktiviert sein) und versuch es nochmal."
+    [cfg_mode_tailscale_host]="Diese Maschine wird erreichbar sein unter: %s"
+    [ts_hostname_changed]="Der Tailscale-Name dieser Maschine hat sich geändert: In der .env steht %s, Tailscale meldet %s."
+    [ts_hostname_changed_continue]="Die .env auf den neuen Namen umstellen? (Früher weitergegebene Adressen funktionieren dann nicht mehr)"
     # --- tailscale deployment -------------------------------------------------
     [phase_tailscale]="Phase 6 · Tailscale"
     [ts_already_installed]="Tailscale ist bereits installiert (%s)"
