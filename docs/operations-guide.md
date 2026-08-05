@@ -5,6 +5,11 @@ each service, and how to run the system day to day. For getting to that
 point in the first place, see the [Quick start](../README.md#quick-start)
 in the README and [`requirements.md`](requirements.md).
 
+When something is broken rather than merely unfamiliar, start at
+[`RUNBOOK.md`](RUNBOOK.md) — it is organised by the message you are seeing.
+[`ARCHITECTURE.md`](ARCHITECTURE.md) explains why the system is built the
+way it is, which matters most when you are about to change something.
+
 ---
 
 ## First login, service by service
