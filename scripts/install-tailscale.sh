@@ -74,55 +74,42 @@ set +a
 
 header "$(t phase_tailscale)"
 
-# ─── 1. Install ──────────────────────────────────────────────────────────────
-if command -v tailscale >/dev/null 2>&1; then
-    ok "$(t ts_already_installed "$(tailscale version | head -1)")"
-else
-    info "$(t ts_installing)"
-    # Tailscale's official installer. Preferred over a hand-written apt repo
-    # stanza because it resolves the distribution itself — which matters on a
-    # release that may not have its own repository path yet.
-    if curl -fsSL https://tailscale.com/install.sh | sh; then
-        ok "$(t ts_installed)"
-    else
-        die "$(t ts_install_failed)"
-    fi
-fi
-
-# ─── 2. Join a tailnet ───────────────────────────────────────────────────────
-# `tailscale up` prints a URL to approve in a browser. Deliberately NOT an
-# auth key: a key would have to live in .env, and its reach is the whole
-# tailnet — a much larger credential than anything else in that file.
-ts_backend_state() {
-    tailscale status --json 2>/dev/null | grep -o '"BackendState":"[^"]*"' | cut -d'"' -f4
-}
-
-if [[ "$(ts_backend_state)" == "Running" ]]; then
-    ok "$(t ts_already_up)"
-else
-    info "$(t ts_up_intro)"
-    echo
-    # Streams to the terminal so the operator sees the login URL as it
-    # appears; `up` blocks until the browser approval happens.
-    if tailscale up --accept-dns=false; then
-        ok "$(t ts_up_done)"
-    else
-        die "$(t ts_up_failed)"
-    fi
-fi
-
-MAGIC_DNS_NAME="$(tailscale status --json 2>/dev/null \
-    | grep -o '"DNSName":"[^"]*"' | head -1 | cut -d'"' -f4 | sed 's/\.$//')"
-
-if [[ -z "$MAGIC_DNS_NAME" ]]; then
-    die "$(t ts_no_magicdns)"
-fi
+# ─── 1. Preconditions ────────────────────────────────────────────────────────
+# Installing Tailscale and joining the tailnet happen in the wizard, not
+# here: every public URL in .env is derived from the MagicDNS name, so it has
+# to be known before .env is written. What is left for this phase is the part
+# that genuinely needs the containers to exist — publishing their ports.
+#
+# Run standalone (from the admin menu, or to re-apply after a port change),
+# this still brings Tailscale up if it isn't, so it works on its own.
+MAGIC_DNS_NAME="$(tailscale_ensure_up)" || die "$(t ts_up_failed)"
 ok "$(t ts_hostname "$MAGIC_DNS_NAME")"
 
-# ─── 3. Certificate ──────────────────────────────────────────────────────────
-# `tailscale serve` provisions and renews the certificate itself; this is a
-# pre-flight so a tailnet without HTTPS enabled fails here, with a clear
-# message, rather than later inside serve.
+# The name must match what .env already says, or the URLs an operator was
+# shown point at a different machine than the one now serving them.
+if [[ -n "${TAILSCALE_HOSTNAME:-}" && "$TAILSCALE_HOSTNAME" != "$MAGIC_DNS_NAME" ]]; then
+    warn "$(t ts_hostname_changed "$TAILSCALE_HOSTNAME" "$MAGIC_DNS_NAME")"
+    confirm ts_hostname_changed_continue "n" || die "$(t ts_aborted)"
+    ENV_FILE="$REPO_ROOT/.env"
+    set_env_var "$ENV_FILE" TAILSCALE_HOSTNAME         "$MAGIC_DNS_NAME"
+    set_env_var "$ENV_FILE" DOMAIN                     "$MAGIC_DNS_NAME"
+    set_env_var "$ENV_FILE" FLOWISE_PUBLIC_URL         "https://$MAGIC_DNS_NAME"
+    set_env_var "$ENV_FILE" CONTENT_ADMIN_PUBLIC_URL   "https://$MAGIC_DNS_NAME:8443"
+    set_env_var "$ENV_FILE" N8N_HOSTNAME               "$MAGIC_DNS_NAME"
+    set_env_var "$ENV_FILE" N8N_WEBHOOK_URL            "https://$MAGIC_DNS_NAME:8444"
+    set_env_var "$ENV_FILE" MINIO_BROWSER_REDIRECT_URL "https://$MAGIC_DNS_NAME:8446"
+    set_env_var "$ENV_FILE" MINIO_SERVER_URL           "https://$MAGIC_DNS_NAME:8447"
+    if [[ "${COMPOSE_PROFILES:-core}" == *observability* ]]; then
+        set_env_var "$ENV_FILE" NEXTAUTH_URL "https://$MAGIC_DNS_NAME:8445"
+        set_env_var "$ENV_FILE" LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT "https://$MAGIC_DNS_NAME:8447"
+    fi
+    ok "$(t ts_env_written)"
+fi
+
+# ─── 2. Certificate ──────────────────────────────────────────────────────────
+# `tailscale serve` provisions and renews this itself; asking for it here
+# turns a tailnet without HTTPS enabled into a clear message now rather than
+# an obscure failure inside serve.
 info "$(t ts_cert_check)"
 if tailscale cert "$MAGIC_DNS_NAME" >/dev/null 2>&1; then
     ok "$(t ts_cert_ok)"
@@ -132,29 +119,7 @@ else
     confirm ts_cert_continue "n" || die "$(t ts_aborted)"
 fi
 
-# ─── 3b. Write the resolved URLs back to .env ────────────────────────────────
-# Same principle as domain mode: every public URL is stored fully resolved,
-# so nothing downstream has to know which deployment mode this is or how to
-# assemble a hostname. The MagicDNS name is only knowable once Tailscale is
-# up, which is why this happens here and not in the wizard.
-ENV_FILE="$REPO_ROOT/.env"
-info "$(t ts_writing_env)"
-
-set_env_var "$ENV_FILE" TAILSCALE_HOSTNAME        "$MAGIC_DNS_NAME"
-set_env_var "$ENV_FILE" DOMAIN                    "$MAGIC_DNS_NAME"
-set_env_var "$ENV_FILE" FLOWISE_PUBLIC_URL        "https://$MAGIC_DNS_NAME"
-set_env_var "$ENV_FILE" MINIO_BROWSER_REDIRECT_URL "https://$MAGIC_DNS_NAME:8446"
-set_env_var "$ENV_FILE" MINIO_SERVER_URL          "https://$MAGIC_DNS_NAME:8447"
-set_env_var "$ENV_FILE" N8N_HOSTNAME              "$MAGIC_DNS_NAME"
-set_env_var "$ENV_FILE" N8N_WEBHOOK_URL           "https://$MAGIC_DNS_NAME:8444"
-set_env_var "$ENV_FILE" CONTENT_ADMIN_PUBLIC_URL  "https://$MAGIC_DNS_NAME:8443"
-if [[ "${COMPOSE_PROFILES:-core}" == *observability* ]]; then
-    set_env_var "$ENV_FILE" NEXTAUTH_URL "https://$MAGIC_DNS_NAME:8445"
-    set_env_var "$ENV_FILE" LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT "https://$MAGIC_DNS_NAME:8447"
-fi
-ok "$(t ts_env_written)"
-
-# ─── 4. Serve every service on its own port ──────────────────────────────────
+# ─── 3. Serve every service on its own port ──────────────────────────────────
 # The containers already bind to 127.0.0.1:<host port>, so serve proxies
 # straight to them — nginx is not involved in this mode at all.
 declare -A SERVE_PORTS=(
@@ -179,7 +144,7 @@ for public_port in "${!SERVE_PORTS[@]}"; do
     fi
 done
 
-# ─── 5. Flowise, publicly, via Funnel ────────────────────────────────────────
+# ─── 4. Flowise, publicly, via Funnel ────────────────────────────────────────
 # The first `tailscale funnel` opens a browser approval, after which
 # Tailscale writes the funnel node attribute into the tailnet policy itself.
 info "$(t ts_funnel_intro)"
@@ -194,7 +159,7 @@ else
     # looks finished but has no student-facing URL.
 fi
 
-# ─── 6. Report ───────────────────────────────────────────────────────────────
+# ─── 5. Report ───────────────────────────────────────────────────────────────
 echo
 header "$(t ts_urls_title)"
 echo "  $(t ts_url_flowise "https://$MAGIC_DNS_NAME")"

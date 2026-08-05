@@ -334,6 +334,27 @@ ask_deployment_mode() {
             dim "$(t cfg_mode_tailscale_prereq_3)"
             echo
             confirm cfg_mode_tailscale_ready "y" || return 1
+
+            # Join now, not later. Two reasons, and the second matters more:
+            # this is the moment the operator has a browser open because we
+            # just asked them to — and every public URL in .env is derived
+            # from the MagicDNS name, so knowing it before .env is written
+            # means the file is correct the first time instead of being
+            # patched afterwards with a restart of every container.
+            #
+            # It is also the earliest point at which a tailnet without
+            # MagicDNS or HTTPS fails — before twenty more questions have
+            # been answered into a configuration that cannot work.
+            echo
+            local ts_name
+            if ! ts_name="$(tailscale_ensure_up)"; then
+                echo
+                err "$(t cfg_mode_tailscale_failed)"
+                return 1   # back to the mode question; domain mode still works
+            fi
+            CFG_TAILSCALE_HOSTNAME="$ts_name"
+            CFG_DOMAIN="$ts_name"
+            ok "$(t cfg_mode_tailscale_host "$ts_name")"
             ;;
     esac
     dim "$(t cfg_mode_chosen "$CFG_DEPLOYMENT_MODE")"
@@ -399,8 +420,9 @@ ask_course_info() {
     # machine's MagicDNS name, which Tailscale assigns once it is up. It is
     # filled in by install-tailscale.sh, not here.
     if [[ "${CFG_DEPLOYMENT_MODE:-domain}" == "tailscale" ]]; then
-        CFG_DOMAIN=""
-        dim "$(t cfg_domain_from_tailscale)"
+        # Already set from the MagicDNS name in ask_deployment_mode.
+        CFG_DOMAIN="${CFG_TAILSCALE_HOSTNAME:-}"
+        dim "$(t cfg_domain_from_tailscale "$CFG_DOMAIN")"
     else
         # Try to pre-fill domain from reverse DNS — user always confirms
         local domain_default="${CFG_DOMAIN:-example.com}"

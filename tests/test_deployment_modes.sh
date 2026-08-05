@@ -40,6 +40,25 @@ check "the back-from-summary index matches the step count" $? \
       "expected $last_idx; $(grep -oE '_wizard_step_loop [0-9]+ ' "$REPO/scripts/lib/config-wizard.sh" | tail -1)"
 
 # The LTI limitation must be stated at the point of choosing, not buried.
+# Joining must happen in the mode section, so the MagicDNS name is known
+# before .env is written and the URLs are right on the first write.
+MODE_FN="$(sed -n '/^ask_deployment_mode()/,/^}/p' "$REPO/scripts/lib/config-wizard.sh")"
+grep -q "tailscale_ensure_up" <<<"$MODE_FN"
+check "the wizard joins the tailnet while asking, not later" $? ""
+grep -q "CFG_TAILSCALE_HOSTNAME=" <<<"$MODE_FN"
+check "and records the MagicDNS name for .env" $? ""
+# A failure there must return to the question, not abort the install —
+# domain mode is still a valid answer.
+grep -q "return 1" <<<"$MODE_FN"
+check "a Tailscale failure returns to the mode question" $? ""
+
+# And the deployment phase must NOT restart everything afterwards: that
+# restart only existed because the name arrived too late.
+PHASES_TMP="$(sed -n '/^run_deployment_phases()/,/^}/p' "$REPO/scripts/bootstrap.sh")"
+sed -n '/== "tailscale"/,/^    else$/p' <<<"$PHASES_TMP" | grep -q "compose.sh\" up -d\|compose.sh up -d"
+check "no container restart round after tailscale setup" $(( $? == 0 ? 1 : 0 )) \
+      "$(sed -n '/== "tailscale"/,/^    else$/p' <<<"$PHASES_TMP")"
+
 grep -q "cfg_mode_tailscale_lti" "$REPO/scripts/lib/config-wizard.sh"
 check "the LTI limitation is stated when choosing" $? ""
 grep -qi "LTI" <<<"${MSG_EN[cfg_mode_tailscale_lti]}"
@@ -96,15 +115,29 @@ TS_ENV="$(render_env tailscale)"
 [[ "$(env_value "$TS_ENV" DEPLOYMENT_MODE)" == "tailscale" ]]
 check "tailscale mode is recorded in .env" $? "$(env_value "$TS_ENV" DEPLOYMENT_MODE)"
 
-for key in FLOWISE_PUBLIC_URL MINIO_SERVER_URL MINIO_BROWSER_REDIRECT_URL \
-           N8N_WEBHOOK_URL N8N_HOSTNAME CONTENT_ADMIN_PUBLIC_URL TAILSCALE_HOSTNAME; do
+# The wizard joins the tailnet BEFORE writing .env, so the URLs are correct
+# on the first write. Getting the name later meant patching .env afterwards
+# and restarting every container to pick it up — a restart round in the
+# middle of an install, caused only by asking too late.
+CFG_TAILSCALE_HOSTNAME="i5.tail1234.ts.net"
+TS_ENV="$(render_env tailscale)"
+declare -A WANT=(
+    [FLOWISE_PUBLIC_URL]="https://i5.tail1234.ts.net"
+    [CONTENT_ADMIN_PUBLIC_URL]="https://i5.tail1234.ts.net:8443"
+    [N8N_WEBHOOK_URL]="https://i5.tail1234.ts.net:8444"
+    [MINIO_BROWSER_REDIRECT_URL]="https://i5.tail1234.ts.net:8446"
+    [MINIO_SERVER_URL]="https://i5.tail1234.ts.net:8447"
+    [TAILSCALE_HOSTNAME]="i5.tail1234.ts.net"
+    [N8N_HOSTNAME]="i5.tail1234.ts.net"
+)
+for key in "${!WANT[@]}"; do
     val="$(env_value "$TS_ENV" "$key")"
-    # Empty on purpose: the MagicDNS name does not exist yet, and a guessed
-    # URL would look authoritative to whoever reads .env.
-    [[ -z "$val" ]]
-    check "tailscale mode leaves $key empty for install-tailscale.sh" $? "$val"
-    [[ "$val" != *example.com* ]]
-    check "$key carries no invented hostname" $? "$val"
+    [[ "$val" == "${WANT[$key]}" ]]
+    check "tailscale mode resolves $key at write time" $? "got '$val', wanted '${WANT[$key]}'"
+    # One certificate covers one name, so services differ by port, never by
+    # subdomain — a subdomain here would have no certificate at all.
+    [[ "$val" != *"smart-rag."* && "$val" != *example.com* ]]
+    check "$key uses no subdomain and no leftover domain" $? "$val"
 done
 
 # Everything NOT mode-specific must still be written — a mode branch that
@@ -178,10 +211,12 @@ if (( ${#FAILURES[@]} > 0 )); then
 fi
 echo "All deployment-mode checks passed: the mode is the first wizard question"
 echo "with the back-from-summary index matching the step count, and it states"
-echo "the LTI limitation where the choice is made; domain mode resolves"
-echo "prefixed hostnames while tailscale mode leaves every public URL empty"
-echo "for install-tailscale.sh rather than inventing one, without cutting the"
-echo "rest of .env short; bootstrap requests no certificate and writes no"
+echo "the LTI limitation where the choice is made and joins the tailnet right"
+echo "there, so every URL is resolved at write time instead of being patched"
+echo "in afterwards with a restart round; domain mode resolves prefixed"
+echo "hostnames while tailscale mode separates services by port, never by a"
+echo "subdomain no certificate would cover, without cutting the rest of .env"
+echo "short; bootstrap requests no certificate and writes no"
 echo "nginx vhost in tailscale mode; and install-tailscale.sh uses no auth"
 echo "key, resets serve before applying, puts Flowise on a Funnel-capable"
 echo "port, treats a Funnel failure as a warning, reads its host bindings"

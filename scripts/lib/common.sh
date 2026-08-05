@@ -38,6 +38,65 @@ readonly EXIT_SKIPPED=10
 # the webhook check gave up.
 readonly EXIT_UNVERIFIED=11
 
+# ─── Tailscale ───────────────────────────────────────────────────────────────
+# Install and join, and echo this machine's MagicDNS name.
+#
+# Called from the wizard, not from the deployment phase, for a reason that is
+# not only about ordering: every public URL in .env is derived from this name,
+# so knowing it before .env is written means the file is right the first time.
+# Doing it later meant writing the URLs afterwards and restarting every
+# container to pick them up — a restart round in the middle of an install,
+# caused purely by asking too late.
+#
+# Idempotent: an already-installed, already-joined node is left alone, so
+# stepping back and forth in the wizard costs nothing.
+#
+# Echoes the MagicDNS name on success, nothing on failure.
+tailscale_magicdns_name() {
+    tailscale status --json 2>/dev/null \
+        | grep -o '"DNSName":"[^"]*"' | head -1 | cut -d'"' -f4 | sed 's/\.$//'
+}
+
+tailscale_backend_state() {
+    tailscale status --json 2>/dev/null \
+        | grep -o '"BackendState":"[^"]*"' | cut -d'"' -f4
+}
+
+# Returns 0 and echoes the name; returns 1 if it could not be brought up.
+tailscale_ensure_up() {
+    if ! command -v tailscale >/dev/null 2>&1; then
+        info "$(t ts_installing)" >&2
+        # Tailscale's official installer resolves the distribution itself,
+        # which matters on a release too new to have its own repo path.
+        if ! curl -fsSL https://tailscale.com/install.sh | sh >&2; then
+            err "$(t ts_install_failed)" >&2
+            return 1
+        fi
+        ok "$(t ts_installed)" >&2
+    fi
+
+    if [[ "$(tailscale_backend_state)" != "Running" ]]; then
+        info "$(t ts_up_intro)" >&2
+        echo >&2
+        # Streams so the login URL appears as Tailscale prints it; `up`
+        # blocks until the browser approval happens.
+        if ! tailscale up --accept-dns=false >&2; then
+            err "$(t ts_up_failed)" >&2
+            return 1
+        fi
+        ok "$(t ts_up_done)" >&2
+    else
+        ok "$(t ts_already_up)" >&2
+    fi
+
+    local name; name="$(tailscale_magicdns_name)"
+    if [[ -z "$name" ]]; then
+        err "$(t ts_no_magicdns)" >&2
+        return 1
+    fi
+    printf '%s' "$name"
+}
+
 # ─── n8n ingest webhook state ────────────────────────────────────────────────
 # Echoes one of: registered | unregistered | unreachable
 #

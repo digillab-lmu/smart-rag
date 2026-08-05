@@ -174,12 +174,9 @@ run_deployment_phases() {
     # straight to the containers' localhost bindings.
     if [[ "${DEPLOYMENT_MODE:-domain}" == "tailscale" ]]; then
         bash "$SCRIPT_DIR/start-services.sh"      --lang "$LANG_CHOICE"
+        # No restart round afterwards: the wizard joined the tailnet before
+        # writing .env, so the containers started with the right URLs.
         bash "$SCRIPT_DIR/install-tailscale.sh"   --lang "$LANG_CHOICE"
-        # The URLs only exist once Tailscale has assigned the MagicDNS name,
-        # and several containers read them from the environment at start —
-        # so they are recreated with the values install-tailscale.sh wrote.
-        set -a; source "$REPO_ROOT/.env"; set +a
-        bash "$SCRIPT_DIR/compose.sh" up -d >/dev/null
     else
         bash "$SCRIPT_DIR/get-ssl-certs.sh"       --lang "$LANG_CHOICE"
         bash "$SCRIPT_DIR/start-services.sh"      --lang "$LANG_CHOICE"
