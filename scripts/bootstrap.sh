@@ -209,8 +209,7 @@ run_deployment_phases() {
         header "$(t orch_incomplete)"
         echo "  $(t orch_n8n_unverified)"
         echo
-        echo "  $(t orch_next_visit "$(subdomain_host smart-rag "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")")"
-        echo "  $(t orch_next_login)"
+        _print_next_steps
         return 0
     fi
 
@@ -225,16 +224,56 @@ run_deployment_phases() {
         echo
         echo "  $(t orch_incomplete_then)"
         echo
-        echo "  $(t orch_next_visit "$(subdomain_host smart-rag "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")")"
-        echo "  $(t orch_next_login)"
+        _print_next_steps
         return 0
     fi
 
     header "$(t orch_complete)"
-    echo "  $(t orch_next_visit "$(subdomain_host smart-rag "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")")"
-    echo "  $(t orch_next_login)"
+    _print_next_steps
+}
+
+# What the operator has to do now, with the URLs they actually need.
+#
+# The deployment is not usable when this prints: Flowise and n8n each still
+# want an account created in a browser, and until the Content Admin has a
+# Flowise API key it cannot import an agent. Previously that was one line of
+# prose at the end of a long run — which is how an installation reaches the
+# point where the first sign of trouble is a 404 much later. Every URL here
+# is read from .env, so it is the one this deployment actually answers on,
+# in either deployment mode.
+_print_next_steps() {
+    set -a; source "$REPO_ROOT/.env"; set +a
+
+    local flowise="${FLOWISE_PUBLIC_URL:-}"
+    local content="${CONTENT_ADMIN_PUBLIC_URL:-}"
+    local n8n_url="${N8N_WEBHOOK_URL:-}"
+    # Domain mode has no CONTENT_ADMIN_PUBLIC_URL of its own — it is a
+    # subdomain like everything else there.
+    if [[ -z "$content" && "${DEPLOYMENT_MODE:-domain}" == "domain" ]]; then
+        content="https://$(subdomain_host content "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")"
+    fi
+
     echo
-    echo "  $(t orch_next_finalize)"
+    printf "${BOLD}%s${RESET}\n\n" "$(t next_title)"
+
+    printf "  ${BOLD}1.${RESET} %s\n" "$(t next_flowise)"
+    printf "     %s\n"                "$flowise"
+    printf "     ${DIM}%s${RESET}\n\n" "$(t next_flowise_why)"
+
+    printf "  ${BOLD}2.${RESET} %s\n" "$(t next_n8n)"
+    printf "     %s\n"                "$n8n_url"
+    printf "     ${DIM}%s${RESET}\n\n" "$(t next_n8n_why)"
+
+    printf "  ${BOLD}3.${RESET} %s\n" "$(t next_content)"
+    printf "     %s\n"                "$content"
+    printf "     ${DIM}%s${RESET}\n\n" "$(t next_content_why)"
+
+    printf "  %s\n"                 "$(t next_credentials "$REPO_ROOT/credentials.txt")"
+    printf "  %s\n"                 "$(t next_admin_tui)"
+    if [[ "${DEPLOYMENT_MODE:-domain}" == "tailscale" ]]; then
+        echo
+        printf "  ${DIM}%s${RESET}\n" "$(t next_tailscale_note)"
+    fi
 }
 
 # ─── --continue branch ────────────────────────────────────────────────────────
@@ -327,6 +366,9 @@ if [[ "$CFG_DEPLOYMENT_MODE" == "domain" ]]; then
     run_coexistence_preflight
 else
     info "$(t orch_tailscale_skip_coexist)"
+    # Set by resolve_subdomain_prefix() inside the coexistence preflight,
+    # which does not run here — and every later use is under `set -u`.
+    CFG_SUBDOMAIN_PREFIX=""
 fi
 
 # Re-run DNS check now that we have a domain (warning only).
@@ -422,10 +464,15 @@ if [[ "$CFG_ENABLE_LTI" == "yes" ]]; then
 fi
 echo
 
-# Compose list of subdomains for DNS hint
-SUBDOMAINS="$(subdomain_host smart-rag "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")  $(subdomain_host n8n "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")  $(subdomain_host minio "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")  $(subdomain_host s3 "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
-[[ "$CFG_ENABLE_OBSERVABILITY" == "yes" ]] && SUBDOMAINS="$SUBDOMAINS  $(subdomain_host langfuse "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
-[[ "$CFG_ENABLE_LTI" == "yes" ]] && SUBDOMAINS="$SUBDOMAINS  $(subdomain_host lti "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
+# Compose list of subdomains for the DNS hint. In tailscale mode there are
+# none: one name covers the whole installation and Tailscale answers for it,
+# so there is nothing for the operator to create.
+SUBDOMAINS=""
+if [[ "$CFG_DEPLOYMENT_MODE" == "domain" ]]; then
+    SUBDOMAINS="$(subdomain_host smart-rag "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")  $(subdomain_host n8n "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")  $(subdomain_host minio "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")  $(subdomain_host s3 "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
+    [[ "$CFG_ENABLE_OBSERVABILITY" == "yes" ]] && SUBDOMAINS="$SUBDOMAINS  $(subdomain_host langfuse "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
+    [[ "$CFG_ENABLE_LTI" == "yes" ]] && SUBDOMAINS="$SUBDOMAINS  $(subdomain_host lti "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
+fi
 
 # Shown before the DNS/auto-continue branch below so it's never missed —
 # some branches exit straight into deployment and never reach the old

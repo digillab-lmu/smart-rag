@@ -22,7 +22,7 @@ setup_sandbox() { # $1 = exit code the n8n phase should return
     # Every phase script becomes a stub that just says it ran. The n8n one
     # returns whatever this test is exercising.
     for s in install-system-packages install-postfix get-ssl-certs \
-             start-services deploy-schemas generate-lti-keys; do
+             start-services deploy-schemas generate-lti-keys install-tailscale; do
         printf '#!/usr/bin/env bash\necho "STUB %s"\nexit 0\n' "$s" \
             > "$SANDBOX/scripts/$s.sh"
         chmod +x "$SANDBOX/scripts/$s.sh"
@@ -187,6 +187,37 @@ check "unverified run does not abort the install" $? "$(tail -3 <<<"$out")"
 grep -q "STUB generate-lti-keys" <<<"$out"
 check "later phases still ran after an unverified import" $? ""
 
+# ─── 4d. The ending says what to do next, with real URLs ────────────────────
+# The deployment is not usable when bootstrap finishes: Flowise, n8n and the
+# Content Admin each still want an account created in a browser. That used to
+# be one line of prose at the end of a long run — which is how an install
+# reaches the point where the first sign of trouble is a 404 much later.
+setup_sandbox 0
+cat >> "$SANDBOX/.env" <<'ENVX'
+DEPLOYMENT_MODE="tailscale"
+FLOWISE_PUBLIC_URL="https://i5.tail99.ts.net"
+CONTENT_ADMIN_PUBLIC_URL="https://i5.tail99.ts.net:8443"
+N8N_WEBHOOK_URL="https://i5.tail99.ts.net:8444"
+ENVX
+out="$( cd "$SANDBOX" && printf 'n\n' | bash scripts/bootstrap.sh --continue --lang en 2>&1 )"
+
+for url in "https://i5.tail99.ts.net" "https://i5.tail99.ts.net:8443" "https://i5.tail99.ts.net:8444"; do
+    grep -qF "$url" <<<"$out"
+    check "the ending shows $url" $? "$(tail -12 <<<"$out")"
+done
+grep -qi "flowise" <<<"$out"
+check "Flowise is named as a step" $? ""
+grep -qi "n8n" <<<"$out"
+check "n8n is named as a step" $? ""
+grep -qi "API key" <<<"$out"
+check "the Flowise API key step is spelled out" $? ""
+grep -q "credentials.txt" <<<"$out"
+check "it points at credentials.txt" $? ""
+# The URLs must come from .env, never be reassembled — that is how the
+# subdomain-prefix bug got in.
+grep -q "smart-rag.i5.tail99" <<<"$out"
+check "no URL is reassembled from the hostname" $(( $? == 0 ? 1 : 0 )) "$out"
+
 # ─── 5. EXIT_SKIPPED is a real, distinct constant ────────────────────────────
 # shellcheck source=/dev/null
 source "$REPO/scripts/lib/common.sh"
@@ -214,4 +245,6 @@ echo "the exact command and the 404 that follows if ignored, still runs the"
 echo "later phases and still exits 0; a clean run reports completion with no"
 echo "incomplete block; a genuine n8n failure is reported as a failure with a"
 echo "non-zero exit rather than folded into 'do it later'; the block is"
-echo "translated; and EXIT_SKIPPED is a distinct constant."
+echo "translated; the ending lists the three accounts still to create with the"
+echo "URLs read from .env rather than reassembled; and EXIT_SKIPPED is a"
+echo "distinct constant."
