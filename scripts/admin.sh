@@ -234,6 +234,99 @@ action_n8n_workflows() {
     press_enter
 }
 
+# ─── Upgrade / migrations ─────────────────────────────────────────────────────
+# .env is generated once, and deploy-schemas.sh never rewrites a live Weaviate
+# class. Both are deliberate — neither should silently overwrite something in
+# production — but together they mean an upgraded deployment can be missing
+# things a fresh one gets for free. Twice now that has been discovered by an
+# operator hitting the resulting failure rather than by anything telling them.
+# This entry closes that gap: it says what a `git pull` expects and this
+# installation doesn't have, and offers to fix it.
+
+# Echoes the keys present in .env.example but absent from .env, one per line.
+_missing_env_keys() {
+    local example="$REPO_ROOT/.env.example" envfile="$REPO_ROOT/.env" key
+    [[ -f "$example" && -f "$envfile" ]] || return 0
+    while IFS= read -r key; do
+        grep -q "^${key}=" "$envfile" || echo "$key"
+    done < <(grep -oE '^[A-Z][A-Z0-9_]*=' "$example" | tr -d '=' | sort -u)
+}
+
+# The value a missing key should get. Anything whose value embeds a subdomain
+# is computed here through subdomain_host() — copying .env.example's literal
+# would drop SUBDOMAIN_PREFIX and point the service at a hostname with no
+# DNS record, which is exactly the bug that made this necessary.
+_default_for_env_key() {
+    local key="$1" prefix="${SUBDOMAIN_PREFIX:-}"
+    case "$key" in
+        MINIO_SERVER_URL)           echo "https://$(subdomain_host s3        "$DOMAIN" "$prefix")" ;;
+        MINIO_BROWSER_REDIRECT_URL) echo "https://$(subdomain_host minio     "$DOMAIN" "$prefix")" ;;
+        FLOWISE_PUBLIC_URL)         echo "https://$(subdomain_host smart-rag "$DOMAIN" "$prefix")" ;;
+        MINIO_NOTIFY_WEBHOOK_ENDPOINT) echo "http://smartrag-n8n:5678/webhook/minio-notify" ;;
+        *)
+            # Unknown new key: fall back to whatever .env.example carries,
+            # and let the caller flag it for review rather than pretending
+            # the value is necessarily right for this installation.
+            local raw
+            raw="$(grep -m1 "^${key}=" "$REPO_ROOT/.env.example" || true)"
+            raw="${raw#*=}"          # strip KEY=
+            raw="${raw%\"}"          # strip the surrounding quotes, if any
+            raw="${raw#\"}"
+            printf '%s' "$raw"
+            ;;
+    esac
+}
+
+action_migrate() {
+    clear
+    header "$(t admin_migrate_title)"
+    info "$(t admin_migrate_intro)"
+    echo
+
+    # ── 1. Missing .env keys ────────────────────────────────────────────────
+    local missing=()
+    mapfile -t missing < <(_missing_env_keys)
+
+    if (( ${#missing[@]} == 0 )); then
+        ok "$(t admin_migrate_env_ok)"
+    else
+        warn "$(t admin_migrate_env_missing "${#missing[@]}")"
+        local key value derived=()
+        for key in "${missing[@]}"; do
+            value="$(_default_for_env_key "$key")"
+            derived+=("$key=$value")
+            printf '      %s=%s\n' "$key" "$value"
+        done
+        echo
+        if confirm admin_migrate_env_confirm "y"; then
+            cp "$REPO_ROOT/.env" "$REPO_ROOT/.env.backup-$(date +%F-%H%M%S)"
+            for key in "${missing[@]}"; do
+                value="$(_default_for_env_key "$key")"
+                printf '%s="%s"\n' "$key" "$value" >> "$REPO_ROOT/.env"
+            done
+            ok "$(t admin_migrate_env_added "${#missing[@]}")"
+            dim "$(t admin_migrate_env_restart)"
+        else
+            info "$(t admin_migrate_env_skipped)"
+        fi
+    fi
+
+    echo
+    # ── 2. course_id on existing Weaviate data ──────────────────────────────
+    info "$(t admin_migrate_course_intro)"
+    if confirm admin_migrate_course_dry "y"; then
+        bash "$SCRIPT_DIR/migrate-add-course-id.sh" --lang "$LANG_CHOICE" --dry-run \
+            || err "$(t admin_migrate_course_failed)"
+        echo
+        if confirm admin_migrate_course_apply "n"; then
+            bash "$SCRIPT_DIR/migrate-add-course-id.sh" --lang "$LANG_CHOICE" \
+                || err "$(t admin_migrate_course_failed)"
+        fi
+    fi
+
+    press_enter
+}
+
 action_mail() {
     clear
     header "$(t admin_mail_title)"
@@ -434,8 +527,9 @@ while true; do
         "8"  "$(t admin_menu_dns)" \
         "9"  "$(t admin_menu_secrets)" \
         "10" "$(t admin_menu_config)" \
-        "11" "$(t admin_menu_uninstall)" \
-        "12" "$(t admin_menu_exit)" \
+        "11" "$(t admin_menu_migrate)" \
+        "12" "$(t admin_menu_uninstall)" \
+        "13" "$(t admin_menu_exit)" \
         3>&1 1>&2 2>&3); then
         clear
         break
@@ -452,7 +546,8 @@ while true; do
         8)  action_dns ;;
         9)  action_secrets ;;
         10) action_config ;;
-        11) action_uninstall ;;
-        12) clear; break ;;
+        11) action_migrate ;;
+        12) action_uninstall ;;
+        13) clear; break ;;
     esac
 done

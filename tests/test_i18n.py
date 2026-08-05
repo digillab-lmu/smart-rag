@@ -54,6 +54,9 @@ IDENTICAL_OK = {
     "dash_col_status",
     # An em dash standing for "nothing here" — not text, so not translatable.
     "dash_public_no",
+    # "Agent" and "Chunk" are the words German uses too, and the action
+    # column has no header at all — an empty string in both languages.
+    "docs_col_agent", "docs_col_chunks", "docs_col_action",
 }
 same = [
     k for k in i18n.MSG_EN

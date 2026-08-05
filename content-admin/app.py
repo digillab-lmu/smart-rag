@@ -32,6 +32,7 @@ from env_file import read_env, set_env_var
 from flowise_client import FlowiseClient, FlowiseError
 from llm_client import LLMError, optimize_field, suggest_keywords
 from n8n_client import N8nClient, N8nError
+from weaviate_client import WeaviateClient, WeaviateError
 from neo4j_client import Neo4jClient, Neo4jError
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-7s  %(message)s")
@@ -57,6 +58,10 @@ FLOWISE_INTERNAL_URL = "http://smartrag-flowise:3000/api/v1"
 # comment on why N8N_PORT is pinned to 5678 internally regardless of the
 # host-side binding).
 N8N_INTERNAL_URL = "http://smartrag-n8n:5678"
+# Weaviate's HTTP port inside the network is always 8080; WEAVIATE_HTTP_PORT
+# in .env is the host-side binding, and using it here would repeat the
+# host-vs-container port mix-up that once pointed MinIO at a dead port.
+WEAVIATE_INTERNAL_URL = "http://smartrag-weaviate:8080"
 
 # Formats Docling accepts, mirrored from the upload form's accept attribute
 # so a file rejected here is never one the pipeline could have handled.
@@ -101,6 +106,11 @@ def _flowise_client() -> FlowiseClient | None:
 
 def _n8n_client() -> N8nClient:
     return N8nClient(N8N_INTERNAL_URL)
+
+
+def _weaviate_client() -> WeaviateClient:
+    env = read_env()
+    return WeaviateClient(WEAVIATE_INTERNAL_URL, env.get("WEAVIATE_API_KEY", ""))
 
 
 # ─── Language ───────────────────────────────────────────────────────────────────
@@ -780,6 +790,70 @@ def getting_started():
             None,
         ),
     )
+
+
+# ─── Documents: what is indexed, and removing it ─────────────────────────────────
+@app.route("/documents", methods=["GET", "POST"])
+@auth.login_required
+def documents():
+    """
+    Lists what is actually in the index for this course, and lets the
+    operator remove a document.
+
+    Deletion matters more than it sounds. Without it a mistaken upload is
+    permanent, a revised edition sits alongside its predecessor and both get
+    retrieved, and — the one that produces wrong answers rather than clutter
+    — repurposing an agent slot hands the new agent the old one's documents,
+    because the chunks still carry that agent_id.
+    """
+    env = read_env()
+    course_id = env.get("COURSE_ID", "").strip()
+    collection = env.get("WEAVIATE_COLLECTION_NAME", "").strip()
+    slots = storage.all_slots()
+    error = None
+    success = None
+
+    if not course_id or not collection:
+        return render_template(
+            "documents.html", documents=[], slots=slots, truncated=False,
+            error=_t("docs_err_not_configured"), success=None, total=0)
+
+    client = _weaviate_client()
+
+    if request.method == "POST":
+        title = request.form.get("source_title", "").strip()
+        raw_agent = request.form.get("agent_id", "")
+        agent_id = int(raw_agent) if raw_agent.isdigit() else None
+        if not title:
+            error = _t("docs_err_no_title")
+        else:
+            try:
+                removed = client.delete_document(collection, course_id, title, agent_id)
+            except WeaviateError as exc:
+                logger.error("Deleting %r failed: %s", title, exc)
+                error = _t("docs_err_delete_failed", exc)
+            else:
+                logger.info("Deleted %s chunk(s) of %r (course=%s, agent=%s)",
+                            removed, title, course_id, agent_id)
+                success = _t("docs_deleted", removed, title)
+
+    documents: list[dict] = []
+    total = 0
+    truncated = False
+    try:
+        documents = client.list_documents(collection, course_id)
+        total = client.count_chunks(collection, course_id)
+    except WeaviateError as exc:
+        logger.error("Could not list documents: %s", exc)
+        error = error or _t("docs_err_list_failed", exc)
+    else:
+        # The list is built from a capped read of chunks. Say so rather than
+        # showing a short list as if it were complete.
+        truncated = sum(d["chunks"] for d in documents) < total
+
+    return render_template(
+        "documents.html", documents=documents, slots=slots, truncated=truncated,
+        total=total, error=error, success=success)
 
 
 # ─── Knowledge-graph guidance ────────────────────────────────────────────────────
