@@ -17,7 +17,7 @@ persistent per-student memory, hybrid retrieval, and optional LMS integration.
 
 ## What it gives you
 
-- **Up to 14 specialized AI agents** (Flowise AgentFlows) with a unified
+- **Up to 10 specialized AI agents** (Flowise AgentFlows) with a unified
   memory model — students keep their progress across agents and sessions.
 - **Hybrid retrieval** (Weaviate) with optional re-ranking (Cohere or custom).
 - **Concept prerequisite graph** (Neo4j) for adaptive scaffolding.
@@ -38,7 +38,7 @@ LMS (LTI 1.3, optional)
 LTI Middleware (Flask)
     │  session token: user_id|name|agent_id|timestamp
     ▼
-Flowise — 14 AgentFlows (1 per topic)
+Flowise — up to 10 AgentFlows (1 per topic)
     ├──► Weaviate     — RAG over course materials
     ├──► Neo4j        — concept prerequisites
     ├──► Redis        — chat queue + LTI sessions
@@ -54,8 +54,9 @@ PostgreSQL — Flowise + n8n + Langfuse state
 MinIO      — document store + Langfuse blob backend
 ```
 
-Document **ingestion** (PDF/audio/video → chunks → Weaviate) lives in a
-separate repository: [`smart-rag-ingest`](https://github.com/) (planned).
+Document **ingestion** (upload → Docling conversion → cleanup → chunking →
+embedding → Weaviate) runs as two n8n workflows in this repo, driven from the
+Content Admin GUI's upload page — see [`n8n/workflows-ingest/`](n8n/workflows-ingest/).
 
 ---
 
@@ -260,10 +261,11 @@ smart-rag/
 ├── flowise/agents/         # 6 generic agent JSON templates
 ├── n8n/
 │   ├── workflows/          # 3 core workflows (sync, summary, observability)
-│   └── workflows-ingest/   # Document ingest workflows (→ moving to smart-rag-ingest)
+│   └── workflows-ingest/   # Document ingest: convert, clean, chunk, embed
 ├── lti-middleware/         # Flask app for LTI 1.3
 ├── content-admin/          # Flask app for course-content authoring
 ├── scripts/                # bootstrap.sh, admin.sh, uninstall.sh, compose.sh, lib/, standalone phase scripts
+├── tests/                  # Regression suite — bash tests/run-tests.sh
 └── docs/                   # COEXISTENCE.md, requirements.md, operations-guide.md
 ```
 

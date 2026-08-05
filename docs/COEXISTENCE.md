@@ -104,9 +104,9 @@ A hard, audited list. If you see the bootstrap scripts touching any of these,
 
 ---
 
-## What happens on `uninstall.sh` (planned, not yet implemented)
+## What happens on `uninstall.sh`
 
-The uninstall script will reverse **exactly** what bootstrap installed, in
+The uninstall script reverses **exactly** what bootstrap installed, in
 reverse order, with confirmations for any destructive operation:
 
 ```

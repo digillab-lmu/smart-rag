@@ -94,9 +94,9 @@ _container_ready smartrag-n8n || die "$(t schema_container_not_healthy "smartrag
 WORKFLOW_DIR="$REPO_ROOT/n8n/workflows-ingest"
 [[ -d "$WORKFLOW_DIR" ]] || die "$(t n8n_workflow_dir_missing "$WORKFLOW_DIR")"
 
-# The two generalized ingest workflows. The WhisperX one is deliberately not
-# listed — it's still VHB-specific and not meant for a fresh deployment (see
-# that directory's README).
+# The two ingest workflows. This list is the whole set — a third
+# (WhisperX audio transcription) was removed from the repo rather than
+# generalized; see that directory's README.
 WORKFLOWS=(
     "ingest-chunk-and-embed.json"
     "ingest-document.json"
