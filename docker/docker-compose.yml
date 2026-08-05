@@ -233,9 +233,19 @@ services:
     # (RELEASE.2025-10-15, "point to source-only releases") but it was
     # docs-only — no image was ever pushed to Docker Hub for it (confirmed:
     # that tag 404s on Docker Hub's registry API). minio/minio was archived
-    # on GitHub 2026-04-25; the community/OSS Docker image is frozen here
-    # permanently, no further security patches will come. Consider an
-    # alternative (Garage, SeaweedFS) if that becomes a concern.
+    # on GitHub 2026-04-25, so no NEW releases are coming.
+    #
+    # Not quite "frozen with no further patches", though: quay.io/minio/minio
+    # carries hotfix rebuilds of this same release — e.g.
+    # RELEASE.2025-09-07T16-13-09Z.hotfix.7aa24e772, pushed 2026-04-01 —
+    # published after the archival. They are rebuilds of this exact release
+    # rather than new versions, and they are not on Docker Hub. Worth
+    # knowing if a CVE lands here; worth verifying what a given hotfix
+    # actually contains before adopting it. Otherwise, consider an
+    # alternative (Garage, SeaweedFS).
+    #
+    # quay.io/minio/minio:latest is this same release, so an instance built
+    # from it runs identical code to this one.
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: smartrag-minio
     restart: always
