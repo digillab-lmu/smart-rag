@@ -60,6 +60,9 @@ declare -A MSG_EN=(
 
     # --- preflight ----------------------------------------------------------
     [phase_preflight]="Phase 1 · Pre-flight Checks"
+    [pf_ubuntu_untested]="Ubuntu %s detected. This project is tested on %s — another LTS very likely works, but nothing here has been verified against it."
+    [pf_ubuntu_untested_continue]="Continue on this untested Ubuntu version?"
+    [pf_ubuntu_declined]="Stopped at your request. Ubuntu %s is the tested version."
     [pf_ubuntu_ok]="Ubuntu %s detected"
     [pf_ubuntu_wrong]="Ubuntu 24.04 LTS required (found: %s)"
     [pf_ubuntu_not_linux]="This script requires Ubuntu Linux. Detected: %s"
@@ -568,6 +571,9 @@ declare -A MSG_DE=(
 
     # --- preflight ----------------------------------------------------------
     [phase_preflight]="Phase 1 · Vorab-Prüfungen"
+    [pf_ubuntu_untested]="Ubuntu %s erkannt. Getestet ist dieses Projekt auf %s — eine andere LTS funktioniert sehr wahrscheinlich, überprüft wurde hier aber nichts dagegen."
+    [pf_ubuntu_untested_continue]="Auf dieser ungetesteten Ubuntu-Version fortfahren?"
+    [pf_ubuntu_declined]="Auf deinen Wunsch abgebrochen. Getestet ist Ubuntu %s."
     [pf_ubuntu_ok]="Ubuntu %s erkannt"
     [pf_ubuntu_wrong]="Ubuntu 24.04 LTS wird benötigt (gefunden: %s)"
     [pf_ubuntu_not_linux]="Dieses Skript benötigt Ubuntu Linux. Erkannt: %s"

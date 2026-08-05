@@ -58,6 +58,9 @@ show_prerequisites_checklist() {
 }
 
 # ─── 1. Operating System ─────────────────────────────────────────────────────
+# The one Ubuntu release this project is actually tested on.
+readonly UBUNTU_TESTED="24.04"
+
 check_ubuntu() {
     local id="" version=""
     if [[ -f /etc/os-release ]]; then
@@ -71,11 +74,27 @@ check_ubuntu() {
         die "$(t pf_ubuntu_not_linux "${id:-unknown}")"
     fi
 
-    if [[ "$version" != "24.04" ]]; then
-        die "$(t pf_ubuntu_wrong "$version")"
+    # 24.04 is the version everything here is actually tested against —
+    # package names, the Docker repo layout, nginx and certbot behaviour.
+    if [[ "$version" == "$UBUNTU_TESTED" ]]; then
+        ok "$(t pf_ubuntu_ok "$version")"
+        return 0
     fi
 
-    ok "$(t pf_ubuntu_ok "$version")"
+    # Another Ubuntu LTS (even year, .04) is untested, not known-broken.
+    # Refusing outright would block a machine that very likely works; saying
+    # nothing would hide a real reason for later surprises. So: say which
+    # version was tested, and let the operator decide.
+    if [[ "$version" =~ ^(2[0-9])\.04$ ]] && (( ${BASH_REMATCH[1]} % 2 == 0 )); then
+        warn "$(t pf_ubuntu_untested "$version" "$UBUNTU_TESTED")"
+        PREFLIGHT_WARN=$((PREFLIGHT_WARN+1))
+        confirm pf_ubuntu_untested_continue "y" || die "$(t pf_ubuntu_declined)"
+        return 0
+    fi
+
+    # Anything else — an interim release, or something much older — stays a
+    # hard stop: those genuinely do differ in ways this installer relies on.
+    die "$(t pf_ubuntu_wrong "$version")"
 }
 
 # ─── 2. Root privileges ──────────────────────────────────────────────────────
