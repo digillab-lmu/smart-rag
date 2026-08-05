@@ -42,6 +42,15 @@ write_env_file() {
     REPL[N8N_HOSTNAME]="$(subdomain_host n8n "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
     REPL[NEXTAUTH_URL]="https://$(subdomain_host langfuse "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
     REPL[LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT]="https://$(subdomain_host minio "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
+    # Same reasoning for these four: docker-compose.yml used to build them
+    # inline as "https://s3.${DOMAIN}" etc., which silently dropped the
+    # prefix — pointing MinIO's console and the LTI middleware at hostnames
+    # that have no DNS record, no vhost and no certificate whenever
+    # SUBDOMAIN_PREFIX is set. APP_URL was wrong even without a prefix: it
+    # pointed at the bare domain, while Flowise is served at smart-rag.<domain>.
+    REPL[MINIO_SERVER_URL]="https://$(subdomain_host s3 "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
+    REPL[MINIO_BROWSER_REDIRECT_URL]="https://$(subdomain_host minio "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
+    REPL[FLOWISE_PUBLIC_URL]="https://$(subdomain_host smart-rag "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
 
     # Compose profiles
     REPL[COMPOSE_PROFILES]="$CFG_COMPOSE_PROFILES"
