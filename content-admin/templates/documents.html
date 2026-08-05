@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}{{ t('docs_title') }} — {{ t('app_name') }} {{ t('app_subtitle') }}{% endblock %}
+{% block content %}
+<h1>{{ t('docs_heading') }}</h1>
+
+<p class="note">{{ t('docs_intro') }}</p>
+<p class="note">{{ t('docs_why_delete') }}</p>
+
+{% if truncated %}
+<div class="error">{{ t('docs_truncated') }}</div>
+{% endif %}
+
+{% if not documents %}
+<p class="note">{{ t('docs_empty') }}</p>
+{% else %}
+<table>
+  <tr>
+    <th>{{ t('docs_col_title') }}</th>
+    <th>{{ t('docs_col_agent') }}</th>
+    <th>{{ t('docs_col_meta') }}</th>
+    <th>{{ t('docs_col_chunks') }}</th>
+    <th>{{ t('docs_col_action') }}</th>
+  </tr>
+  {% for d in documents %}
+  <tr>
+    <td>
+      <strong>{{ d.source_title or d.source_file }}</strong>
+      {% if d.source_file and d.source_file != d.source_title %}
+      <br><span class="note">{{ d.source_file }}</span>
+      {% endif %}
+    </td>
+    <td>
+      {% if d.agent_id is none %}
+        {{ t('docs_agent_none') }}
+      {% else %}
+        {% set slot = slots.get(d.agent_id|string) %}
+        {% if slot and slot.get('name') %}
+          {{ d.agent_id }} · {{ slot.name }}
+        {% else %}
+          {# The chunks outlive the slot's content: an agent slot that was
+             cleared or repurposed leaves its documents behind, and this is
+             exactly the row an operator is looking for when that happens. #}
+          {{ t('docs_agent_unknown', d.agent_id) }}
+        {% endif %}
+      {% endif %}
+    </td>
+    <td class="note">
+      {% if d.authors %}{{ d.authors }}{% endif %}
+      {% if d.year %}{% if d.authors %} · {% endif %}{{ d.year }}{% endif %}
+      {% if d.doc_type %}<br>{{ d.doc_type }}{% endif %}
+      {% if d.ingest_date %}<br>{{ d.ingest_date[:10] }}{% endif %}
+    </td>
+    <td>{{ d.chunks }}</td>
+    <td>
+      <form method="post" style="margin: 0;"
+            onsubmit='return confirm({{ t("docs_delete_confirm", "@@TITLE@@", "@@N@@")|tojson }}.replace("@@TITLE@@", {{ (d.source_title or d.source_file)|tojson }}).replace("@@N@@", {{ d.chunks|tojson }}));'>
+        <input type="hidden" name="source_title" value="{{ d.source_title }}">
+        {% if d.agent_id is not none %}
+        <input type="hidden" name="agent_id" value="{{ d.agent_id }}">
+        {% endif %}
+        <button type="submit" class="secondary" style="margin-top: 0;">{{ t('docs_delete') }}</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+
+<p class="note">{{ t('docs_total', total) }}</p>
+{% endif %}
+{% endblock %}
