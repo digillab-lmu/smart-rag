@@ -5,8 +5,10 @@
 Before running `scripts/bootstrap.sh`, make sure you have:
 
 **Server**
-- Ubuntu 24.04 LTS (hard requirement — the bootstrap wizard refuses to run
-  on any other OS or version)
+- Ubuntu 24.04 LTS — the version everything here is tested against. Another
+  Ubuntu LTS (26.04, 22.04, …) is accepted after the wizard says it is
+  untested and you confirm; interim releases and non-Ubuntu systems are
+  refused outright
 - Root or sudo access
 - Docker Engine + Docker Compose v2 plugin **already installed**. The
   bootstrap does not install Docker itself — see
