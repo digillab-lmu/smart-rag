@@ -37,20 +37,38 @@ write_env_file() {
     # resolved here — not left as `${DOMAIN}`-style interpolation in .env —
     # so it doesn't depend on Docker Compose's env_file interpolation
     # supporting the conditional prefix logic.
+    REPL[DEPLOYMENT_MODE]="${CFG_DEPLOYMENT_MODE:-domain}"
     REPL[SUBDOMAIN_PREFIX]="${CFG_SUBDOMAIN_PREFIX:-}"
-    REPL[N8N_WEBHOOK_URL]="https://$(subdomain_host n8n "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
-    REPL[N8N_HOSTNAME]="$(subdomain_host n8n "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
-    REPL[NEXTAUTH_URL]="https://$(subdomain_host langfuse "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
-    REPL[LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT]="https://$(subdomain_host minio "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
-    # Same reasoning for these four: docker-compose.yml used to build them
-    # inline as "https://s3.${DOMAIN}" etc., which silently dropped the
-    # prefix — pointing MinIO's console and the LTI middleware at hostnames
-    # that have no DNS record, no vhost and no certificate whenever
-    # SUBDOMAIN_PREFIX is set. APP_URL was wrong even without a prefix: it
-    # pointed at the bare domain, while Flowise is served at smart-rag.<domain>.
-    REPL[MINIO_SERVER_URL]="https://$(subdomain_host s3 "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
-    REPL[MINIO_BROWSER_REDIRECT_URL]="https://$(subdomain_host minio "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
-    REPL[FLOWISE_PUBLIC_URL]="https://$(subdomain_host smart-rag "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
+    # In tailscale mode these are left EMPTY here on purpose: the hostname is
+    # only assigned once Tailscale is up, so install-tailscale.sh fills them
+    # in afterwards. Guessing a value now would put a URL in front of an
+    # operator that looks authoritative and is wrong.
+    if [[ "${CFG_DEPLOYMENT_MODE:-domain}" == "tailscale" ]]; then
+        REPL[TAILSCALE_HOSTNAME]=""
+        REPL[N8N_WEBHOOK_URL]=""
+        REPL[N8N_HOSTNAME]=""
+        REPL[NEXTAUTH_URL]=""
+        REPL[LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT]=""
+        REPL[MINIO_SERVER_URL]=""
+        REPL[MINIO_BROWSER_REDIRECT_URL]=""
+        REPL[FLOWISE_PUBLIC_URL]=""
+        REPL[CONTENT_ADMIN_PUBLIC_URL]=""
+    else
+        REPL[TAILSCALE_HOSTNAME]=""
+        REPL[N8N_WEBHOOK_URL]="https://$(subdomain_host n8n "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
+        REPL[N8N_HOSTNAME]="$(subdomain_host n8n "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
+        REPL[NEXTAUTH_URL]="https://$(subdomain_host langfuse "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
+        REPL[LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT]="https://$(subdomain_host minio "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
+        # These four were once built inline in docker-compose.yml as
+        # "https://s3.${DOMAIN}", which silently dropped the prefix and
+        # pointed services at hostnames with no DNS record, vhost or
+        # certificate. APP_URL was wrong even without a prefix — it named
+        # the bare domain, while Flowise lives on the smart-rag subdomain.
+        REPL[MINIO_SERVER_URL]="https://$(subdomain_host s3 "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
+        REPL[MINIO_BROWSER_REDIRECT_URL]="https://$(subdomain_host minio "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
+        REPL[FLOWISE_PUBLIC_URL]="https://$(subdomain_host smart-rag "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
+        REPL[CONTENT_ADMIN_PUBLIC_URL]="https://$(subdomain_host content "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
+    fi
 
     # Compose profiles
     REPL[COMPOSE_PROFILES]="$CFG_COMPOSE_PROFILES"
