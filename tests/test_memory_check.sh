@@ -138,6 +138,29 @@ check "non-Ubuntu is still refused outright" $? ""
 check "the version literal isn't duplicated in the function" $? \
       "$(grep -n '24\.04' <<<"$UBUNTU_FN")"
 
+# ─── Format specifiers must match across languages ──────────────────────────
+# A translation with a different NUMBER of placeholders drops or invents an
+# argument at runtime. This was found the hard way: a German string had its
+# two %s the other way round, so a migration script announced the course id
+# where the URL belonged. Order can't be checked mechanically — count can,
+# and it catches the larger half of the problem.
+mismatch=0
+for k in "${!MSG_EN[@]}"; do
+    en_n=$(grep -o "%[sd]" <<<"${MSG_EN[$k]}" | wc -l | tr -d " ")
+    de_n=$(grep -o "%[sd]" <<<"${MSG_DE[$k]:-}" | wc -l | tr -d " ")
+    if [[ "$en_n" != "$de_n" ]]; then
+        FAILURES+=("$k: EN has $en_n placeholder(s), DE has $de_n")
+        mismatch=1
+    fi
+done
+check "every message has the same placeholder count in both languages" $mismatch ""
+
+# And every key must exist in both — check_translations() is the project's
+# own function for that, so use it rather than a second implementation.
+problems="$(check_translations 2>&1 || true)"
+[[ -z "$problems" ]]
+check "the shell catalogue is complete in both languages" $? "$problems"
+
 if (( ${#FAILURES[@]} > 0 )); then
     echo "FAILURES:"; printf '  - %s\n' "${FAILURES[@]}"; exit 1
 fi
@@ -149,4 +172,6 @@ echo "actual figure, explains that the symptoms surface elsewhere, names the"
 echo "optional profile as the way out, blocks on a no, continues on a yes,"
 echo "and stays silent both when there is enough RAM and when it can't tell;"
 echo "and the Ubuntu gate passes the tested release, asks on any other LTS"
-echo "(honouring a no), and still refuses interim releases and non-Ubuntu."
+echo "(honouring a no), and still refuses interim releases and non-Ubuntu;"
+echo "and every shell message exists in both languages with the same number"
+echo "of format placeholders."

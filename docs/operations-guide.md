@@ -206,6 +206,39 @@ edit.
 
 ---
 
+## Upgrading an existing deployment
+
+Some changes need a step on an already-running installation, because
+`.env` is generated once and `deploy-schemas.sh` never rewrites a live
+Weaviate class. Both of those are deliberate — neither should silently
+overwrite something in production — but it means an upgrade occasionally
+has one manual action.
+
+**Course scoping (`course_id`).** Everything the agents retrieve now
+carries a `course_id`, and every agent filters on it, so one installation
+can host more than one course. A deployment created before this has
+neither the property nor the values, and **its agents will retrieve
+nothing until this has run**:
+
+```bash
+sudo bash scripts/migrate-add-course-id.sh --dry-run   # show what would change
+sudo bash scripts/migrate-add-course-id.sh             # apply
+```
+
+It adds the property to the existing classes and tags every existing
+object with this installation's `COURSE_ID`. Both steps are idempotent —
+running it twice changes nothing the second time — and it does not
+re-embed anything; `course_id` is metadata, not content. Afterwards,
+re-import your agents in the Content Admin GUI so their filters carry the
+course as well.
+
+The empty-retrieval failure is intentional. The alternative — a filter
+that matched everything when no course was set — would have served one
+course's material to another course's students, and nobody would have
+noticed.
+
+---
+
 ## Content authoring (course material, agent prompts, knowledge graph)
 
 This is done in the **Content Admin GUI** at

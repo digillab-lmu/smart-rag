@@ -239,7 +239,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ {\n  \"class\": \"ChatHistory\",\n  \"vector\": $json.embedding,\n  \"properties\": {\n    \"user_id\": $json.user_id,\n    \"session_id\": $json.session_id,\n    \"agent_id\": $json.agent_id,\n    \"role\": $json.role,\n    \"text\": $json.text,\n    \"timestamp\": $json.timestamp,\n    \"message_index\": $json.message_index,\n    \"message_hash\": $json.message_hash,\n    \"trace_id\": $json.trace_id,\n    \"chapter\": $json.chapter,\n    \"message_type\": $json.message_type,\n    \"question_type\": $json.question_type,\n    \"concepts_mentioned\": $json.concepts_mentioned\n  }\n} }}",
+        "jsonBody": "={{ {\n  \"class\": \"ChatHistory\",\n  \"vector\": $json.embedding,\n  \"properties\": {\n    \"course_id\": $env.COURSE_ID || \"\",\n    \"user_id\": $json.user_id,\n    \"session_id\": $json.session_id,\n    \"agent_id\": $json.agent_id,\n    \"role\": $json.role,\n    \"text\": $json.text,\n    \"timestamp\": $json.timestamp,\n    \"message_index\": $json.message_index,\n    \"message_hash\": $json.message_hash,\n    \"trace_id\": $json.trace_id,\n    \"chapter\": $json.chapter,\n    \"message_type\": $json.message_type,\n    \"question_type\": $json.question_type,\n    \"concepts_mentioned\": $json.concepts_mentioned\n  }\n} }}",
         "options": {}
       },
       "id": "31a89458-acd1-429e-8bc8-1871e0cb273e",

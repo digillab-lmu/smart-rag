@@ -726,7 +726,7 @@
                 "weaviateTextKey": "text",
                 "weaviateMetadataKeys": "[\"source_title\", \"authors\", \"chunk_index\", \"agent_id\", \"doc_type\", \"section\", \"chapter_title\", \"parent_chapter_title\", \"section_type\", \"section_id\", \"effect_size\", \"page_number\", \"speaker\", \"year\"]",
                 "topK": "5",
-                "weaviateFilter": "",
+                "weaviateFilter": "{\"operator\": \"Equal\", \"target\": {\"property\": \"course_id\"}, \"value\": \"{{COURSE_ID}}\"}",
                 "searchType": "similarity",
                 "fetchK": "10",
                 "lambda": "",

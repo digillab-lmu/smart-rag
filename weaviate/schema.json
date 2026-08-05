@@ -7,14 +7,87 @@
       "vectorizer": "none",
       "vectorIndexType": "hnsw",
       "properties": [
-        { "name": "user_id",             "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "Stable student identifier (from LTI sub or LMS user id)" },
-        { "name": "concepts_mastered",   "dataType": ["text[]"], "indexFilterable": true,  "indexSearchable": true,  "description": "Concepts the student has demonstrated mastery of" },
-        { "name": "concepts_struggling", "dataType": ["text[]"], "indexFilterable": true,  "indexSearchable": true,  "description": "Concepts the student has had difficulty with" },
-        { "name": "open_questions",      "dataType": ["text[]"], "indexFilterable": true,  "indexSearchable": true,  "description": "Unresolved questions from prior conversations" },
-        { "name": "learning_patterns",   "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "Free-text summary of how the student tends to learn" },
-        { "name": "summary",             "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "High-level summary of the student's overall progress" },
-        { "name": "last_updated",        "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "ISO-8601 timestamp of the most recent update" },
-        { "name": "chapter",             "dataType": ["int"],    "indexFilterable": true,  "indexSearchable": false, "description": "Last topic/chapter the student was active in" }
+        {
+          "name": "course_id",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": false,
+          "description": "Which course this object belongs to (COURSE_ID in .env). One installation can host several courses; every retrieval filters on this, so an object without it is invisible to every agent."
+        },
+        {
+          "name": "user_id",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "Stable student identifier (from LTI sub or LMS user id)"
+        },
+        {
+          "name": "concepts_mastered",
+          "dataType": [
+            "text[]"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "Concepts the student has demonstrated mastery of"
+        },
+        {
+          "name": "concepts_struggling",
+          "dataType": [
+            "text[]"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "Concepts the student has had difficulty with"
+        },
+        {
+          "name": "open_questions",
+          "dataType": [
+            "text[]"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "Unresolved questions from prior conversations"
+        },
+        {
+          "name": "learning_patterns",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "Free-text summary of how the student tends to learn"
+        },
+        {
+          "name": "summary",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "High-level summary of the student's overall progress"
+        },
+        {
+          "name": "last_updated",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "ISO-8601 timestamp of the most recent update"
+        },
+        {
+          "name": "chapter",
+          "dataType": [
+            "int"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": false,
+          "description": "Last topic/chapter the student was active in"
+        }
       ]
     },
     {
@@ -23,8 +96,22 @@
       "vectorizer": "none",
       "vectorIndexType": "hnsw",
       "properties": [
-        { "name": "key",   "dataType": ["text"], "indexFilterable": true, "indexSearchable": true },
-        { "name": "value", "dataType": ["text"], "indexFilterable": true, "indexSearchable": true }
+        {
+          "name": "key",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true
+        },
+        {
+          "name": "value",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true
+        }
       ]
     },
     {
@@ -33,16 +120,99 @@
       "vectorizer": "none",
       "vectorIndexType": "hnsw",
       "properties": [
-        { "name": "user_id",                "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true  },
-        { "name": "session_id",             "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true  },
-        { "name": "selected_topic",         "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "Topic the student chose to be assessed on" },
-        { "name": "difficulty",             "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "Difficulty level reached (easy/medium/hard)" },
-        { "name": "task_count",             "dataType": ["int"],    "indexFilterable": true,  "indexSearchable": false },
-        { "name": "tasks_summary",          "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "Short summary of tasks given and how the student answered" },
-        { "name": "strengths",              "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true  },
-        { "name": "gaps",                   "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true  },
-        { "name": "sections_to_review",     "dataType": ["text[]"], "indexFilterable": true,  "indexSearchable": true,  "description": "Course sections the student should revisit" },
-        { "name": "timestamp",              "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true  }
+        {
+          "name": "course_id",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": false,
+          "description": "Which course this object belongs to (COURSE_ID in .env). One installation can host several courses; every retrieval filters on this, so an object without it is invisible to every agent."
+        },
+        {
+          "name": "user_id",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true
+        },
+        {
+          "name": "session_id",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true
+        },
+        {
+          "name": "selected_topic",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "Topic the student chose to be assessed on"
+        },
+        {
+          "name": "difficulty",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "Difficulty level reached (easy/medium/hard)"
+        },
+        {
+          "name": "task_count",
+          "dataType": [
+            "int"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": false
+        },
+        {
+          "name": "tasks_summary",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "Short summary of tasks given and how the student answered"
+        },
+        {
+          "name": "strengths",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true
+        },
+        {
+          "name": "gaps",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true
+        },
+        {
+          "name": "sections_to_review",
+          "dataType": [
+            "text[]"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "Course sections the student should revisit"
+        },
+        {
+          "name": "timestamp",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true
+        }
       ]
     },
     {
@@ -51,19 +221,125 @@
       "vectorizer": "none",
       "vectorIndexType": "hnsw",
       "properties": [
-        { "name": "user_id",            "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true  },
-        { "name": "session_id",         "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true  },
-        { "name": "agent_id",           "dataType": ["int"],    "indexFilterable": true,  "indexSearchable": false, "description": "Which agent this message belongs to (1..N)" },
-        { "name": "role",               "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "'user' | 'assistant' | 'system'" },
-        { "name": "text",               "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true  },
-        { "name": "timestamp",          "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true  },
-        { "name": "message_index",      "dataType": ["int"],    "indexFilterable": true,  "indexSearchable": false, "description": "Order within session (0, 1, 2, ...)" },
-        { "name": "message_hash",       "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "Stable dedup key" },
-        { "name": "trace_id",           "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "Langfuse trace id, if available" },
-        { "name": "chapter",            "dataType": ["int"],    "indexFilterable": true,  "indexSearchable": false },
-        { "name": "message_type",       "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "Custom classification (question, answer, meta, etc.)" },
-        { "name": "question_type",      "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true  },
-        { "name": "concepts_mentioned", "dataType": ["text[]"], "indexFilterable": true,  "indexSearchable": true  }
+        {
+          "name": "course_id",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": false,
+          "description": "Which course this object belongs to (COURSE_ID in .env). One installation can host several courses; every retrieval filters on this, so an object without it is invisible to every agent."
+        },
+        {
+          "name": "user_id",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true
+        },
+        {
+          "name": "session_id",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true
+        },
+        {
+          "name": "agent_id",
+          "dataType": [
+            "int"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": false,
+          "description": "Which agent this message belongs to (1..N)"
+        },
+        {
+          "name": "role",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "'user' | 'assistant' | 'system'"
+        },
+        {
+          "name": "text",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true
+        },
+        {
+          "name": "timestamp",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true
+        },
+        {
+          "name": "message_index",
+          "dataType": [
+            "int"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": false,
+          "description": "Order within session (0, 1, 2, ...)"
+        },
+        {
+          "name": "message_hash",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "Stable dedup key"
+        },
+        {
+          "name": "trace_id",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "Langfuse trace id, if available"
+        },
+        {
+          "name": "chapter",
+          "dataType": [
+            "int"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": false
+        },
+        {
+          "name": "message_type",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "Custom classification (question, answer, meta, etc.)"
+        },
+        {
+          "name": "question_type",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true
+        },
+        {
+          "name": "concepts_mentioned",
+          "dataType": [
+            "text[]"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true
+        }
       ]
     },
     {
@@ -72,33 +348,251 @@
       "vectorizer": "none",
       "vectorIndexType": "hnsw",
       "properties": [
-        { "name": "text",                 "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "The chunk content itself" },
-        { "name": "doc_type",             "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "e.g. 'course-material', 'transcript', 'paper', 'slide-deck'" },
-        { "name": "chapter_title",        "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true  },
-        { "name": "parent_chapter_title", "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "Higher-level chapter, if nested" },
-        { "name": "section_id",           "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "Stable identifier for the section (e.g. '2.3', 'unit-04', etc.)" },
-        { "name": "section",              "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "Section title or heading" },
-        { "name": "section_type",         "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "e.g. 'introduction', 'theory', 'example', 'summary'" },
-        { "name": "effect_size",          "dataType": ["number"], "indexFilterable": true,  "indexSearchable": false, "description": "Optional: for evidence-based content (e.g. Cohen's d from meta-analyses)" },
-        { "name": "speaker",              "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "For transcripts: who is speaking" },
-        { "name": "ts_start",             "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "Audio/video timestamp — start of chunk" },
-        { "name": "ts_end",               "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "Audio/video timestamp — end of chunk" },
-        { "name": "chunk_index",          "dataType": ["int"],    "indexFilterable": true,  "indexSearchable": false, "description": "Order within source document" },
-        { "name": "chunk_total",          "dataType": ["int"],    "indexFilterable": true,  "indexSearchable": false, "description": "Total chunks for the source document" },
-        { "name": "chunk_hash",           "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "Stable dedup key" },
-        { "name": "speaker_count",        "dataType": ["int"],    "indexFilterable": true,  "indexSearchable": false },
-        { "name": "page_number",          "dataType": ["int"],    "indexFilterable": true,  "indexSearchable": false },
-        { "name": "source_title",         "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "Human-readable name of the source document" },
-        { "name": "source_file",          "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "Original filename in MinIO" },
-        { "name": "bucket",               "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "MinIO bucket the source came from" },
-        { "name": "language",             "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "ISO 639-1 (e.g. 'en', 'de')" },
-        { "name": "authors",              "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true  },
-        { "name": "year",                 "dataType": ["int"],    "indexFilterable": true,  "indexSearchable": false },
-        { "name": "type",                 "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "Free-form type tag (e.g. 'core', 'supplementary')" },
-        { "name": "topic",                "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true,  "description": "Topic/concept tag — used by agent topic filtering" },
-        { "name": "agent_id",             "dataType": ["int"],    "indexFilterable": true,  "indexSearchable": false, "description": "Which topic agent this chunk is primarily relevant for" },
-        { "name": "block_number",         "dataType": ["int"],    "indexFilterable": true,  "indexSearchable": false },
-        { "name": "ingest_date",          "dataType": ["text"],   "indexFilterable": true,  "indexSearchable": true  }
+        {
+          "name": "course_id",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": false,
+          "description": "Which course this object belongs to (COURSE_ID in .env). One installation can host several courses; every retrieval filters on this, so an object without it is invisible to every agent."
+        },
+        {
+          "name": "text",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "The chunk content itself"
+        },
+        {
+          "name": "doc_type",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "e.g. 'course-material', 'transcript', 'paper', 'slide-deck'"
+        },
+        {
+          "name": "chapter_title",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true
+        },
+        {
+          "name": "parent_chapter_title",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "Higher-level chapter, if nested"
+        },
+        {
+          "name": "section_id",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "Stable identifier for the section (e.g. '2.3', 'unit-04', etc.)"
+        },
+        {
+          "name": "section",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "Section title or heading"
+        },
+        {
+          "name": "section_type",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "e.g. 'introduction', 'theory', 'example', 'summary'"
+        },
+        {
+          "name": "effect_size",
+          "dataType": [
+            "number"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": false,
+          "description": "Optional: for evidence-based content (e.g. Cohen's d from meta-analyses)"
+        },
+        {
+          "name": "speaker",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "For transcripts: who is speaking"
+        },
+        {
+          "name": "ts_start",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "Audio/video timestamp — start of chunk"
+        },
+        {
+          "name": "ts_end",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "Audio/video timestamp — end of chunk"
+        },
+        {
+          "name": "chunk_index",
+          "dataType": [
+            "int"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": false,
+          "description": "Order within source document"
+        },
+        {
+          "name": "chunk_total",
+          "dataType": [
+            "int"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": false,
+          "description": "Total chunks for the source document"
+        },
+        {
+          "name": "chunk_hash",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "Stable dedup key"
+        },
+        {
+          "name": "speaker_count",
+          "dataType": [
+            "int"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": false
+        },
+        {
+          "name": "page_number",
+          "dataType": [
+            "int"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": false
+        },
+        {
+          "name": "source_title",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "Human-readable name of the source document"
+        },
+        {
+          "name": "source_file",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "Original filename in MinIO"
+        },
+        {
+          "name": "bucket",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "MinIO bucket the source came from"
+        },
+        {
+          "name": "language",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "ISO 639-1 (e.g. 'en', 'de')"
+        },
+        {
+          "name": "authors",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true
+        },
+        {
+          "name": "year",
+          "dataType": [
+            "int"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": false
+        },
+        {
+          "name": "type",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "Free-form type tag (e.g. 'core', 'supplementary')"
+        },
+        {
+          "name": "topic",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true,
+          "description": "Topic/concept tag — used by agent topic filtering"
+        },
+        {
+          "name": "agent_id",
+          "dataType": [
+            "int"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": false,
+          "description": "Which topic agent this chunk is primarily relevant for"
+        },
+        {
+          "name": "block_number",
+          "dataType": [
+            "int"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": false
+        },
+        {
+          "name": "ingest_date",
+          "dataType": [
+            "text"
+          ],
+          "indexFilterable": true,
+          "indexSearchable": true
+        }
       ]
     }
   ]

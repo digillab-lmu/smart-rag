@@ -239,7 +239,13 @@ DERIVED_FIELDS = {"AGENT_TRANSLATION_TABLE", "CONTENT_TRANSLATION_TABLE"}
 # rendering as free-text boxes the operator's input for was silently
 # discarded (auto-fill runs first and overwrites those exact keys before the
 # content pass ever sees them) — confusing, not just cosmetic.
-AUTO_FILLED_FIELDS = {"COURSE_NAME", "WEAVIATE_COLLECTION_NAME", "EMBEDDING_MODEL", "AGENT_NUMBER"}
+AUTO_FILLED_FIELDS = {
+    "COURSE_NAME", "WEAVIATE_COLLECTION_NAME", "EMBEDDING_MODEL", "AGENT_NUMBER",
+    # Which course this agent belongs to. One installation can host several,
+    # and every retrieval filters on it — but it comes from .env, so the
+    # operator is never asked for it in the content form.
+    "COURSE_ID",
+}
 
 # Shown under each content-form field — every remaining field is genuine,
 # course-specific prose the operator has to write themselves, so a first-
@@ -672,8 +678,9 @@ def auto_fill_from_env(
     Pass 1: fill in everything already known from the CLI wizard (or, for
     AGENT_NUMBER, from which slot this is) — the operator is never asked for
     these in the content form (see AUTO_FILLED_FIELDS). Mutates flow_data in
-    place. Must run BEFORE substitute_content(), since {{COURSE_NAME}} and
-    {{AGENT_NUMBER}} are both handled here, not as content fields.
+    place. Must run BEFORE substitute_content(), since {{COURSE_NAME}},
+    {{COURSE_ID}} and {{AGENT_NUMBER}} are all handled here, not as content
+    fields.
     """
     llm_provider = env.get("LLM_PROVIDER", "anthropic")
     embed_provider = env.get("EMBEDDING_PROVIDER", "openai")
@@ -681,6 +688,7 @@ def auto_fill_from_env(
     embed_map = EMBEDDING_PROVIDER_MAP.get(embed_provider, EMBEDDING_PROVIDER_MAP["openai"])
 
     course_name = env.get("COURSE_NAME", "")
+    course_id = env.get("COURSE_ID", "")
     weaviate_collection = env.get("WEAVIATE_COLLECTION_NAME", "")
     embedding_model = env.get("EMBEDDING_MODEL", "")
     agent_number = str(slot) if slot is not None else ""
@@ -691,6 +699,8 @@ def auto_fill_from_env(
                 return course_name
             if m.group(1) == "AGENT_NUMBER":
                 return agent_number
+            if m.group(1) == "COURSE_ID":
+                return course_id
             return m.group(0)
 
         return PLACEHOLDER_RE.sub(sub, text)
