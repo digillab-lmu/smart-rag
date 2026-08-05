@@ -409,6 +409,13 @@ ask_profiles() {
 
     CFG_COMPOSE_PROFILES="$profiles"
     dim "Compose profiles: $profiles"
+
+    # Now that the profiles are known, the RAM requirement is a concrete
+    # number rather than a range — so this is the first point where the
+    # question can actually be put. Declining returns 1, which the wizard
+    # treats as "go back", letting the operator pick a lighter profile set
+    # instead of being dropped out of the installer.
+    confirm_memory_for_profiles "$profiles" || return 1
 }
 
 
