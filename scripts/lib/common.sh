@@ -51,66 +51,113 @@ readonly EXIT_UNVERIFIED=11
 # Idempotent: an already-installed, already-joined node is left alone, so
 # stepping back and forth in the wizard costs nothing.
 #
-# Echoes THIS machine's MagicDNS name, or nothing.
+# ─── Tailscale: reading the node's real state ────────────────────────────────
+# Everything below reads `tailscale status --json`, whose fields are defined
+# in tailscale/tailscale, ipn/ipnstate/ipnstate.go:
 #
-# Reads Self.DNSName explicitly. The first version grepped the whole JSON for
-# "DNSName" and took the first hit — but `tailscale status --json` lists every
-# peer as well, so on a tailnet with other machines that would have returned
-# somebody else's name, and the installation would have published its URLs
-# under a hostname belonging to a different device.
-tailscale_magicdns_name() {
-    local json; json="$(tailscale status --json 2>/dev/null)" || return 0
-    [[ -n "$json" ]] || return 0
-    local name
+#   Self.DNSName                     the FQDN, WITH a trailing dot
+#   CurrentTailnet.MagicDNSEnabled   whether the tailnet has MagicDNS on
+#   CertDomains                      "the set of DNS names for which the
+#                                     control plane server will assist with
+#                                     provisioning TLS"
+#
+# Those distinctions matter. An installer that only looks at Self.DNSName
+# cannot tell "MagicDNS is switched off" from "the name has not arrived
+# yet" — and it arrives with the netmap, moments AFTER `tailscale up`
+# returns. Reported from a real install: the first run said MagicDNS was
+# disabled when it was not, and the second run minutes later worked without
+# anything being changed.
+_ts_status_json() { tailscale status --json 2>/dev/null; }
+
+_ts_json_field() {   # $1 = jq path, $2 = json
     if command -v jq >/dev/null 2>&1; then
-        name="$(jq -r '.Self.DNSName // empty' <<<"$json" 2>/dev/null)"
-    else
-        # Fallback: cut the JSON down to the Self object first, so the match
-        # cannot come from a peer.
+        jq -r "$1 // empty" <<<"$2" 2>/dev/null
+    fi
+}
+
+tailscale_backend_state() {
+    local json; json="$(_ts_status_json)"
+    [[ -n "$json" ]] || return 0
+    local v; v="$(_ts_json_field '.BackendState' "$json")"
+    [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
+    grep -o '"BackendState":"[^"]*"' <<<"$json" | head -1 | cut -d'"' -f4
+}
+
+# THIS machine's name — never a peer's. The first version grepped the whole
+# JSON for "DNSName" and took the first hit, but that JSON lists every peer
+# too: on a tailnet with other machines it would have published this
+# installation's URLs under somebody else's hostname.
+tailscale_magicdns_name() {
+    local json; json="$(_ts_status_json)"
+    [[ -n "$json" ]] || return 0
+    local name; name="$(_ts_json_field '.Self.DNSName' "$json")"
+    if [[ -z "$name" ]] && ! command -v jq >/dev/null 2>&1; then
         name="$(sed -n 's/.*"Self":{\([^}]*\)}.*/\1/p' <<<"$json" \
                 | grep -o '"DNSName":"[^"]*"' | head -1 | cut -d'"' -f4)"
     fi
     printf '%s' "${name%.}"
 }
 
-tailscale_backend_state() {
-    local json; json="$(tailscale status --json 2>/dev/null)" || return 0
+# Is MagicDNS enabled for the TAILNET? Distinct from "does this node have a
+# name yet". Echoes yes | no | unknown.
+tailscale_magicdns_enabled() {
+    local json; json="$(_ts_status_json)"
+    [[ -n "$json" ]] || { echo unknown; return 0; }
+    if ! command -v jq >/dev/null 2>&1; then
+        grep -q '"MagicDNSEnabled":true' <<<"$json" && echo yes || echo unknown
+        return 0
+    fi
+    # NOT `// "null"`: jq's alternative operator fires on false as well as
+    # null, so a genuinely disabled MagicDNS read as "unknown" — and the
+    # caller then waited 30s for a name that was never coming, three times
+    # over. Test the value explicitly instead.
+    jq -r 'if .CurrentTailnet.MagicDNSEnabled == true then "yes"
+           elif .CurrentTailnet.MagicDNSEnabled == false then "no"
+           else "unknown" end' <<<"$json" 2>/dev/null || echo unknown
+}
+
+# Will the control plane issue certificates for this tailnet? Read from
+# CertDomains rather than by calling `tailscale cert`: that command does not
+# test anything, it PROVISIONS a certificate, and Let's Encrypt rate limits
+# apply — repeating it inside a retry loop is a good way to be locked out for
+# hours.
+tailscale_https_ready() {
+    local json; json="$(_ts_status_json)"
+    [[ -n "$json" ]] || return 1
     if command -v jq >/dev/null 2>&1; then
-        jq -r '.BackendState // empty' <<<"$json" 2>/dev/null
+        [[ "$(jq -r '(.CertDomains // []) | length' <<<"$json" 2>/dev/null)" -gt 0 ]]
     else
-        grep -o '"BackendState":"[^"]*"' <<<"$json" | head -1 | cut -d'"' -f4
+        grep -q '"CertDomains":\[[^]]' <<<"$json"
     fi
 }
 
-# Whether a certificate can be issued — which is the only honest test of
-# "HTTPS is enabled for this tailnet". The admin-console toggle is not
-# readable from here, so ask for the thing that depends on it.
-tailscale_https_ready() {
-    local name="$1"
-    [[ -n "$name" ]] || return 1
-    tailscale cert "$name" >/dev/null 2>&1
+# Waits for the netmap to bring this node's name. Only called when MagicDNS
+# is known to be enabled, so this is genuinely "not yet", not "never".
+tailscale_await_name() {   # $1 = seconds
+    local deadline=$(( SECONDS + ${1:-30} )) name
+    while (( SECONDS < deadline )); do
+        name="$(tailscale_magicdns_name)"
+        [[ -n "$name" ]] && { printf '%s' "$name"; return 0; }
+        sleep 2
+    done
+    return 1
 }
 
 TAILSCALE_ADMIN_DNS_URL="https://login.tailscale.com/admin/dns"
 
 # Install, join, and make sure the two tailnet settings this deployment
-# depends on are actually on — walking the operator through them rather than
-# failing back to the menu with a sentence about what they should have done.
+# depends on are on — walking the operator through them rather than failing
+# back to the menu with a sentence about what they should have done. Both
+# live in the admin console and cannot be set from here, so this is a
+# wait-and-confirm, the same shape as the n8n owner-account step.
 #
-# Both settings live in the admin console and cannot be changed from here, so
-# this is a wait-and-confirm, the same shape as the n8n owner-account step:
-# say exactly what to click, wait, re-check, and say what is still missing.
+# Bounded at three attempts: `confirm` returns its default on an empty read,
+# and an empty read is what EOF looks like.
 #
-# Bounded at three attempts: `confirm` falls back to its default on an empty
-# read, and an empty read is what happens at EOF, so an unbounded loop would
-# spin forever on a non-interactive stdin.
-#
-# Echoes the MagicDNS name on success; returns 1 if it could not be reached.
+# Echoes the MagicDNS name on success; returns 1 otherwise.
 tailscale_ensure_up() {
     if ! command -v tailscale >/dev/null 2>&1; then
         info "$(t ts_installing)" >&2
-        # Tailscale's official installer resolves the distribution itself,
-        # which matters on a release too new to have its own repo path.
         if ! curl -fsSL https://tailscale.com/install.sh | sh >&2; then
             err "$(t ts_install_failed)" >&2
             return 1
@@ -121,8 +168,6 @@ tailscale_ensure_up() {
     if [[ "$(tailscale_backend_state)" != "Running" ]]; then
         info "$(t ts_up_intro)" >&2
         echo >&2
-        # Streams so the login URL appears as Tailscale prints it; `up`
-        # blocks until the browser approval happens.
         if ! tailscale up --accept-dns=false >&2; then
             err "$(t ts_up_failed)" >&2
             return 1
@@ -133,15 +178,23 @@ tailscale_ensure_up() {
     fi
 
     local name attempts=0
-    name="$(tailscale_magicdns_name)"
-
     while (( attempts < 3 )); do
+        name="$(tailscale_magicdns_name)"
+
+        # No name yet, but the tailnet says MagicDNS is on: it is still
+        # propagating. Waiting is right; telling the operator to change a
+        # setting that is already correct is not.
+        if [[ -z "$name" && "$(tailscale_magicdns_enabled)" != "no" ]]; then
+            info "$(t ts_awaiting_name)" >&2
+            name="$(tailscale_await_name 30 || true)"
+        fi
+
         if [[ -z "$name" ]]; then
             echo >&2
             warn "$(t ts_magicdns_missing)" >&2
             dim "$(t ts_admin_open "$TAILSCALE_ADMIN_DNS_URL")" >&2
             dim "$(t ts_magicdns_howto)" >&2
-        elif ! tailscale_https_ready "$name"; then
+        elif ! tailscale_https_ready; then
             echo >&2
             ok "$(t ts_hostname "$name")" >&2
             warn "$(t ts_https_missing)" >&2
@@ -155,7 +208,6 @@ tailscale_ensure_up() {
         attempts=$(( attempts + 1 ))
         echo >&2
         confirm ts_settings_done "y" >&2 || { err "$(t ts_aborted)" >&2; return 1; }
-        name="$(tailscale_magicdns_name)"
     done
 
     err "$(t ts_settings_still_missing)" >&2
