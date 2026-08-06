@@ -128,7 +128,8 @@ action_status() {
     header "$(t admin_status_title)"
     local svc status container_status
     while IFS= read -r svc; do
-        status="$(docker inspect --format='{{.State.Health.Status}}' "$svc" 2>/dev/null || echo "")"
+        status="$(container_health "$svc")"
+        [[ "$status" == none || "$status" == absent ]] && status=""
         if [[ -n "$status" ]]; then
             case "$status" in
                 healthy) ok "$svc: $status" ;;
