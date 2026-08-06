@@ -264,12 +264,24 @@ def dashboard():
     # in Flowise, so they simply aren't in the map and render as not public.
     public_ids: set[str] = set()
     client = _flowise_client()
+    # "Connected" used to mean "a key is stored in .env" — which stays true
+    # after the key is deleted in Flowise, after its permissions are reduced,
+    # and while Flowise is down. The banner then reassures the operator right
+    # up to the moment an import fails for reasons the banner just denied.
+    #
+    # The call below already tells us the truth, so it costs nothing extra to
+    # use it: if listing chatflows works, the key is currently valid and
+    # carries at least chatflows:view. What it cannot prove are the create
+    # permissions — those show first at import, which is why the import path
+    # reports permission errors verbatim rather than as "connection failed".
+    flowise_live = False
     if client is not None:
         try:
             public_ids = {
                 cf["id"] for cf in client.list_chatflows()
                 if cf.get("isPublic") and cf.get("id")
             }
+            flowise_live = True
         except FlowiseError as exc:
             # The dashboard is the page an operator lands on; a Flowise
             # outage must not replace it with an error.
@@ -279,7 +291,11 @@ def dashboard():
         "dashboard.html",
         slots=slots,
         archetypes=agent_templates.archetypes_for(current_language()),
-        flowise_configured=bool(env.get("FLOWISE_API_KEY")),
+        flowise_configured=flowise_live,
+        # Distinguishes "never set up" from "set up, but not working now" —
+        # the same banner for both would send someone to paste a new key when
+        # the real problem is that Flowise is down.
+        flowise_key_stored=bool(env.get("FLOWISE_API_KEY")),
         public_ids=public_ids,
         public_urls={
             num: _public_chat_url(data.get("chatflow_id") or "", env)

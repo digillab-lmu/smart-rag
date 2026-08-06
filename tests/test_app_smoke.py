@@ -441,6 +441,48 @@ check("lookup while logged out redirects", client.post("/upload/lookup", json={"
       follow_redirects=False), 302)
 client.post("/login", data={"username": "admin", "password": "a-strong-test-password"})
 
+# 39. "Connected" must mean "working now", not "a key is stored"
+# ---------------------------------------------------------------------------
+# The dashboard used to decide this from the presence of FLOWISE_API_KEY in
+# .env, which stays true after the key is deleted in Flowise, after its
+# permissions are cut, and while Flowise is down. The banner then reassures
+# the operator right up to the moment an import fails for the very reason it
+# denied. The dashboard already lists chatflows to find published agents, so
+# whether that call succeeds is the honest answer and costs nothing extra.
+import env_file as _env_file  # noqa: E402
+from flowise_client import FlowiseError as _FlowiseError  # noqa: E402
+
+_env_file.set_env_var("FLOWISE_API_KEY", "stored-but-stale")
+
+class _RejectingClient:
+    def list_chatflows(self):
+        raise _FlowiseError("HTTP 401: Unauthorized")
+
+_real_client_factory = flask_app_module._flowise_client
+flask_app_module._flowise_client = lambda: _RejectingClient()
+check("stored-but-rejected key is not shown as connected", client.get("/"), 200,
+      contains=["not accepting it right now"],
+      not_contains=["isn't connected yet"])
+
+class _WorkingClient:
+    def list_chatflows(self):
+        return []
+
+flask_app_module._flowise_client = lambda: _WorkingClient()
+check("a working key shows no warning at all", client.get("/"), 200,
+      not_contains=["not accepting it right now", "isn't connected yet"])
+
+# No key at all is a different problem with a different fix, and must not be
+# reported as a broken connection.
+flask_app_module._flowise_client = lambda: None
+_env_file.set_env_var("FLOWISE_API_KEY", "")
+check("no key at all still says 'not connected yet'", client.get("/"), 200,
+      contains=["isn't connected yet"],
+      not_contains=["not accepting it right now"])
+
+flask_app_module._flowise_client = _real_client_factory
+
+
 if failures:
     print("FAILURES:")
     for f in failures:
@@ -454,4 +496,6 @@ print("All app.py smoke tests passed: setup, login/logout, all 10 slots, auto-fi
       "unconfigured-slot/bad-extension/bad-year validation, happy-path arg wiring, title "
       "fallback, N8nError surfacing, login requirement), /upload/lookup route (missing "
       "identifier, DOI vs ISBN routing, PDF-scan paths for both identifier kinds, "
-      "not-found vs service-error status codes, login requirement).")
+      "not-found vs service-error status codes, login requirement), and the dashboard's "
+      "Flowise state, which distinguishes no-key, stored-but-rejected and working "
+      "rather than trusting the mere presence of a key in .env.")

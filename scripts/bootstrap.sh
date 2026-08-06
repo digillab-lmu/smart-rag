@@ -303,8 +303,14 @@ _print_next_steps() {
     printf "     ${BOLD}%s${RESET}\n\n"               "$content"
     printf "     %s\n\n"                              "$(t next_content_why)"
 
+    # Repeated here, in bold, because this is the screen an operator acts
+    # from: steps 2 and 3 send them to URLs that simply will not open unless
+    # their own machine is in the tailnet, and the resulting TLS error names
+    # nothing that would point them at the cause.
     if [[ "${DEPLOYMENT_MODE:-domain}" == "tailscale" ]]; then
-        printf "  %s\n\n" "$(t next_tailscale_note)"
+        printf "  ${BOLD}%s${RESET}\n"   "$(t ts_client_title)"
+        printf "  %s\n"                  "$(t next_tailscale_note)"
+        printf "  %s\n\n"                "$(t ts_client_install)"
     fi
 }
 
