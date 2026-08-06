@@ -63,19 +63,7 @@ require_command docker
 header "$(t phase_schemas)"
 
 # ─── Helper: is a container running+healthy? ──────────────────────────────────
-_container_ready() {
-    local container="$1"
-    local status
-    status="$(docker inspect --format='{{.State.Health.Status}}' "$container" 2>/dev/null || echo "missing")"
-    case "$status" in
-        healthy) return 0 ;;
-        missing)
-            # No healthcheck defined — just check it's running
-            docker inspect --format='{{.State.Status}}' "$container" 2>/dev/null | grep -qx running
-            ;;
-        *) return 1 ;;
-    esac
-}
+_container_ready() { container_ready "$1"; }
 
 # ─── Weaviate ─────────────────────────────────────────────────────────────────
 _container_ready smartrag-weaviate || die "$(t schema_container_not_healthy "smartrag-weaviate")"

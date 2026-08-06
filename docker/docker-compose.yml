@@ -690,6 +690,20 @@ services:
     ports:
       - "127.0.0.1:${LANGFUSE_PORT}:${LANGFUSE_PORT}"
     networks: [smart-rag-network]
+    # The Langfuse image ships no HEALTHCHECK of its own, so without this the
+    # installer waits out its whole timeout for a status that never arrives.
+    # node is guaranteed present (it is what runs the server) and has a global
+    # fetch, so this needs neither curl nor wget in the image. Reading PORT
+    # from the environment rather than interpolating ${LANGFUSE_PORT} keeps
+    # the check correct even if compose interpolation is bypassed.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+process.env.PORT+'/api/public/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      # Langfuse applies its ClickHouse and Postgres migrations on first boot;
+      # on a machine this size that is minutes, not seconds.
+      start_period: 180s
     depends_on:
       smartrag-postgres:
         condition: service_healthy

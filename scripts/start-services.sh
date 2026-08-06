@@ -114,13 +114,13 @@ wait_for_healthy() {
     local elapsed=0
     while (( elapsed < timeout )); do
         local status
-        status="$(docker inspect --format='{{.State.Health.Status}}' "$container" 2>/dev/null || echo "missing")"
+        status="$(container_health "$container")"
         case "$status" in
             healthy)
                 ok "$(t svc_healthy "$container")"
                 return 0
                 ;;
-            starting|"")
+            starting)
                 # still booting — keep waiting
                 ;;
             unhealthy)
@@ -128,12 +128,18 @@ wait_for_healthy() {
                 docker logs --tail 20 "$container" 2>&1 | sed 's/^/    /'
                 return 1
                 ;;
-            missing)
-                # Container has no healthcheck — just verify it's running
+            none)
+                # No healthcheck defined (the image ships none and compose adds
+                # none) — running is the strongest statement we can make, and
+                # saying so beats waiting out a timeout for a status that can
+                # never arrive.
                 if docker inspect --format='{{.State.Status}}' "$container" 2>/dev/null | grep -qx running; then
-                    ok "$(t svc_healthy "$container") (no healthcheck — running)"
+                    ok "$(t svc_running_no_healthcheck "$container")"
                     return 0
                 fi
+                ;;
+            absent)
+                # Not created yet — compose may still be working through it.
                 ;;
         esac
         sleep 5

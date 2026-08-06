@@ -559,6 +559,41 @@ require_command() {
     command -v "$cmd" >/dev/null 2>&1 || die "Required command not found: $cmd"
 }
 
+# Reports a container's health as exactly one of:
+#   healthy | starting | unhealthy | none | absent
+#
+# The naive `--format='{{.State.Health.Status}}'` cannot express "no
+# healthcheck": on a container without one, Go's template engine fails with
+# "map has no entry for key Health", writes nothing usable to stdout and
+# exits non-zero. A caller doing `$(… || echo missing)` therefore cannot tell
+# that case apart from "still starting", and waits out its whole timeout for
+# a status the container will never report. That is not hypothetical — it
+# cost a full 180s timeout on smartrag-langfuse-web, whose image ships no
+# healthcheck, and the unrelated log lines printed alongside the timeout sent
+# the diagnosis off in the wrong direction twice.
+#
+# Guarding with {{if .State.Health}} makes the template total, so the exit
+# code again means only what it should: whether the container exists.
+container_health() {
+    local container="$1" status
+    status="$(docker inspect \
+        --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' \
+        "$container" 2>/dev/null)" || { echo "absent"; return 0; }
+    echo "${status:-none}"
+}
+
+# True if a container is usable: healthy, or running when it defines no
+# healthcheck at all. Anything else — including "absent" — is false.
+container_ready() {
+    local container="$1"
+    case "$(container_health "$container")" in
+        healthy) return 0 ;;
+        none)    docker inspect --format='{{.State.Status}}' "$container" 2>/dev/null \
+                     | grep -qx running ;;
+        *)       return 1 ;;
+    esac
+}
+
 # Safely patches a single KEY="VALUE" line in-place inside an .env file,
 # preserving every other line's position — some values interpolate earlier
 # ones (e.g. NEO4J_AUTH="neo4j/${NEO4J_PASSWORD}"), so moving lines around

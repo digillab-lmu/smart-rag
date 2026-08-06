@@ -76,18 +76,7 @@ require_command curl
 header "$(t phase_n8n_workflows)"
 
 # ─── Preconditions ───────────────────────────────────────────────────────────
-_container_ready() {
-    local container="$1"
-    local status
-    status="$(docker inspect --format='{{.State.Health.Status}}' "$container" 2>/dev/null || echo "missing")"
-    case "$status" in
-        healthy) return 0 ;;
-        missing)
-            docker inspect --format='{{.State.Status}}' "$container" 2>/dev/null | grep -qx running
-            ;;
-        *) return 1 ;;
-    esac
-}
+_container_ready() { container_ready "$1"; }
 
 _container_ready smartrag-n8n || die "$(t schema_container_not_healthy "smartrag-n8n")"
 
