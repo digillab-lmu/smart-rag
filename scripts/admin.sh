@@ -263,6 +263,8 @@ _default_for_env_key() {
         MINIO_BROWSER_REDIRECT_URL) echo "https://$(subdomain_host minio     "$DOMAIN" "$prefix")" ;;
         FLOWISE_PUBLIC_URL)         echo "https://$(subdomain_host smart-rag "$DOMAIN" "$prefix")" ;;
         MINIO_NOTIFY_WEBHOOK_ENDPOINT) echo "http://smartrag-n8n:5678/webhook/minio-notify" ;;
+        # Langfuse reads REDIS_AUTH, not REDIS_PASSWORD.
+        REDIS_AUTH)                 echo "${REDIS_PASSWORD:-}" ;;
         *)
             # Unknown new key: fall back to whatever .env.example carries,
             # and let the caller flag it for review rather than pretending
