@@ -72,6 +72,8 @@ write_env_file() {
     fi
 
     # Compose profiles
+    # Langfuse wants REDIS_AUTH; only Flowise gets it from compose.
+    REPL[REDIS_AUTH]="$SECRET_REDIS_PASSWORD"
     REPL[COMPOSE_PROFILES]="$CFG_COMPOSE_PROFILES"
 
     # LLM
