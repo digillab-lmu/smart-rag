@@ -1,6 +1,11 @@
-# 🚧 UNDER CONSTRUCTION - USE AT YOUR OWN RISK 🚧
-
 # SMART RAG
+
+> **Status: pre-1.0.** The infrastructure deploys, and the regression suite
+> covers every stage of the pipeline in isolation. What has *not* happened yet
+> is one document-ingest run end to end on a live server — "upload a PDF and
+> have an agent answer from it". Until that is demonstrated, treat this as a
+> system to evaluate and test with, not one to put a course on. See the
+> [CHANGELOG](CHANGELOG.md) for what each release actually changed.
 
 **Shared Memory Agent-Based Retrieval for Teaching**
 
@@ -9,8 +14,8 @@ Built for university and professional-education contexts where a single subject
 benefits from several specialized AI agents — each covering one topic — with
 persistent per-student memory, hybrid retrieval, and optional LMS integration.
 
-> Developed by **Benjamin Götzinger** at [DigiLLab, LMU München](https://edpsych.psy.lmu.de/) —
-> Chair of Empirical Educational Research and Educational Psychology
+> Developed by **Benjamin Götzinger** at the [DigiLLab of LMU München](https://www.lmu.de/digillab/de/) —
+> [Chair of Empirical Education and Educational Psychology](https://www.psy.lmu.de/ffp/)
 > (Prof. Frank Fischer) — and generalized for community use.
 
 ---
@@ -25,7 +30,10 @@ persistent per-student memory, hybrid retrieval, and optional LMS integration.
   by scheduled n8n pipelines.
 - **LLM observability** (Langfuse + ClickHouse, optional).
 - **LMS integration** via LTI 1.3 (Moodle, ILIAS, Canvas — optional).
-- **One-command deployment** to Ubuntu 24.04 LTS via interactive wizard.
+- **Course scoping** — one installation can host several courses; every
+  retrieved object carries a `course_id` and every agent filters on it.
+- **One-command deployment** to Ubuntu LTS via an interactive wizard —
+  with a public domain, or with no domain at all via Tailscale.
 
 ---
 
@@ -67,10 +75,28 @@ the failures that have actually occurred, by the message they produce.
 
 ## Quick start
 
-**Requirements**: Ubuntu 24.04 LTS, Docker, Docker Compose v2, a public domain
-with DNS pointing to your server, ports 80/443 reachable. Full checklist
-(including API keys and hardware sizing): [`docs/requirements.md`](docs/requirements.md).
-The wizard also shows this checklist interactively before it asks you anything.
+**Requirements**: Ubuntu 24.04 LTS (the release everything is tested against
+— another even-year LTS is accepted after a warning), Docker, Docker Compose
+v2, and an LLM plus embedding API key. Full checklist, including hardware
+sizing: [`docs/requirements.md`](docs/requirements.md). The wizard shows this
+checklist interactively before it asks you anything.
+
+**Two deployment modes**, chosen as the wizard's first question:
+
+| | Domain mode | Tailscale mode |
+|---|---|---|
+| Needs | a public domain, DNS you control, ports 80/443 reachable | a [Tailscale](https://tailscale.com/) account — nothing else |
+| Certificates | Let's Encrypt via nginx + certbot | issued by Tailscale (DNS-01, no inbound port) |
+| Chat reachable by | anyone, at your domain | anyone, via Tailscale Funnel |
+| Admin interfaces | public subdomains behind passwords | inside your tailnet only |
+| LTI / LMS | supported | **not supported** — an LMS needs stable institutional URLs |
+| Intended for | production | test and evaluation systems |
+
+Tailscale mode needs no port forwarding and no DNS at all, which makes it the
+short path to a working system on a spare machine behind a home router. Its
+one non-obvious requirement: **the computer you administer from must also run
+Tailscale, signed into the same account** — otherwise every admin URL fails
+with a TLS error that looks like a firewall problem and isn't.
 
 ```bash
 # On the server — clone into /srv/smart-rag (recommended)
@@ -80,32 +106,47 @@ cd /srv/smart-rag
 
 # Phase 1 — interactive wizard (≈ 5 min)
 sudo bash scripts/bootstrap.sh
+#   → asks first: domain mode or Tailscale mode
 #   → answers: domain, LLM provider, embedding model, etc.
 #   → generates: .env, credentials.txt, nginx config, Weaviate schema
 
-# Set DNS A-record(s) for *.your-domain.example
+# Domain mode only: set DNS A-record(s) for *.your-domain.example
 #   (one wildcard *.your-domain.example, OR individual records per subdomain)
+#   Tailscale mode: nothing to do — the wizard already joined the tailnet.
 
 # Phase 2 — deploy (≈ 10 min)
 sudo bash scripts/bootstrap.sh --continue
-#   → installs nginx + certbot (if missing)
-#   → obtains Let's Encrypt SAN certificate
+#   → domain mode:    nginx + certbot, Let's Encrypt SAN certificate
+#     Tailscale mode: publishes each service on its own tailnet port
 #   → starts Docker stack and waits for health
 #   → deploys the Weaviate + Neo4j schema, generates LTI keys (if enabled)
+#   → walks you through the three browser steps and verifies each one
 ```
 
-When `--continue` finishes, your stack is running at:
+When `--continue` finishes, your stack is running — in **domain mode** at:
 - `https://smart-rag.your-domain.example` — Flowise (chat interface)
+- `https://content.your-domain.example` — Content Admin GUI
 - `https://n8n.your-domain.example` — n8n (automation)
 - `https://minio.your-domain.example` — MinIO console
 - `https://langfuse.your-domain.example` — Langfuse (if observability profile)
 - `https://lti.your-domain.example` — LTI middleware (if lti profile)
 
+In **Tailscale mode** everything sits on one MagicDNS name, separated by port,
+because a Tailscale certificate covers exactly one name and has no wildcards:
+`https://<machine>.<tailnet>.ts.net` for the chat (public), `:8443` Content
+Admin, `:8444` n8n, `:8445` Langfuse, `:8446` MinIO — all four tailnet-only.
+
+If another service already occupies a port or subdomain on the host, the
+wizard resolves the conflict itself and the real URLs end up in `.env`; the
+installer prints the ones this deployment actually answers on.
+
 Initial admin credentials are in `credentials.txt` (chmod 600) — **except
 Flowise and n8n**, which prompt you to create their own admin account on
 first visit instead (their `FLOWISE_USERNAME`/`PASSWORD` env vars are
-ignored by the version this project pins). Full first-login walkthrough
-for every service: [`docs/operations-guide.md`](docs/operations-guide.md).
+ignored by the version this project pins). The installer does not end there:
+it walks you through those accounts plus the Flowise API key, then verifies
+each one before declaring the system ready. Full first-login walkthrough for
+every service: [`docs/operations-guide.md`](docs/operations-guide.md).
 
 **Day-to-day admin** — `sudo bash scripts/admin.sh` (or, once installed,
 just `sudo smartrag`) opens a raspi-config-style menu for the operations
@@ -143,10 +184,21 @@ first to see exactly what it would do.
 
 ---
 
-## Wizard features
+## Installation wizard features
 
 - **Bilingual** — English or German (auto-detected from `$LANG`, override
   with `--lang en|de`).
+- **Deployment mode as the first question** — public domain, or Tailscale for
+  a machine with no domain and no reachable ports. In Tailscale mode the
+  wizard joins the tailnet with you, waits for MagicDNS and HTTPS to be
+  enabled (naming which of the two is missing), and derives every URL in
+  `.env` from the resulting MagicDNS name.
+- **Ends by verifying, not by instructing** — three steps happen in a browser
+  and cannot be scripted: the Flowise account and its API key, the n8n owner
+  account, the Content Admin account. The installer stays open, checks each
+  against the running services, stores the Flowise key only after Flowise has
+  accepted it, and announces readiness only once everything passed. Stopping
+  early says exactly what is left unproven.
 - **Prerequisites checklist** — shown before any question is asked, so you
   find out you're missing an API key or DNS control up front, not halfway
   through. Declining exits cleanly with a pointer to
@@ -209,6 +261,9 @@ once deployed) is where course-specific content gets filled in:
   for what's genuinely new.
 - Uploading course documents for retrieval, with the bibliographic details
   read out of the PDF or looked up from a DOI/ISBN, and suggested keywords.
+- A document list per agent with deletion, so a mistaken upload, a superseded
+  edition, or the leftovers of a slot reused for a different topic can be
+  removed from the index — chunks and all.
 - A "System status" page that checks, live, what still has to be set up
   (API keys, Flowise connection, agents, the n8n ingest webhook, the
   conversion and search services) by asking each service at that moment.
@@ -220,9 +275,11 @@ once deployed) is where course-specific content gets filled in:
 
 First-time setup needs one manual step that can't be avoided: Flowise has no
 supported way to hand out an API key non-interactively (same limitation as
-n8n), so you create your Flowise admin account once, generate an API key
-under Settings → API Keys, and paste it into the content-admin GUI on its
-own first run.
+n8n). So you create the Flowise admin account once and generate an API key
+under Settings → API Keys — the installer tells you what to call it and which
+permissions to tick, then takes the key, checks it against Flowise and stores
+it, so nobody has to paste it into the GUI. The GUI's own Flowise page
+remains available for replacing the key later.
 
 Deliberately a *separate* app from `scripts/admin.sh`: infrastructure/root
 operations stay in the TUI (SSH-only, no network exposure); the content GUI
@@ -314,6 +371,7 @@ The most useful contributions right now:
   [Weaviate](https://weaviate.io/), [Neo4j](https://neo4j.com/),
   [Langfuse](https://langfuse.com/), and [MinIO](https://min.io/) teams.
 - Developed by [Benjamin Götzinger](https://www.psy.lmu.de/edu/persons/ag-fischer/goetzinger_benjamin/index.html)
-  at [DigiLLab, LMU München](https://edpsych.psy.lmu.de/) — Chair of
-  Empirical Educational Research and Educational Psychology (Prof. Frank Fischer).
+  at the [DigiLLab of LMU München](https://www.lmu.de/digillab/de/) —
+  [Chair of Empirical Education and Educational Psychology](https://www.psy.lmu.de/ffp/)
+  (Prof. Frank Fischer).
 - Pedagogical concept developed in collaboration with the DigiLLab team.
