@@ -594,6 +594,43 @@ container_ready() {
     esac
 }
 
+# Probes a Flowise API key against a real endpoint and echoes one of:
+#   ok | unauthorized | forbidden | unreachable
+# followed by a tab and a detail string for anything that is not ok.
+#
+# GET /chatflows is the cheapest request that actually exercises the key: it
+# is side-effect free, and it needs chatflows:view — the permission the
+# Content Admin cannot work without. A key that Flowise merely accepts but
+# that carries no permissions fails here too, which is the point. What this
+# cannot prove is the *create* permissions, because proving those means
+# creating something; the setup text names them, and an import would be the
+# first place a missing one shows.
+flowise_probe_key() {
+    local base="$1" key="$2" body code
+    body="$(curl -s -m 10 -o /dev/null -w '%{http_code}' \
+        -H "Authorization: Bearer ${key}" "${base}/api/v1/chatflows" 2>/dev/null)" || {
+        printf 'unreachable\t%s\n' "$base"; return 0
+    }
+    code="$body"
+    case "$code" in
+        200)     echo "ok" ;;
+        401)     printf 'unauthorized\tHTTP 401\n' ;;
+        403)     printf 'forbidden\tHTTP 403\n' ;;
+        000|"")  printf 'unreachable\t%s\n' "$base" ;;
+        *)       printf 'unreachable\tHTTP %s\n' "$code" ;;
+    esac
+}
+
+# True when a URL answers with any HTTP status at all — i.e. something is
+# listening and speaking HTTP there. Deliberately not "200": a login page
+# that redirects (302) or an app that 401s is still up, and "is it running"
+# is a different question from "are you logged in".
+http_answers() {
+    local url="$1" code
+    code="$(curl -s -m 10 -o /dev/null -w '%{http_code}' "$url" 2>/dev/null)" || return 1
+    [[ -n "$code" && "$code" != "000" ]]
+}
+
 # Safely patches a single KEY="VALUE" line in-place inside an .env file,
 # preserving every other line's position — some values interpolate earlier
 # ones (e.g. NEO4J_AUTH="neo4j/${NEO4J_PASSWORD}"), so moving lines around
