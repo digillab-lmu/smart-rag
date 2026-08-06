@@ -16,7 +16,10 @@ Before running `scripts/bootstrap.sh`, make sure you have:
 - At least 20 GB free disk space (40+ GB recommended once you start
   ingesting documents)
 
-**Network**
+**Network** — this section depends on which deployment mode you pick; the
+wizard asks that first.
+
+*Domain mode* (production, and the only mode that supports LTI):
 - A registered domain (any public TLD) with DNS control — you need to be
   able to create A/AAAA records. One wildcard record (`*.yourdomain.example`)
   or individual records per subdomain both work.
@@ -24,6 +27,19 @@ Before running `scripts/bootstrap.sh`, make sure you have:
   Let's Encrypt HTTP-01 challenge via certbot). No CDN/proxy (e.g.
   Cloudflare orange-cloud mode) in front of the server — it blocks the
   challenge. Plain DNS pointing straight at the server's IP is what works.
+
+*Tailscale mode* (test and evaluation systems) needs none of the above — no
+domain, no DNS records, no inbound ports, no port forwarding. Instead:
+- A [Tailscale](https://login.tailscale.com/start) account, with MagicDNS and
+  HTTPS enabled for the tailnet (admin console → DNS). The wizard walks you
+  through both if they are off.
+- Tailscale installed on the computer you administer from, signed into the
+  **same** account. Only the chat is public (via Funnel); every admin
+  interface answers inside the tailnet and nowhere else.
+- LTI does not work in this mode — an LMS integration needs stable,
+  institutionally approved URLs, not a `*.ts.net` name.
+
+Both modes:
 - Outbound HTTPS to your chosen LLM/embedding/reranker provider(s).
 
 **API keys**
@@ -35,8 +51,9 @@ Before running `scripts/bootstrap.sh`, make sure you have:
   it's the same provider.
 
 Everything above is checked by the wizard's prerequisites checklist and
-pre-flight phase, but DNS control and having a funded/valid API key can't be
-verified automatically — confirm these yourself before starting.
+pre-flight phase, but DNS control, tailnet membership on your own machine,
+and having a funded/valid API key can't be verified from the server —
+confirm these yourself before starting.
 
 ## Strongly recommended: a mail relay
 
