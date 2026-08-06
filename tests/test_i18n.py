@@ -57,6 +57,9 @@ IDENTICAL_OK = {
     # "Agent" and "Chunk" are the words German uses too, and the action
     # column has no header at all — an empty string in both languages.
     "docs_col_agent", "docs_col_chunks", "docs_col_action",
+    # "GitHub:" plus the repository URL — a label and an address, neither of
+    # which has a German form.
+    "footer_repo",
 }
 same = [
     k for k in i18n.MSG_EN
