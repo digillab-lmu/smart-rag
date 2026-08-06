@@ -94,11 +94,21 @@ check "skipped run still exits 0" $? "$(tail -2 <<<"$out")"
 # ─── 2. Everything fine ──────────────────────────────────────────────────────
 out="$(run_bootstrap 0 en; echo "RC=$BOOT_RC")"
 
-grep -q "Bootstrap complete" <<<"$out"
-check "clean run reports completion" $? "$(tail -5 <<<"$out")"
-
 grep -q "Setup INCOMPLETE" <<<"$out"
 check "clean run shows no incomplete block" $(( $? == 0 ? 1 : 0 )) "$(tail -5 <<<"$out")"
+
+# All phases ran, so the three manual browser steps must be spelled out.
+grep -q "Open Flowise" <<<"$out"
+check "clean run states the manual steps" $? "$(tail -5 <<<"$out")"
+
+# The new contract: phases finishing is not the same as a working system.
+# Nothing may claim readiness before the checks have actually passed — and
+# here they cannot, because stdin is closed and Flowise is not running.
+grep -q "System ready for use" <<<"$out"
+check "clean run does NOT claim readiness unverified" $(( $? == 0 ? 1 : 0 )) "$(tail -5 <<<"$out")"
+
+grep -q "NOT confirmed working" <<<"$out"
+check "clean run says plainly what is unproven" $? "$(tail -5 <<<"$out")"
 
 grep -q "RC=0" <<<"$out"
 check "clean run exits 0" $? ""
@@ -144,11 +154,13 @@ check "wizard names the n8n URL to open" $? ""
 (( $(grep -c "STUB deploy-n8n-workflows" <<<"$out") == 2 ))
 check "wizard retries the import after confirmation" $? "$(grep -c 'STUB deploy' <<<"$out") call(s)"
 
-grep -q "Bootstrap complete" <<<"$out"
-check "finishing the browser step yields a complete install" $? "$(tail -8 <<<"$out")"
-
 grep -q "Setup INCOMPLETE" <<<"$out"
 check "no incomplete block once it succeeded" $(( $? == 0 ? 1 : 0 )) "$(tail -8 <<<"$out")"
+
+# Same contract as the clean run: the import succeeding says nothing about
+# whether the browser steps were done, so readiness still has to be earned.
+grep -q "Open Flowise" <<<"$out"
+check "successful import still states the manual steps" $? "$(tail -8 <<<"$out")"
 
 # Answering yes too early: n8n still has no owner. Must say so and ask
 # again rather than silently accepting a still-broken state.

@@ -210,6 +210,7 @@ run_deployment_phases() {
         echo "  $(t orch_n8n_unverified)"
         echo
         _print_next_steps
+        _finish_with_verification
         return 0
     fi
 
@@ -225,11 +226,32 @@ run_deployment_phases() {
         echo "  $(t orch_incomplete_then)"
         echo
         _print_next_steps
+        _finish_with_verification
         return 0
     fi
 
-    header "$(t orch_complete)"
+    # Deliberately no "Complete" banner yet — the deployment is not usable
+    # until the three manual steps are done, and a green banner above unread
+    # instructions is exactly how they get skipped.
     _print_next_steps
+    _finish_with_verification
+}
+
+# Runs the verification gate and closes with the message the outcome earns:
+# a genuine hand-over to the Content Admin only when everything was proven.
+_finish_with_verification() {
+    if _verify_admin_steps; then
+        echo
+        header "$(t ready_title)"
+        printf "  %s\n\n" "$(t ready_intro)"
+        printf "  ${BOLD}%s${RESET}\n"  "$(t ready_handover_title)"
+        printf "  %s\n\n"               "$(t ready_handover)"
+        printf "  ${BOLD}%s${RESET}\n"  "$(t ready_next_title)"
+        printf "  %s\n"                 "$(t ready_next_1)"
+        printf "  %s\n"                 "$(t ready_next_2)"
+        printf "  %s\n"                 "$(t ready_next_3)"
+    fi
+    _print_reference
 }
 
 # What the operator has to do now, with the URLs they actually need.
@@ -255,25 +277,170 @@ _print_next_steps() {
 
     echo
     printf "${BOLD}%s${RESET}\n\n" "$(t next_title)"
+    printf "  %s\n\n" "$(t next_intro)"
 
-    printf "  ${BOLD}1.${RESET} %s\n" "$(t next_flowise)"
-    printf "     %s\n"                "$flowise"
-    printf "     ${DIM}%s${RESET}\n\n" "$(t next_flowise_why)"
+    # Nothing in these three steps is optional, so nothing in them is dimmed.
+    # Dim text reads as a footnote — an aside the eye is entitled to skip —
+    # and an operator who skips any of this ends up with an installation that
+    # looks finished and answers 404 on the first upload. Only genuinely
+    # supplementary remarks stay dim.
+    printf "  ${BOLD}1.${RESET} ${BOLD}%s${RESET}\n"  "$(t next_flowise)"
+    printf "     ${BOLD}%s${RESET}\n\n"               "$flowise"
+    printf "     ${BOLD}1.1${RESET}  %s\n\n"          "$(t next_flowise_1)"
+    printf "     ${BOLD}1.2${RESET}  %s\n"            "$(t next_flowise_2)"
+    printf "          %s\n"                          "$(t next_flowise_2_name)"
+    printf "          %s\n"                          "$(t next_flowise_2_perms)"
+    printf "            • %s\n"                      "$(t next_flowise_perm_chatflows)"
+    printf "            • %s\n"                      "$(t next_flowise_perm_credentials)"
+    printf "            • %s\n"                      "$(t next_flowise_perm_variables)"
+    printf "          %s\n\n"                        "$(t next_flowise_2_view)"
 
-    printf "  ${BOLD}2.${RESET} %s\n" "$(t next_n8n)"
-    printf "     %s\n"                "$n8n_url"
-    printf "     ${DIM}%s${RESET}\n\n" "$(t next_n8n_why)"
+    printf "  ${BOLD}2.${RESET} ${BOLD}%s${RESET}\n"  "$(t next_n8n)"
+    printf "     ${BOLD}%s${RESET}\n\n"               "$n8n_url"
+    printf "     %s\n\n"                              "$(t next_n8n_why)"
 
-    printf "  ${BOLD}3.${RESET} %s\n" "$(t next_content)"
-    printf "     %s\n"                "$content"
-    printf "     ${DIM}%s${RESET}\n\n" "$(t next_content_why)"
+    printf "  ${BOLD}3.${RESET} ${BOLD}%s${RESET}\n"  "$(t next_content)"
+    printf "     ${BOLD}%s${RESET}\n\n"               "$content"
+    printf "     %s\n\n"                              "$(t next_content_why)"
 
-    printf "  %s\n"                 "$(t next_credentials "$REPO_ROOT/credentials.txt")"
-    printf "  %s\n"                 "$(t next_admin_tui)"
     if [[ "${DEPLOYMENT_MODE:-domain}" == "tailscale" ]]; then
-        echo
-        printf "  ${DIM}%s${RESET}\n" "$(t next_tailscale_note)"
+        printf "  %s\n\n" "$(t next_tailscale_note)"
     fi
+}
+
+# Where the passwords live and what the admin tool is for. Printed once, at
+# the very end, so it is the last thing on screen rather than buried above
+# the verification dialogue.
+_print_reference() {
+    echo
+    printf "${BOLD}%s${RESET}\n\n" "$(t ref_title)"
+    printf "  ${BOLD}%s${RESET}\n"   "$(t ref_credentials_title)"
+    printf "  %s\n"                  "$REPO_ROOT/credentials.txt"
+    printf "  %s\n\n"                "$(t ref_credentials_why)"
+    printf "  ${BOLD}%s${RESET}\n"   "$(t ref_admin_title)"
+    printf "  ${BOLD}sudo smartrag${RESET}\n"
+    printf "  %s\n"                  "$(t ref_admin_why)"
+    printf "  %s\n\n"                "$(t ref_admin_items)"
+    printf "  ${BOLD}%s${RESET}\n"   "$(t ref_docs_title)"
+    printf "  %s\n"                  "$(t ref_docs_why)"
+}
+
+# ─── Final gate: did the manual steps actually happen, and do they work? ──────
+#
+# Printing instructions and exiting is not the same as an install that works,
+# and the difference has cost real time: an operator reasonably reads a green
+# "Complete" banner as "nothing left to do". So the installer stays open and
+# checks.
+#
+# Each check probes the thing the next person actually depends on, not a
+# proxy for it. The Flowise one is the strongest: it asks for the key from
+# step 1.2, tries it against a real endpoint, and — when it works — writes it
+# into .env, so step 3 no longer has to ask the Content Admin to paste it.
+#
+# Verification is skippable. An operator who has to stop mid-way should not
+# be trapped in a loop, and a machine that is fine but temporarily
+# unreachable should not be declared broken. What is not offered is a silent
+# pass: skipping says plainly what is still unproven.
+_verify_admin_steps() {
+    local flowise_base="http://127.0.0.1:${FLOWISE_PORT:-3000}"
+    local n8n_base="http://127.0.0.1:${N8N_PORT:-5678}"
+    local content_base="http://127.0.0.1:${CONTENT_ADMIN_PORT:-3002}"
+
+    while true; do
+        echo
+        header "$(t verify_title)"
+        local all_ok=1
+
+        # ── 1. Flowise: account + API key + permissions, in one request ──────
+        set -a; source "$REPO_ROOT/.env"; set +a
+        local fkey="${FLOWISE_API_KEY:-}" probe state detail
+        if [[ -n "$fkey" ]]; then
+            probe="$(flowise_probe_key "$flowise_base" "$fkey")"
+            state="${probe%%$'\t'*}"; detail="${probe#*$'\t'}"
+            case "$state" in
+                ok)           ok   "$(t verify_flowise_ok)" ;;
+                unauthorized) err  "$(t verify_flowise_badkey)"; all_ok=0 ;;
+                forbidden)    err  "$(t verify_flowise_perms)"; all_ok=0 ;;
+                *)            err  "$(t verify_flowise_down "$detail")"; all_ok=0 ;;
+            esac
+        else
+            err "$(t verify_flowise_nokey)"
+            all_ok=0
+        fi
+
+        # ── 2. n8n: owner account exists and the ingest webhook is live ──────
+        case "$(n8n_webhook_state "$n8n_base")" in
+            registered)   ok  "$(t verify_n8n_ok)" ;;
+            unregistered) err "$(t verify_n8n_unregistered)"; all_ok=0 ;;
+            *)            err "$(t verify_n8n_down)"; all_ok=0 ;;
+        esac
+
+        # ── 3. Content Admin: answering at all ───────────────────────────────
+        if http_answers "$content_base"; then
+            ok "$(t verify_content_ok)"
+        else
+            err "$(t verify_content_down)"
+            all_ok=0
+        fi
+
+        if (( all_ok )); then
+            return 0
+        fi
+
+        # ── What now? ────────────────────────────────────────────────────────
+        echo
+        printf "  %s\n" "$(t verify_menu_intro)"
+        echo
+        printf "    ${BOLD}[1]${RESET}  %s\n" "$(t verify_menu_recheck)"
+        printf "    ${BOLD}[2]${RESET}  %s\n" "$(t verify_menu_paste)"
+        printf "    ${BOLD}[3]${RESET}  %s\n" "$(t verify_menu_later)"
+        echo
+        local choice
+        printf "  %s ${BOLD}[1]${RESET}: " "$(t enter_choice)"
+        # A failed read means EOF, not an empty answer: stdin is closed
+        # because this run is not interactive (piped, cron, CI). Defaulting to
+        # "check again" there would spin forever with nobody able to fix
+        # anything in between, so a closed stdin ends the loop the same way
+        # choosing [3] does.
+        if ! IFS= read -r choice; then
+            echo
+            warn "$(t verify_skipped)"
+            printf "  %s\n" "$(t verify_skipped_how)"
+            return 1
+        fi
+        case "${choice:-1}" in
+            2)
+                local newkey
+                printf "  %s: " "$(t verify_paste_prompt)"
+                IFS= read -r newkey
+                newkey="${newkey//[[:space:]]/}"
+                if [[ -z "$newkey" ]]; then
+                    warn "$(t verify_paste_empty)"
+                    continue
+                fi
+                probe="$(flowise_probe_key "$flowise_base" "$newkey")"
+                state="${probe%%$'\t'*}"; detail="${probe#*$'\t'}"
+                if [[ "$state" == "ok" ]]; then
+                    # Only a key that has been proven to work gets stored —
+                    # writing an unverified one just moves the failure to the
+                    # Content Admin, where it is harder to interpret.
+                    set_env_var "$REPO_ROOT/.env" FLOWISE_API_KEY "$newkey"
+                    ok "$(t verify_paste_saved)"
+                else
+                    err "$(t verify_paste_rejected "$state" "$detail")"
+                fi
+                ;;
+            3)
+                echo
+                warn "$(t verify_skipped)"
+                printf "  %s\n" "$(t verify_skipped_how)"
+                return 1
+                ;;
+            *)
+                : # re-check
+                ;;
+        esac
+    done
 }
 
 # ─── --continue branch ────────────────────────────────────────────────────────
