@@ -147,6 +147,32 @@ out="$(bash -c "
 [[ "$out" == "no" ]]
 check "MagicDNSEnabled:false reads as 'no', not 'unknown'" $? "got '$out'"
 
+# ─── The prerequisite that lives on a machine this installer cannot see ──────
+# Every admin URL in this mode answers inside the tailnet and nowhere else. A
+# browser without Tailscale hits the public Funnel ingress instead, which
+# accepts the connection on those ports and closes it mid-handshake — a TLS
+# error that reads exactly like a blocked port and sends people into their
+# router settings. So the requirement has to be stated before the mode is
+# chosen, again with the URLs, and it must not be dimmed.
+grep -q 'cfg_mode_tailscale_prereq_4' "$REPO/scripts/lib/config-wizard.sh"
+check "the mode prompt states the client-side requirement" $? ""
+
+sed -n '/cfg_mode_tailscale_prereq_4/p' "$REPO/scripts/lib/config-wizard.sh" | grep -q '\${DIM}'
+check "that requirement is not dimmed" $(( $? == 0 ? 1 : 0 )) "prereq_4 must not be printed dim"
+
+grep -q 'ts_client_symptom' "$REPO/scripts/install-tailscale.sh"
+check "the URL report names the misleading symptom" $? ""
+
+for lang_count in ts_client_need ts_client_install ts_client_symptom; do
+    (( $(grep -c "\[$lang_count\]" "$REPO/scripts/lib/messages.sh") == 2 ))
+    check "$lang_count exists in both languages" $? \
+        "$(grep -c "\[$lang_count\]" "$REPO/scripts/lib/messages.sh") definition(s)"
+done
+
+grep -q 'PR_END_OF_FILE_ERROR' "$REPO/scripts/lib/messages.sh"
+check "the exact browser error is named, so it is recognisable" $? ""
+
+
 if (( ${#FAILURES[@]} > 0 )); then
     echo "FAILURES:"; printf '  - %s\n' "${FAILURES[@]}"; exit 1
 fi
@@ -160,4 +186,7 @@ echo "has merely not arrived yet is waited for rather than misdiagnosed as a"
 echo "disabled setting, with the wait explained; HTTPS is read from"
 echo "CertDomains instead of provisioning a rate-limited certificate as a"
 echo "probe; declining fails cleanly; and the retry loop is bounded, so a"
-echo "closed stdin ends the installer instead of spinning."
+echo "closed stdin ends the installer instead of spinning. The client-side"
+echo "requirement — Tailscale on the admin's own machine, signed into the same"
+echo "account — is stated before the mode is chosen and again with the URLs,"
+echo "undimmed, and names the misleading TLS error it otherwise produces."

@@ -170,4 +170,20 @@ echo "  $(t ts_url_minio   "https://$MAGIC_DNS_NAME:8446")"
 echo
 dim "$(t ts_urls_note)"
 
+# The one prerequisite that lives on a machine this script cannot see, and
+# the only one whose absence produces a misleading error: the admin URLs
+# above answer inside the tailnet and nowhere else. A browser without
+# Tailscale reaches Tailscale's public Funnel ingress instead, which accepts
+# the connection on those ports and then closes it mid-handshake — reported
+# as "Secure Connection Failed" / PR_END_OF_FILE_ERROR, which reads exactly
+# like a blocked port. Naming the symptom here is what turns that into a
+# two-minute fix instead of an afternoon spent in router settings.
+echo
+header "$(t ts_client_title)"
+printf "  ${BOLD}%s${RESET}\n\n" "$(t ts_client_need)"
+printf "  %s\n\n"                "$(t ts_client_symptom)"
+printf "  ${BOLD}%s${RESET}\n\n" "$(t ts_client_install)"
+printf "  %s\n"                  "$(t ts_client_check)"
+printf "    ${BOLD}dig +short %s${RESET}\n" "$MAGIC_DNS_NAME"
+
 ok "$(t ts_done)"

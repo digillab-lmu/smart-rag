@@ -4,7 +4,11 @@
 <h1>{{ t('dash_heading') }}</h1>
 
 {% if not flowise_configured %}
+  {% if flowise_key_stored %}
+<div class="error">{{ t('dash_connection_broken', url_for('getting_started'))|safe }}</div>
+  {% else %}
 <div class="error">{{ t('dash_not_connected', url_for('flowise_setup'))|safe }}</div>
+  {% endif %}
 {% endif %}
 
 <table>

@@ -329,9 +329,15 @@ ask_deployment_mode() {
             dim "$(t cfg_mode_tailscale_lti)"
             echo
             info "$(t cfg_mode_tailscale_prereq)"
-            dim "$(t cfg_mode_tailscale_prereq_1)"
-            dim "$(t cfg_mode_tailscale_prereq_2)"
-            dim "$(t cfg_mode_tailscale_prereq_3)"
+            # Not dimmed: these are conditions, not asides. Prerequisite 4 in
+            # particular has to land before the mode is chosen — an operator
+            # who learns only afterwards that their own machine needs
+            # Tailscale sees "Secure Connection Failed" on the admin URLs and
+            # reasonably concludes it is a firewall or router problem.
+            printf "    %s\n" "$(t cfg_mode_tailscale_prereq_1)"
+            printf "    %s\n" "$(t cfg_mode_tailscale_prereq_2)"
+            printf "    %s\n" "$(t cfg_mode_tailscale_prereq_3)"
+            printf "    ${BOLD}%s${RESET}\n" "$(t cfg_mode_tailscale_prereq_4)"
             echo
             confirm cfg_mode_tailscale_ready "y" || return 1
 
