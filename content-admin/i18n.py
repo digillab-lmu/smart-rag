@@ -39,8 +39,9 @@ MSG_EN: dict[str, str] = {
     # The chair's name is kept in German in both languages — it's a proper
     # institutional name, and inventing an English rendering we haven't
     # verified against LMU's own usage would be worse than leaving it.
-    "footer_credit": "SMART RAG is developed at DigiLLab | Lehrstuhl Empirische Pädagogik und Pädagogische Psychologie, Prof. Frank Fischer | LMU München.",
-    "footer_contact": 'Contact: <a href="mailto:benjamin.goetzinger@psy.lmu.de">Benjamin Götzinger</a>',
+    "footer_credit": 'SMART RAG is developed at the <a href="https://www.lmu.de/digillab/de/" target="_blank" rel="noopener">DigiLLab of LMU Munich</a> | <a href="https://www.psy.lmu.de/ffp/" target="_blank" rel="noopener">Lehrstuhl Empirische Pädagogik und Pädagogische Psychologie</a>, <a href="https://www.psy.lmu.de/ffp/persons/lehrstuhlinhaber/fischer-frank/index.html" target="_blank" rel="noopener">Prof. Frank Fischer</a>.',
+    "footer_contact": 'Developer: <a href="mailto:benjamin.goetzinger@psy.lmu.de">Benjamin Götzinger</a>',
+    "footer_repo": 'GitHub: <a href="https://github.com/digillab-lmu/smart-rag" target="_blank" rel="noopener">github.com/digillab-lmu/smart-rag</a>',
     "lang_switch_label": "Language",
 
     # --- first-run setup ------------------------------------------------
@@ -318,8 +319,9 @@ MSG_DE: dict[str, str] = {
     "nav_graph": "Wissensgraph",
     "nav_flowise": "Flowise-Verbindung",
     "nav_logout": "Abmelden",
-    "footer_credit": "SMART RAG ist eine Entwicklung des DigiLLab | Lehrstuhl Empirische Pädagogik und Pädagogische Psychologie, Prof. Frank Fischer | LMU München.",
-    "footer_contact": 'Kontakt: <a href="mailto:benjamin.goetzinger@psy.lmu.de">Benjamin Götzinger</a>',
+    "footer_credit": 'SMART RAG ist eine Entwicklung des <a href="https://www.lmu.de/digillab/de/" target="_blank" rel="noopener">DigiLLab der LMU München</a> | <a href="https://www.psy.lmu.de/ffp/" target="_blank" rel="noopener">Lehrstuhl Empirische Pädagogik und Pädagogische Psychologie</a>, <a href="https://www.psy.lmu.de/ffp/persons/lehrstuhlinhaber/fischer-frank/index.html" target="_blank" rel="noopener">Prof. Frank Fischer</a>.',
+    "footer_contact": 'Entwickler: <a href="mailto:benjamin.goetzinger@psy.lmu.de">Benjamin Götzinger</a>',
+    "footer_repo": 'GitHub: <a href="https://github.com/digillab-lmu/smart-rag" target="_blank" rel="noopener">github.com/digillab-lmu/smart-rag</a>',
     "lang_switch_label": "Sprache",
 
     # --- first-run setup ------------------------------------------------
