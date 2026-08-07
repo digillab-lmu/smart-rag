@@ -71,15 +71,18 @@ source "$REPO_ROOT/.env"
 set +a
 
 # ─── Self-install as a global command ─────────────────────────────────────────
-# Whiptail's own OK/Cancel button labels stay English regardless of
-# LANG_CHOICE — a minor, accepted cosmetic wrinkle, not worth chasing here.
+# Done without asking. It is a symlink to this file — nothing is copied,
+# nothing existing is replaced (the guard below), and removing it is one
+# `rm`. A prompt whose answer is effectively always yes is friction, and the
+# cost of it being missed is real: the docs and the installer's closing steps
+# all say `sudo smartrag`, and that command then does not exist.
 if [[ ! -e /usr/local/bin/smartrag ]]; then
-    if confirm admin_install_offer "y"; then
-        if ln -sf "$SELF" /usr/local/bin/smartrag 2>/dev/null; then
-            ok "$(t admin_install_done)"
-        else
-            warn "$(t admin_install_failed)"
-        fi
+    if ln -sf "$SELF" /usr/local/bin/smartrag 2>/dev/null; then
+        ok "$(t admin_install_done)"
+    else
+        # A read-only /usr/local/bin or a missing directory: worth saying,
+        # not worth stopping for — the script itself runs fine either way.
+        warn "$(t admin_install_failed)"
     fi
 fi
 
