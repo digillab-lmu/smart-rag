@@ -135,6 +135,28 @@ sed -n '/Self-install as a global command/,/^fi$/p' "$REPO/scripts/admin.sh" | g
 check "an existing /usr/local/bin/smartrag is left alone" $? ""
 
 
+# The menu must show every entry without scrolling, and the box must be tall
+# enough for the list. A whiptail menu whose list height is smaller than the
+# number of entries scrolls silently — an operator who does not notice the
+# arrow concludes the missing entries do not exist. Uninstall being the one
+# below the fold is the version of this that matters.
+read -r box_h _ list_h < <(grep -A1 'menu "\$(t admin_menu_prompt)"' "$REPO/scripts/admin.sh" \
+    | grep -oE '^\s+[0-9]+ [0-9]+ [0-9]+' | tr -s ' ' | sed 's/^ //')
+entries="$(grep -cE '^\s+"[0-9]+" +"\$\(t ' "$REPO/scripts/admin.sh")"
+[[ -n "$box_h" && -n "$list_h" && -n "$entries" ]]
+check "the menu geometry could be read" $? "box=$box_h list=$list_h entries=$entries"
+(( list_h >= entries ))
+check "every menu entry is visible without scrolling" $? "list=$list_h entries=$entries"
+(( box_h >= list_h + 7 ))
+check "the box is tall enough for its list" $? "box=$box_h list=$list_h"
+
+# Buffered keystrokes must be discarded before the menu is drawn: the
+# terminal echoes them over whiptail's first row (an arrow key appears as a
+# literal ^[[A on the top entry) and whiptail then consumes them as
+# navigation in a menu nobody has seen yet.
+grep -q '_drain_stdin' "$REPO/scripts/admin.sh"
+check "stdin is drained before the menu is shown" $? ""
+
 # It must back the file up before appending.
 sed -n '/^action_migrate()/,/^}/p' "$REPO/scripts/admin.sh" | grep -q 'cp "\$REPO_ROOT/.env"'
 check "it backs .env up before writing" $? ""
