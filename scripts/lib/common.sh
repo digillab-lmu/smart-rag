@@ -647,6 +647,16 @@ set_env_var() {
     local env_file="$1" key="$2" val="$3"
     [[ -f "$env_file" ]] || die "set_env_var: $env_file not found"
 
+    # Refused for the same reason as in the Python port: quote escaping keeps
+    # bash reading everything after a line break as part of the value, but
+    # content-admin's read_env() splits on lines and would see a second
+    # KEY=VALUE that bash does not. Both write this one file, so both must
+    # refuse the same input — a divergence between two readers of .env has
+    # already cost this project two incidents.
+    if [[ "$val" == *$'\n'* || "$val" == *$'\r'* ]]; then
+        die "set_env_var: $key — a value written to .env may not contain a line break"
+    fi
+
     val="${val//\\/\\\\}"
     val="${val//\$/\\\$}"
     val="${val//\`/\\\`}"

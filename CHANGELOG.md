@@ -127,5 +127,6 @@ students without anyone noticing.
   during installation, and maintainers per course. Decided before a second
   course exists anywhere, because the migration is a rename today and an
   export-and-re-embed later.
-- There is no test for `content-admin/env_file.py`, the code a
-  public-facing web GUI uses to patch the system's central `.env`.
+- `content-admin/env_file.py` is now covered: adversarial values are sourced
+  by real bash with canaries on PATH to prove nothing executes, and Python
+  and bash are checked to read every value identically.
