@@ -306,6 +306,7 @@ declare -A MSG_EN=(
     [svc_waiting]="Waiting for services to become healthy…"
     [svc_healthy]="%s is healthy"
     [svc_running_no_healthcheck]="%s is running (no healthcheck defined)"
+    [svc_env_newer]=".env has changed since these containers were created — recreating them so they pick it up."
     [svc_unhealthy]="%s never became healthy after %d seconds"
     [svc_all_healthy]="All required services healthy"
     [svc_status]="Service status:"
@@ -379,6 +380,12 @@ declare -A MSG_EN=(
     [prevrun_continue]="Continue deployment (phases 5–7: packages, SSL, Docker services — same as --continue)"
     [prevrun_fresh]="Reconfigure from scratch (run the wizard again)"
     [prevrun_abort]="Abort, do nothing"
+    [prevrun_data_exists]="%s database(s) on this machine already hold data:"
+    [prevrun_data_why]="Postgres, Neo4j, ClickHouse and MinIO each read their password ONCE, when their data directory is first created. Setting up afresh generates new secrets, which those databases will never see — so .env and the databases would disagree, and the first sign of it is an authentication failure from a service that worked yesterday."
+    [prevrun_data_options]="Two ways out:"
+    [prevrun_data_option_keep]="  • Keep this installation: choose Abort and re-run with --continue instead. Nothing is regenerated, and the existing data stays usable."
+    [prevrun_data_option_wipe]="  • Genuinely start over: stop the stack and delete %s first (destroys all course data), then run this again."
+    [prevrun_data_confirm]="Continue anyway and generate new secrets?"
     [prevrun_fresh_note]="Continuing to the configuration wizard. Your existing .env will be kept/backed up/overwritten based on your next answer."
 
     # --- bootstrap orchestration --------------------------------------------
@@ -990,6 +997,7 @@ declare -A MSG_DE=(
     [svc_waiting]="Warte bis Services healthy sind…"
     [svc_healthy]="%s ist healthy"
     [svc_running_no_healthcheck]="%s läuft (kein Healthcheck definiert)"
+    [svc_env_newer]="Die .env hat sich seit dem Erzeugen dieser Container geändert — sie werden neu erzeugt, damit sie die Werte übernehmen."
     [svc_unhealthy]="%s wurde nach %d Sekunden nicht healthy"
     [svc_all_healthy]="Alle benötigten Services sind healthy"
     [svc_status]="Service-Status:"
@@ -1063,6 +1071,12 @@ declare -A MSG_DE=(
     [prevrun_continue]="Deployment fortsetzen (Phasen 5–7: Pakete, SSL, Docker-Services — wie --continue)"
     [prevrun_fresh]="Komplett neu konfigurieren (Assistent erneut durchlaufen)"
     [prevrun_abort]="Abbrechen, nichts tun"
+    [prevrun_data_exists]="%s Datenbank(en) auf dieser Maschine enthalten bereits Daten:"
+    [prevrun_data_why]="Postgres, Neo4j, ClickHouse und MinIO lesen ihr Passwort GENAU EINMAL, beim ersten Anlegen ihres Datenverzeichnisses. Eine Neueinrichtung erzeugt neue Secrets, die diese Datenbanken nie zu sehen bekommen — .env und Datenbanken würden also auseinanderlaufen, und das erste Anzeichen ist ein Authentifizierungsfehler bei einem Dienst, der gestern noch lief."
+    [prevrun_data_options]="Zwei Auswege:"
+    [prevrun_data_option_keep]="  • Diese Installation behalten: Abbrechen wählen und stattdessen mit --continue erneut starten. Es wird nichts neu erzeugt, die vorhandenen Daten bleiben nutzbar."
+    [prevrun_data_option_wipe]="  • Wirklich neu anfangen: erst den Stack stoppen und %s löschen (vernichtet alle Kursdaten), dann dies hier erneut ausführen."
+    [prevrun_data_confirm]="Trotzdem fortfahren und neue Secrets erzeugen?"
     [prevrun_fresh_note]="Weiter zum Konfigurations-Assistenten. Deine bestehende .env wird je nach nächster Antwort behalten/gesichert/überschrieben."
 
     # --- bootstrap orchestration --------------------------------------------

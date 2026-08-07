@@ -559,6 +559,27 @@ require_command() {
     command -v "$cmd" >/dev/null 2>&1 || die "Required command not found: $cmd"
 }
 
+# Which database data directories already exist and hold data.
+#
+# Matters because of one property that is easy to forget and impossible to
+# see: Postgres, Neo4j, ClickHouse and MinIO all read their password ONCE,
+# when their data directory is first created. A later change to .env does not
+# reach them. Generating fresh secrets over an initialised data directory
+# therefore produces a deployment whose .env and databases disagree, and the
+# symptom is an authentication error from a service that was working
+# yesterday.
+#
+# Echoes the names of the initialised stores, one per line; nothing if none.
+initialised_data_stores() {   # $1 = BASE_DATA_PATH
+    local base="${1:-}" d
+    [[ -n "$base" && -d "$base" ]] || return 0
+    for d in postgres neo4j clickhouse minio; do
+        if [[ -d "$base/$d" ]] && [[ -n "$(ls -A "$base/$d" 2>/dev/null)" ]]; then
+            echo "$d"
+        fi
+    done
+}
+
 # Reports a container's health as exactly one of:
 #   healthy | starting | unhealthy | none | absent
 #

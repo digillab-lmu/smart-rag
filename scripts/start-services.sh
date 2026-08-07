@@ -102,7 +102,38 @@ fi
 
 # ─── Start services ──────────────────────────────────────────────────────────
 info "$(t svc_starting "${COMPOSE_PROFILES:-core}")"
-docker compose -f "$COMPOSE_FILE" --env-file "$REPO_ROOT/.env" up -d --remove-orphans
+# If .env has changed since the running containers were created, they are
+# still holding the old values. Compose recreates a container when the
+# `environment:` block it computed changes — but values a service receives
+# through `env_file` are passed straight through, and a change there does not
+# always register as a reason to recreate. Observed on a live install:
+# containers created 19 hours earlier kept running against an .env rewritten
+# that morning, and the resulting failure looked like a wrong password.
+#
+# So: compare the file against the oldest running container and force the
+# recreation ourselves when it is newer. Costs one restart round on the run
+# after an .env change, and nothing at all otherwise.
+RECREATE=()
+if [[ -f "$REPO_ROOT/.env" ]]; then
+    env_mtime="$(stat -c %Y "$REPO_ROOT/.env" 2>/dev/null || echo 0)"
+    oldest_container=""
+    while IFS= read -r cname; do
+        [[ -n "$cname" ]] || continue
+        created="$(docker inspect --format='{{.Created}}' "$cname" 2>/dev/null || true)"
+        [[ -n "$created" ]] || continue
+        created_epoch="$(date -d "$created" +%s 2>/dev/null || echo 0)"
+        if [[ -z "$oldest_container" || "$created_epoch" -lt "$oldest_container" ]]; then
+            oldest_container="$created_epoch"
+        fi
+    done < <(docker ps --filter 'name=^smartrag-' --format '{{.Names}}' 2>/dev/null)
+
+    if [[ -n "$oldest_container" ]] && (( env_mtime > oldest_container )); then
+        warn "$(t svc_env_newer)"
+        RECREATE=(--force-recreate)
+    fi
+fi
+
+docker compose -f "$COMPOSE_FILE" --env-file "$REPO_ROOT/.env" up -d --remove-orphans "${RECREATE[@]}"
 
 # ─── Wait for health ─────────────────────────────────────────────────────────
 # Polls `docker inspect` for each container's health status.
