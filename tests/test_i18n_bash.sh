@@ -44,12 +44,14 @@ cmdsub="$(grep -nE '^\s*\[[a-z0-9_]+\]=".*\$\(' "$MSGS" || true)"
 check "no \$( ) substitution in a message" $([[ -z "$cmdsub" ]] && echo 0 || echo 1) \
       "$(head -3 <<<"$cmdsub")"
 
-# The same trap in the other bash libraries: any file the scripts source is
-# executed, so a stray backtick in a comment is harmless but one in a string
-# is not. Checked across the whole lib.
-for f in "$REPO"/scripts/lib/*.sh; do
-    bt="$(grep -nE '^\s*\[[a-z0-9_]+\]=".*`' "$f" || true)"
-    check "no backticks in a string assignment in $(basename "$f")" \
+# The same trap anywhere else. A backtick in a comment is harmless; one in a
+# double-quoted value is a command. Escaped backticks are exempt on purpose:
+# common.sh and templates.sh escape them when writing .env, which is the
+# defence against the same class of bug in values an operator supplies.
+for f in "$REPO"/scripts/*.sh "$REPO"/scripts/lib/*.sh; do
+    [[ -f "$f" ]] || continue
+    bt="$(grep -nE '^[^#]*="[^"]*[^\\]`' "$f" || true)"
+    check "no unescaped backtick in a string in $(basename "$f")" \
           $([[ -z "$bt" ]] && echo 0 || echo 1) "$(head -2 <<<"$bt")"
 done
 
@@ -74,6 +76,6 @@ if (( ${#FAILURES[@]} > 0 )); then
     echo "FAILURES:"; printf '  - %s\n' "${FAILURES[@]}"; exit 1
 fi
 echo "All message-catalogue safety checks passed: no backticks and no \$( ) in"
-echo "any message, none in a string assignment anywhere under scripts/lib, and"
+echo "any message, no unescaped backtick in any string under scripts/, and"
 echo "sourcing the catalogue runs no command at all — verified with executable"
 echo "canaries named sudo, smartrag, docker and systemctl on PATH."

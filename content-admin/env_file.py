@@ -40,6 +40,21 @@ def set_env_var(key: str, value: str, env_path: Path | None = None) -> None:
     sourcing for anything after the moved line. Appends if the key is absent.
     """
     path = env_path or ENV_PATH
+
+    # A newline has no representation both readers of this file agree on.
+    # Quote escaping already stops a value from closing its own quotes, so
+    # bash keeps everything after the newline inside the value — but
+    # read_env() splits on lines, and a second line that looks like KEY=VALUE
+    # becomes a key Python sees and bash does not. Two readers of one file
+    # disagreeing is precisely the failure this project has already paid for
+    # twice (REDIS_AUTH, SMTP_SENDER_EMAIL), so it is refused rather than
+    # encoded: no legitimate value here is multi-line — the LTI keys live in
+    # files, not in .env.
+    if "\n" in value or "\r" in value:
+        raise ValueError(
+            f"{key}: a value written to .env may not contain a line break"
+        )
+
     escaped = _escape(value)
     new_line = f'{key}="{escaped}"\n'
 
