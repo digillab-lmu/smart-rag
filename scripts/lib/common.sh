@@ -669,8 +669,14 @@ set_env_var() {
     chmod 600 "$tmp"
     while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ "$line" == "${key}="* ]]; then
-            printf '%s="%s"\n' "$key" "$val" >> "$tmp"
-            found=1
+            # Only the first occurrence is kept, at its original position;
+            # later duplicates are dropped. Both readers of this file take
+            # the LAST occurrence, so a duplicate makes an in-place update
+            # invisible — and the Python port must behave identically.
+            if (( ! found )); then
+                printf '%s="%s"\n' "$key" "$val" >> "$tmp"
+                found=1
+            fi
         else
             printf '%s\n' "$line" >> "$tmp"
         fi

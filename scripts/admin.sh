@@ -270,6 +270,48 @@ action_n8n_workflows() {
 # installation doesn't have, and offers to fix it.
 
 # Echoes the keys present in .env.example but absent from .env, one per line.
+# Keys the wizard writes with a resolved value. templates.sh is the single
+# source of truth — anything it assigns through REPL[...] is computed at
+# install time, so the same key still carrying a ${...} in a live .env was
+# copied from .env.example and never resolved.
+_wizard_resolved_keys() {
+    # sed, not `tr -d 'REPL[]'` — tr deletes those CHARACTERS wherever they
+    # occur, so SMTP_SENDER_EMAIL came back as SMT_SNDR_MAI and matched
+    # nothing.
+    grep -oE 'REPL\[[A-Z][A-Z0-9_]*\]' "$LIB_DIR/templates.sh" 2>/dev/null \
+        | sed -E 's/^REPL\[(.+)\]$/\1/' | sort -u
+}
+
+# Present, but still holding an unexpanded ${...} that should have been
+# resolved. Invisible to _missing_env_keys, which only looks for absent keys
+# — that is why SMTP_SENDER_EMAIL survived an Upgrade run as
+# "noreply@${DOMAIN}", and why the ingest's completion mail would have gone
+# out with that in the From address.
+#
+# Keys NOT written by the wizard are deliberately left alone: DATABASE_URL and
+# NEO4J_AUTH legitimately keep their ${...}, because they reach their
+# containers through compose's `environment:` block, where Compose does
+# interpolate. Only env_file consumers need the resolved form.
+_stale_env_keys() {
+    local envfile="$REPO_ROOT/.env" key value
+    [[ -f "$envfile" ]] || return 0
+    while IFS= read -r key; do
+        [[ -n "$key" ]] || continue
+        value="$(grep -m1 "^${key}=" "$envfile" || true)"
+        [[ -n "$value" ]] || continue
+        [[ "$value" == *'${'* ]] && echo "$key"
+    done < <(_wizard_resolved_keys)
+}
+
+# A key that appears more than once. Both bash and read_env() take the last
+# occurrence, so the earlier ones are dead weight that silently disagrees
+# with what is actually in effect.
+_duplicate_env_keys() {
+    local envfile="$REPO_ROOT/.env"
+    [[ -f "$envfile" ]] || return 0
+    grep -oE '^[A-Z][A-Z0-9_]*=' "$envfile" | tr -d '=' | sort | uniq -d
+}
+
 _missing_env_keys() {
     local example="$REPO_ROOT/.env.example" envfile="$REPO_ROOT/.env" key
     [[ -f "$example" && -f "$envfile" ]] || return 0
@@ -332,10 +374,63 @@ action_migrate() {
             cp "$REPO_ROOT/.env" "$REPO_ROOT/.env.backup-$(date +%F-%H%M%S)"
             for key in "${missing[@]}"; do
                 value="$(_default_for_env_key "$key")"
-                printf '%s="%s"\n' "$key" "$value" >> "$REPO_ROOT/.env"
+                # set_env_var, not >>: appending cannot fix a key that is
+                # already there, and it is how this .env ended up with two
+                # REDIS_AUTH lines. set_env_var patches in place, escapes the
+                # value, and collapses duplicates.
+                set_env_var "$REPO_ROOT/.env" "$key" "$value"
             done
             ok "$(t admin_migrate_env_added "${#missing[@]}")"
             dim "$(t admin_migrate_env_restart)"
+        else
+            info "$(t admin_migrate_env_skipped)"
+        fi
+    fi
+
+    # ── 1b. Present, but never resolved ─────────────────────────────────────
+    echo
+    local stale=()
+    mapfile -t stale < <(_stale_env_keys)
+    if (( ${#stale[@]} == 0 )); then
+        ok "$(t admin_migrate_stale_ok)"
+    else
+        warn "$(t admin_migrate_stale_found "${#stale[@]}")"
+        local skey svalue
+        for skey in "${stale[@]}"; do
+            svalue="$(_default_for_env_key "$skey")"
+            printf '      %s\n' "$(grep -m1 "^${skey}=" "$REPO_ROOT/.env")"
+            printf '      → %s="%s"\n' "$skey" "$svalue"
+        done
+        echo
+        if confirm admin_migrate_stale_confirm "y"; then
+            for skey in "${stale[@]}"; do
+                set_env_var "$REPO_ROOT/.env" "$skey" "$(_default_for_env_key "$skey")"
+            done
+            ok "$(t admin_migrate_stale_fixed "${#stale[@]}")"
+            dim "$(t admin_migrate_env_restart)"
+        else
+            info "$(t admin_migrate_env_skipped)"
+        fi
+    fi
+
+    # ── 1c. Duplicated keys ─────────────────────────────────────────────────
+    echo
+    local dupes=()
+    mapfile -t dupes < <(_duplicate_env_keys)
+    if (( ${#dupes[@]} > 0 )); then
+        warn "$(t admin_migrate_dupes_found "${#dupes[@]}")"
+        printf '      %s\n' "${dupes[@]}"
+        dim "$(t admin_migrate_dupes_why)"
+        echo
+        if confirm admin_migrate_dupes_confirm "y"; then
+            local dkey dval
+            for dkey in "${dupes[@]}"; do
+                # The value in effect is the LAST one, so that is what is kept.
+                dval="$(grep "^${dkey}=" "$REPO_ROOT/.env" | tail -1)"
+                dval="${dval#*=}"; dval="${dval%\"}"; dval="${dval#\"}"
+                set_env_var "$REPO_ROOT/.env" "$dkey" "$dval"
+            done
+            ok "$(t admin_migrate_dupes_fixed "${#dupes[@]}")"
         else
             info "$(t admin_migrate_env_skipped)"
         fi

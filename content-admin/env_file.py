@@ -59,18 +59,26 @@ def set_env_var(key: str, value: str, env_path: Path | None = None) -> None:
     new_line = f'{key}="{escaped}"\n'
 
     lines = path.read_text().splitlines(keepends=True)
+    out: list[str] = []
     found = False
-    for i, line in enumerate(lines):
+    for line in lines:
         if line.startswith(f"{key}="):
-            lines[i] = new_line
-            found = True
-            break
+            # First occurrence keeps its position; any later one is dropped.
+            # A duplicate key is always a defect, and leaving it is worse than
+            # it looks: both bash and read_env() take the LAST occurrence, so
+            # updating only the first — which this used to do — changed
+            # nothing that anyone would ever read.
+            if not found:
+                out.append(new_line)
+                found = True
+            continue
+        out.append(line)
     if not found:
-        if lines and not lines[-1].endswith("\n"):
-            lines[-1] += "\n"
-        lines.append(new_line)
+        if out and not out[-1].endswith("\n"):
+            out[-1] += "\n"
+        out.append(new_line)
 
-    path.write_text("".join(lines))
+    path.write_text("".join(out))
 
 
 _UNQUOTE_RE = re.compile(r'^"(.*)"$|^\'(.*)\'$', re.DOTALL)

@@ -157,6 +157,54 @@ check "the box is tall enough for its list" $? "box=$box_h list=$list_h"
 grep -q '_drain_stdin' "$REPO/scripts/admin.sh"
 check "stdin is drained before the menu is shown" $? ""
 
+# ─── Present-but-unresolved values ──────────────────────────────────────────
+# The gap that let SMTP_SENDER_EMAIL survive an Upgrade run as
+# "noreply@${DOMAIN}": _missing_env_keys only reports keys that are ABSENT, so
+# a key that is there with a value the installer never resolved is invisible.
+# The ingest's completion mail would have carried that literal in its sender.
+HELPERS2="$(mktemp)"
+sed -n '/^_wizard_resolved_keys()/,/^}/p;/^_stale_env_keys()/,/^}/p;/^_duplicate_env_keys()/,/^}/p' \
+    "$REPO/scripts/admin.sh" > "$HELPERS2"
+[[ -s "$HELPERS2" ]]
+check "the stale/duplicate helpers exist" $? "not found in admin.sh"
+
+LIB_DIR="$REPO/scripts/lib"
+cat > "$SANDBOX/.env" <<'EOF'
+DOMAIN="duenn-mit-pfiff.de"
+SUBDOMAIN_PREFIX="smartrag"
+SMTP_SENDER_EMAIL="noreply@${DOMAIN}"
+REDIS_AUTH="secret1"
+REDIS_AUTH="secret1"
+DATABASE_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@smartrag-postgres:5432/${POSTGRES_DB}"
+EOF
+# shellcheck source=/dev/null
+source "$HELPERS2"
+
+mapfile -t stale < <(_stale_env_keys)
+printf '%s\n' "${stale[@]}" | grep -qx "SMTP_SENDER_EMAIL"
+check "an unresolved value the wizard writes is found" $? "${stale[*]}"
+
+# DATABASE_URL keeps its ${...} on purpose: it reaches its container through
+# compose's environment: block, where Compose does interpolate. Reporting it
+# would send an operator to "fix" something that is correct.
+printf '%s\n' "${stale[@]}" | grep -qx "DATABASE_URL"
+check "a value that is meant to interpolate is NOT reported" $(( $? == 0 ? 1 : 0 )) "${stale[*]}"
+
+mapfile -t dupes < <(_duplicate_env_keys)
+printf '%s\n' "${dupes[@]}" | grep -qx "REDIS_AUTH"
+check "a duplicated key is found" $? "${dupes[*]}"
+(( ${#dupes[@]} == 1 ))
+check "only the duplicated key is reported" $? "${dupes[*]}"
+
+# ─── The upgrade must patch in place, never append ──────────────────────────
+# Appending is how the duplicate above came to exist, and it cannot fix a key
+# that is already present — which is the whole point of this entry.
+sed -n '/^action_migrate()/,/^}/p' "$REPO/scripts/admin.sh" | grep -q '>> "\$REPO_ROOT/.env"'
+check "the upgrade no longer appends to .env" $(( $? == 0 ? 1 : 0 )) \
+      "a raw >> append is back in action_migrate"
+sed -n '/^action_migrate()/,/^}/p' "$REPO/scripts/admin.sh" | grep -q 'set_env_var "\$REPO_ROOT/.env"'
+check "the upgrade patches through set_env_var" $? ""
+
 # It must back the file up before appending.
 sed -n '/^action_migrate()/,/^}/p' "$REPO/scripts/admin.sh" | grep -q 'cp "\$REPO_ROOT/.env"'
 check "it backs .env up before writing" $? ""
