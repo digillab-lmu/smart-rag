@@ -122,6 +122,19 @@ for n in $(grep -oE '^\s+[0-9]+\)' "$REPO/scripts/admin.sh" | grep -oE '[0-9]+')
     check "menu entry $n has a label" $? "dispatched but not listed"
 done
 
+# The global command installs itself without asking. Every closing message
+# and every doc says `sudo smartrag`; a prompt that can be declined leaves
+# those instructions pointing at a command that does not exist.
+sed -n '/Self-install as a global command/,/^fi$/p' "$REPO/scripts/admin.sh" | grep -q 'confirm '
+check "the symlink is created without a prompt" $(( $? == 0 ? 1 : 0 )) \
+      "a confirm() reappeared in the self-install block"
+sed -n '/Self-install as a global command/,/^fi$/p' "$REPO/scripts/admin.sh" | grep -q 'ln -sf'
+check "the symlink is actually created" $? ""
+# It must not clobber an existing file at that path.
+sed -n '/Self-install as a global command/,/^fi$/p' "$REPO/scripts/admin.sh" | grep -q '! -e /usr/local/bin/smartrag'
+check "an existing /usr/local/bin/smartrag is left alone" $? ""
+
+
 # It must back the file up before appending.
 sed -n '/^action_migrate()/,/^}/p' "$REPO/scripts/admin.sh" | grep -q 'cp "\$REPO_ROOT/.env"'
 check "it backs .env up before writing" $? ""
