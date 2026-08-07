@@ -71,6 +71,42 @@ for v in N8N_ENCRYPTION_KEY N8N_HOST N8N_PORT; do
     check "n8n: $v is available" $? "neither in .env nor in its compose block"
 done
 
+# ─── The same trap, second instance: SMTP_SENDER_EMAIL ──────────────────────
+# .env.example carries "noreply@${DOMAIN}". Bash expands that when sourcing,
+# and Compose expands it when substituting into an `environment:` block — but
+# NOT for values handed to a container through `env_file`, and not for
+# Python's read_env(), which deliberately does not implement shell semantics.
+#
+# smartrag-n8n takes its whole environment from env_file, and the ingest
+# workflow reads $env.SMTP_SENDER_EMAIL — so left interpolated, every "your
+# document is ready" mail goes out with a literal ${DOMAIN} in the sender
+# address. N8N_SMTP_SENDER being correct does not help: the workflow reads
+# the other name.
+grep -q 'env_file: ../.env' "$COMPOSE"
+check "some services are configured through env_file" $? ""
+
+grep -q 'SMTP_SENDER_EMAIL' "$REPO/n8n/workflows-ingest/ingest-document.json"
+check "the ingest workflow reads SMTP_SENDER_EMAIL" $? ""
+
+grep -q 'REPL\[SMTP_SENDER_EMAIL\]' "$REPO/scripts/lib/templates.sh"
+check "bootstrap writes SMTP_SENDER_EMAIL resolved" $? \
+      "otherwise the container sees a literal \${DOMAIN}"
+
+grep -q 'SMTP_SENDER_EMAIL)' "$REPO/scripts/admin.sh"
+check "the upgrade path can add SMTP_SENDER_EMAIL too" $? ""
+
+# The general form: no value that an env_file service must read may be left
+# with an unexpanded ${...} by the wizard. DATABASE_URL and NEO4J_AUTH are
+# fine — they reach their containers through `environment:`, where Compose
+# does interpolate.
+ENVFILE_MUST_RESOLVE=(SMTP_SENDER_EMAIL REDIS_AUTH)
+for v in "${ENVFILE_MUST_RESOLVE[@]}"; do
+    grep -q "REPL\[$v\]" "$REPO/scripts/lib/templates.sh"
+    check "$v is written resolved, not interpolated" $? \
+          "env_file passes values through verbatim"
+done
+
+
 if (( ${#FAILURES[@]} > 0 )); then
     echo "FAILURES:"; printf '  - %s\n' "${FAILURES[@]}"; exit 1
 fi

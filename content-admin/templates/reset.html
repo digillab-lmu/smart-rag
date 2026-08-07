@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ t('reset_title') }} — {{ t('app_name') }} {{ t('app_subtitle') }}{% endblock %}
+{% block content %}
+<h1>{{ t('reset_heading') }}</h1>
+
+{% if invalid %}
+{# One message for expired, already-used and never-valid alike: telling them
+   apart would say something about a token to whoever is holding it. #}
+<div class="error">{{ t('reset_invalid') }}</div>
+<p><a href="{{ url_for('forgot_password') }}">{{ t('reset_request_new') }}</a></p>
+
+{% elif done %}
+<p class="success">{{ t('reset_done') }}</p>
+<p><a href="{{ url_for('login') }}">{{ t('reset_to_login') }}</a></p>
+
+{% else %}
+<p>{{ t('reset_intro') }}</p>
+<form method="post" action="{{ url_for('reset_password', token=token) }}">
+  <label for="password">{{ t('setup_password') }}</label>
+  <input type="password" id="password" name="password" required autofocus>
+
+  <label for="confirm">{{ t('setup_confirm') }}</label>
+  <input type="password" id="confirm" name="confirm" required>
+
+  <button type="submit">{{ t('reset_submit') }}</button>
+</form>
+{% endif %}
+{% endblock %}

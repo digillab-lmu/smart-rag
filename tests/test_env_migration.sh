@@ -105,9 +105,22 @@ grep -q '"\$(t admin_menu_migrate)"' "$REPO/scripts/admin.sh"
 check "it has a menu entry" $? ""
 grep -qE '^\s+11\) action_migrate ;;' "$REPO/scripts/admin.sh"
 check "the menu entry is dispatched" $? "$(grep -n 'action_migrate ;;' "$REPO/scripts/admin.sh")"
-# Uninstall must stay last: a mis-key should not land on the destructive one.
-grep -qE '^\s+12\) action_uninstall ;;' "$REPO/scripts/admin.sh"
-check "uninstall is still after it, not renumbered onto a new key" $? ""
+# Uninstall must stay at the end, immediately before Exit: a mis-key should
+# never land on the destructive entry. Pinned as a rule rather than a fixed
+# number, so adding a menu item does not need this rewritten — only moving
+# uninstall does, which is exactly when someone should have to think.
+uninstall_key="$(grep -oE '^\s+([0-9]+)\) action_uninstall ;;' "$REPO/scripts/admin.sh" | grep -oE '[0-9]+')"
+exit_key="$(grep -oE '^\s+([0-9]+)\) clear; break ;;' "$REPO/scripts/admin.sh" | grep -oE '[0-9]+')"
+[[ -n "$uninstall_key" && -n "$exit_key" && $(( exit_key - uninstall_key )) -eq 1 ]]
+check "uninstall sits immediately before exit, at the end of the menu" $? \
+      "uninstall=$uninstall_key exit=$exit_key"
+
+# And every dispatched number must have a menu label, or an entry becomes
+# unreachable (or worse, reachable but unlabelled).
+for n in $(grep -oE '^\s+[0-9]+\)' "$REPO/scripts/admin.sh" | grep -oE '[0-9]+'); do
+    grep -qE "\"$n\" +\"" "$REPO/scripts/admin.sh"
+    check "menu entry $n has a label" $? "dispatched but not listed"
+done
 
 # It must back the file up before appending.
 sed -n '/^action_migrate()/,/^}/p' "$REPO/scripts/admin.sh" | grep -q 'cp "\$REPO_ROOT/.env"'

@@ -26,6 +26,7 @@ import agent_templates
 import auth
 import citation
 import i18n
+import mailer
 import setup_checks
 import storage
 from env_file import read_env, set_env_var
@@ -215,7 +216,93 @@ def login():
             session["username"] = username
             return redirect(url_for("dashboard"))
         error = _t("login_err_invalid")
-    return render_template("login.html", error=error)
+    return render_template(
+        "login.html",
+        error=error,
+        # The link is only shown when a reset could actually be delivered.
+        # Offering "forgot password?" on an installation with no mail relay
+        # sends someone down a path that ends in a page telling them it was
+        # never going to work.
+        mail_available=mailer.mail_configured(),
+    )
+
+
+# ─── Password reset ────────────────────────────────────────────────────────────
+# Two properties this must have, both of which shape the code below:
+#
+# The reply is identical whether or not the entered username exists. This
+# page is reachable by anyone who can reach the login page, and a different
+# answer per username turns it into a way to enumerate the account.
+#
+# The mail always goes to ADMIN_EMAIL, never to an address supplied in the
+# form. Otherwise anyone who can load this page could have a valid reset link
+# delivered to themselves.
+@app.route("/forgot", methods=["GET", "POST"])
+def forgot_password():
+    if not auth.is_configured():
+        return redirect(url_for("setup"))
+
+    env = read_env()
+    if not mailer.mail_configured(env):
+        # Honest dead end rather than a form that silently does nothing:
+        # this installation has no relay, and the fix is a different one.
+        return render_template("forgot.html", unavailable=True)
+
+    sent = False
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        # Always report success — see the note above.
+        sent = True
+        if username and username == env.get("CONTENT_ADMIN_USERNAME"):
+            token = auth.create_reset_token()
+            base = (env.get("CONTENT_ADMIN_PUBLIC_URL") or "").rstrip("/")
+            link = f"{base}{url_for('reset_password', token=token)}"
+            try:
+                mailer.send_mail(
+                    env["ADMIN_EMAIL"],
+                    _t("reset_mail_subject"),
+                    _t("reset_mail_body", link, auth.RESET_TTL_SECONDS // 60),
+                )
+            except mailer.MailError as exc:
+                # The operator sees the same page either way; the log is
+                # where the real reason belongs, and the admin TUI remains
+                # the way in if mail is broken.
+                logger.error("Could not send password-reset mail: %s", exc)
+                auth.clear_reset_token()
+
+    return render_template(
+        "forgot.html",
+        sent=sent,
+        admin_email=env.get("ADMIN_EMAIL", ""),
+    )
+
+
+@app.route("/reset/<token>", methods=["GET", "POST"])
+def reset_password(token: str):
+    if not auth.is_configured():
+        return redirect(url_for("setup"))
+
+    if not auth.verify_reset_token(token):
+        return render_template("reset.html", invalid=True), 400
+
+    error = None
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        confirm = request.form.get("confirm", "")
+        if not password:
+            error = _t("setup_err_required")
+        elif password != confirm:
+            error = _t("setup_err_mismatch")
+        elif len(password) < auth.MIN_PASSWORD_LENGTH:
+            error = _t("setup_err_too_short")
+        else:
+            auth.set_password(password)
+            # Single use: the token dies with the password it replaced,
+            # whether or not the link is still within its hour.
+            auth.clear_reset_token()
+            return render_template("reset.html", done=True)
+
+    return render_template("reset.html", token=token, error=error)
 
 
 @app.route("/logout")
