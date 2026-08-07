@@ -11,4 +11,7 @@
 
   <button type="submit">{{ t('login_submit') }}</button>
 </form>
+{% if mail_available %}
+<p style="margin-top:1rem;"><a href="{{ url_for('forgot_password') }}">{{ t('login_forgot') }}</a></p>
+{% endif %}
 {% endblock %}

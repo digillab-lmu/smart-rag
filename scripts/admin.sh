@@ -266,6 +266,8 @@ _default_for_env_key() {
         MINIO_NOTIFY_WEBHOOK_ENDPOINT) echo "http://smartrag-n8n:5678/webhook/minio-notify" ;;
         # Langfuse reads REDIS_AUTH, not REDIS_PASSWORD.
         REDIS_AUTH)                 echo "${REDIS_PASSWORD:-}" ;;
+        # Must be resolved: env_file does not expand ${DOMAIN}.
+        SMTP_SENDER_EMAIL)          echo "noreply@${DOMAIN}" ;;
         *)
             # Unknown new key: fall back to whatever .env.example carries,
             # and let the caller flag it for review rather than pretending
@@ -515,11 +517,58 @@ action_uninstall() {
     press_enter
 }
 
+action_reset_content_admin() {
+    clear
+    header "$(t admin_reset_title)"
+    # The way back in when the GUI's own reset cannot help: no mail relay,
+    # a mailbox nobody can read any more, or a handover where the previous
+    # holder is gone. Clearing the two keys makes is_configured() false, so
+    # the GUI offers its first-run setup page again.
+    #
+    # Everything the account is *for* lives elsewhere — agent slots in
+    # slots.json, documents in Weaviate, the Flowise key in its own variable
+    # — so this loses nothing but the login itself. Saying that plainly
+    # matters: "reset the admin account" sounds far more destructive than it
+    # is, and an operator who fears data loss will look for a worse way.
+    info "$(t admin_reset_explain)"
+    echo
+    local user
+    user="$(grep -m1 '^CONTENT_ADMIN_USERNAME=' "$REPO_ROOT/.env" | cut -d= -f2- | tr -d '"')"
+    if [[ -n "$user" ]]; then
+        info "$(t admin_reset_current "$user")"
+    else
+        warn "$(t admin_reset_none)"
+        press_enter
+        return 0
+    fi
+    echo
+    if ! confirm admin_reset_confirm "n"; then
+        info "$(t admin_reset_cancelled)"
+        press_enter
+        return 0
+    fi
+
+    backup_file "$REPO_ROOT/.env"
+    set_env_var "$REPO_ROOT/.env" CONTENT_ADMIN_USERNAME          ""
+    set_env_var "$REPO_ROOT/.env" CONTENT_ADMIN_PASSWORD_HASH     ""
+    # A reset link issued before this would still be valid otherwise.
+    set_env_var "$REPO_ROOT/.env" CONTENT_ADMIN_RESET_TOKEN_HASH  ""
+    set_env_var "$REPO_ROOT/.env" CONTENT_ADMIN_RESET_EXPIRES     ""
+    ok "$(t admin_reset_done)"
+    echo
+    local url
+    url="$(grep -m1 '^CONTENT_ADMIN_PUBLIC_URL=' "$REPO_ROOT/.env" | cut -d= -f2- | tr -d '"')"
+    [[ -z "$url" ]] && url="https://$(subdomain_host content "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")"
+    info "$(t admin_reset_next "$url")"
+    # No container restart: the GUI reads .env on every request.
+    press_enter
+}
+
 # ─── Main loop ─────────────────────────────────────────────────────────────────
 while true; do
     choice=""
     if ! choice=$(whiptail --title "$(t admin_title)" --menu "$(t admin_menu_prompt)" \
-        20 78 11 \
+        20 78 12 \
         "1"  "$(t admin_menu_status)" \
         "2"  "$(t admin_menu_logs)" \
         "3"  "$(t admin_menu_update)" \
@@ -531,8 +580,9 @@ while true; do
         "9"  "$(t admin_menu_secrets)" \
         "10" "$(t admin_menu_config)" \
         "11" "$(t admin_menu_migrate)" \
-        "12" "$(t admin_menu_uninstall)" \
-        "13" "$(t admin_menu_exit)" \
+        "12" "$(t admin_menu_reset_ca)" \
+        "13" "$(t admin_menu_uninstall)" \
+        "14" "$(t admin_menu_exit)" \
         3>&1 1>&2 2>&3); then
         clear
         break
@@ -550,7 +600,8 @@ while true; do
         9)  action_secrets ;;
         10) action_config ;;
         11) action_migrate ;;
-        12) action_uninstall ;;
-        13) clear; break ;;
+        12) action_reset_content_admin ;;
+        13) action_uninstall ;;
+        14) clear; break ;;
     esac
 done

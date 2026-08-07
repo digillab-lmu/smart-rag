@@ -50,6 +50,36 @@ MSG_EN: dict[str, str] = {
     "setup_intro": "This is separate from your Flowise login — it only protects this content-authoring tool.",
     "setup_username": "Username",
     "setup_password": "Password (min. 12 characters)",
+    "login_forgot": "Forgot your password?",
+    "forgot_title": "Reset password",
+    "forgot_heading": "Reset password",
+    "forgot_intro": "Enter your username. If it matches this installation's account, a reset link is sent to the system's administration address (%s) — not to an address you can enter here, so a link can only ever reach whoever already receives this system's mail.",
+    "forgot_submit": "Send reset link",
+    "forgot_back": "Back to sign-in",
+    "forgot_sent": "If that username exists, a reset link is on its way to %s.",
+    "forgot_sent_note": "The link is valid for one hour and works once. If nothing arrives, check the address is one you can read, and ask whoever administers the server — the mail relay may not be working.",
+    "forgot_unavailable": "This installation cannot send mail, so a reset link cannot be delivered.",
+    "forgot_unavailable_how": "Ask whoever administers the server to reset the account: `sudo smartrag` → \"Reset Content Admin account\". Nothing is lost — agents, documents and the Flowise connection all survive it; only the username and password are set again.",
+    "reset_title": "Choose a new password",
+    "reset_heading": "Choose a new password",
+    "reset_intro": "Pick a new password for the Content Admin. The username stays the same.",
+    "reset_submit": "Save password",
+    "reset_invalid": "This link is not valid. It may have expired, or already been used.",
+    "reset_request_new": "Request a new link",
+    "reset_done": "Password changed. You can sign in with it now.",
+    "reset_to_login": "Go to sign-in",
+    "reset_mail_subject": "SMART RAG — reset your Content Admin password",
+    "reset_mail_body": """Someone asked to reset the SMART RAG Content Admin password.
+
+Open this link to choose a new one:
+
+%s
+
+The link is valid for %s minutes and works once.
+
+If this was not you, no action is needed — the password is unchanged until
+the link is used, and the link only works from this message.
+""",
     "setup_confirm": "Confirm password",
     "setup_submit": "Create account",
     "setup_err_required": "Username and password are required.",
@@ -330,6 +360,37 @@ MSG_DE: dict[str, str] = {
     "setup_intro": "Dieses Konto ist unabhängig von deinem Flowise-Login — es schützt ausschließlich diese Oberfläche zur Inhaltspflege.",
     "setup_username": "Benutzername",
     "setup_password": "Passwort (mind. 12 Zeichen)",
+    "login_forgot": "Passwort vergessen?",
+    "forgot_title": "Passwort zurücksetzen",
+    "forgot_heading": "Passwort zurücksetzen",
+    "forgot_intro": "Benutzernamen eingeben. Stimmt er mit dem Konto dieser Installation überein, geht ein Link zum Zurücksetzen an die Administrationsadresse des Systems (%s) — nicht an eine hier eingegebene Adresse. Ein Link kann damit nur bei denjenigen ankommen, die ohnehin die Post dieses Systems bekommen.",
+    "forgot_submit": "Link zum Zurücksetzen senden",
+    "forgot_back": "Zurück zur Anmeldung",
+    "forgot_sent": "Falls dieser Benutzername existiert, ist ein Link an %s unterwegs.",
+    "forgot_sent_note": "Der Link gilt eine Stunde und funktioniert einmal. Kommt nichts an, prüfe, ob du diese Adresse lesen kannst, und wende dich an die Serveradministration — möglicherweise funktioniert der Mailversand nicht.",
+    "forgot_unavailable": "Diese Installation kann keine Mails versenden, ein Link zum Zurücksetzen lässt sich daher nicht zustellen.",
+    "forgot_unavailable_how": "Bitte die Serveradministration, das Konto zurückzusetzen: `sudo smartrag` → \"Content-Admin-Konto zurücksetzen\". Dabei geht nichts verloren — Agenten, Dokumente und die Flowise-Verbindung bleiben erhalten; neu gesetzt werden nur Benutzername und Passwort.",
+    "reset_title": "Neues Passwort wählen",
+    "reset_heading": "Neues Passwort wählen",
+    "reset_intro": "Vergib ein neues Passwort für den Content-Admin. Der Benutzername bleibt unverändert.",
+    "reset_submit": "Passwort speichern",
+    "reset_invalid": "Dieser Link ist nicht gültig. Möglicherweise ist er abgelaufen oder wurde bereits verwendet.",
+    "reset_request_new": "Neuen Link anfordern",
+    "reset_done": "Passwort geändert. Du kannst dich jetzt damit anmelden.",
+    "reset_to_login": "Zur Anmeldung",
+    "reset_mail_subject": "SMART RAG — Passwort für den Content-Admin zurücksetzen",
+    "reset_mail_body": """Es wurde angefragt, das Passwort für den SMART RAG Content-Admin zurückzusetzen.
+
+Über diesen Link lässt sich ein neues vergeben:
+
+%s
+
+Der Link gilt %s Minuten und funktioniert einmal.
+
+Falls die Anfrage nicht von dir kam, ist nichts zu tun — das Passwort bleibt
+unverändert, bis der Link verwendet wird, und der Link funktioniert nur aus
+dieser Nachricht.
+""",
     "setup_confirm": "Passwort bestätigen",
     "setup_submit": "Konto anlegen",
     "setup_err_required": "Benutzername und Passwort sind erforderlich.",

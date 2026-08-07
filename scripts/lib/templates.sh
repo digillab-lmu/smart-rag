@@ -74,6 +74,13 @@ write_env_file() {
     # Compose profiles
     # Langfuse wants REDIS_AUTH; only Flowise gets it from compose.
     REPL[REDIS_AUTH]="$SECRET_REDIS_PASSWORD"
+    # Written resolved for the same reason. .env.example carries
+    # "noreply@${DOMAIN}", which bash expands when sourcing but env_file does
+    # not — and smartrag-n8n takes its whole environment from env_file, while
+    # the ingest workflow reads $env.SMTP_SENDER_EMAIL. Left interpolated, the
+    # "your document is ready" mail goes out with a literal ${DOMAIN} in the
+    # sender address. Python's read_env() does not expand it either.
+    REPL[SMTP_SENDER_EMAIL]="noreply@$CFG_DOMAIN"
     REPL[COMPOSE_PROFILES]="$CFG_COMPOSE_PROFILES"
 
     # LLM
