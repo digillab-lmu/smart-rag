@@ -135,6 +135,97 @@ have done exactly that. A consequence worth knowing: all courses on one
 installation share the embedding model, since a Weaviate collection has one
 vector configuration.
 
+> **Superseded in part — see 6a.** The shared *chunk* collection is being
+> replaced by one per course. `course_id` stays on the data, and the shared
+> classes stay shared; only the material served to students moves.
+
+---
+
+## 6a · One chunk collection per course (planned, not yet built)
+
+**Status.** Agreed 2026-08-06. Recorded here because the migration is cheap
+now and expensive later, so the reasoning has to survive until it is built.
+
+**Decision.** The collection students' material is retrieved from is created
+per course, by the Content Admin, when a course is created. `ChatHistory`,
+`UserMemory`, `TestResults` and `WorkflowState` stay shared and keep
+`course_id` — they hold what a learner produced, and their value is that they
+span agents. `course_id` also stays on the chunks, as a second boundary and
+for provenance.
+
+**Why.** The boundary in decision 6 is a JSON string stored inside each
+chatflow — `{"operator":"Equal","target":{"property":"course_id"},…}` —
+substituted at import and editable afterwards in Flowise's own GUI. Ten
+agents times N courses is a lot of places that must stay right. The failure
+modes are not symmetric:
+
+- Shared collection, filter missing or mistyped: the agent answers from every
+  course, plausibly, and nobody notices until a student sees another course's
+  material. Silent and wrong.
+- Per-course collection, name wrong: nothing is found, and the first test
+  shows it. Loud and empty.
+
+For material served to students, loud and empty is the better failure. This
+project has already been bitten once by a malformed Weaviate filter being
+accepted and matching nothing (decision 5), which is the same failure class
+the course boundary would rest on.
+
+**Consequences.** Creating a course becomes an operation with real side
+effects (a collection, a bucket, a set of slots), and deleting one likewise —
+both need the treatment document deletion already gets: name what disappears,
+count it, and require a deliberate confirmation.
+
+**If you change it back.** Once two courses share a collection, returning to
+per-course collections costs an export and a re-embed, not a rename. That is
+why this was decided before a second course existed anywhere.
+
+---
+
+## 6b · The course is a runtime object, not an install-time answer
+
+**Status.** Agreed 2026-08-06, not yet built.
+
+**Decision.** `bootstrap.sh` stops asking for a course. It asks for a name
+for the *installation* and deploys only the shared schema. Courses —
+including their collection, bucket and agent slots — are created in the
+Content Admin. `COURSE_ID`, `COURSE_NAME` and `WEAVIATE_COLLECTION_NAME`
+leave `.env` and become fields of a course record; existing installations
+migrate by turning their single course into the first record, keeping the
+collection's current name.
+
+**Why.** A course is created and deleted while the system runs. Asking for
+one during installation makes a runtime object into a property of the host,
+which is what limited the whole design to a single course.
+
+**What this cuts.** Three couplings, all of which read the course from an
+environment variable today and must take it from the request instead:
+
+- The ingest workflows: `$env.COURSE_ID` for the bucket name and
+  `$env.WEAVIATE_COLLECTION_NAME` in three places.
+- `chathistory-sync` and `usermemory-summary`, which stamp `COURSE_ID` onto
+  every record. With several courses they must derive it from the chatflow,
+  and that lookup does not exist yet — the Content Admin knows the mapping
+  (`slots.json` carries `chatflow_id`), n8n does not. This one fails
+  silently: the history lands under the wrong course.
+- Agent import, where `WEAVIATE_COLLECTION_NAME` and `COURSE_ID` are already
+  auto-filled fields — which is why per-course collections cost almost
+  nothing at import time.
+
+**The boundary Flowise does not enforce.** Flowise has no per-course
+separation, and its API keys carry action permissions
+(`chatflows:update`), not object scopes — there is no key that sees only one
+course's agents. With per-course maintainers, the only thing keeping one out
+of another's agents is the Content Admin's own authorization. It therefore
+belongs at a single choke point every route passes through, not repeated per
+route: checked in fifteen places is forgotten in one, and the omission is
+invisible. Chatflow names must also carry the course, since Flowise's names
+are global and `find_chatflow_by_name` would otherwise match the wrong one.
+
+**Scope.** One installation, several courses, maintainers per course. Not a
+second tenancy level above the installation — an installation-wide name used
+to derive collection names would put course data back under an `.env` value
+and merely move the problem.
+
 ---
 
 ## 7 · Flowise's code sandbox has no `process`
