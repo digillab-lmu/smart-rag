@@ -121,8 +121,11 @@ students without anyone noticing.
   Docker Hub. A migration to an alternative is a decision that will have to
   be made, not an emergency.
 - Several courses can share one installation, but the Content Admin GUI
-  still has a single account and a single course selection. Per-course
-  accounts are an additive change on top of the data model, not a rework of
-  it.
+  still has a single account and a single course selection. The design that
+  resolves this is recorded in `docs/ARCHITECTURE.md` (6a, 6b): one chunk
+  collection per course, courses created in the GUI rather than answered
+  during installation, and maintainers per course. Decided before a second
+  course exists anywhere, because the migration is a rename today and an
+  export-and-re-embed later.
 - There is no test for `content-admin/env_file.py`, the code a
   public-facing web GUI uses to patch the system's central `.env`.
