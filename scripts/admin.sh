@@ -11,9 +11,10 @@
 # documents, knowledge graph) is intentionally NOT here — see the project
 # plan for why that's a separate, later, web-based piece instead.
 #
-# On first run, offers to install itself as a global `smartrag` command
-# (symlink to /usr/local/bin/smartrag) so you don't need the full path
-# again. Safe to keep calling directly instead.
+# On first run it installs itself as a global `smartrag` command (a symlink
+# to /usr/local/bin/smartrag), without asking, so the `sudo smartrag` that
+# the installer and the docs both point at actually exists. An existing file
+# at that path is left alone. Calling this script directly keeps working.
 #
 # Usage:  sudo bash scripts/admin.sh [--lang en|de]
 #     or, once installed:  sudo smartrag
@@ -111,8 +112,12 @@ pick_service() {
     done < <(_active_services)
 
     local choice
+    # Sized like the main menu: with the lti profile enabled this list is
+    # thirteen entries, and a service hidden below a scroll fold is a service
+    # the operator concludes is not running.
+    _drain_stdin
     if ! choice=$(whiptail --title "$(t admin_title)" --menu "$(t admin_pick_service)" \
-        20 78 12 "${menu_args[@]}" 3>&1 1>&2 2>&3); then
+        22 78 14 "${menu_args[@]}" 3>&1 1>&2 2>&3); then
         return 1
     fi
     printf '%s' "$choice"
@@ -122,6 +127,23 @@ press_enter() {
     echo
     dim "$(t admin_press_enter)"
     read -r _ || true
+}
+
+# Throws away anything typed while something else was on screen.
+#
+# Keystrokes made while a plain-text action was running (or while the script
+# was still starting) sit in the terminal's input buffer. The terminal echoes
+# them at the cursor — which is where whiptail is about to draw its first
+# menu row, so an arrow key shows up as a literal ^[[A over the top entry —
+# and whiptail then consumes them as navigation in a menu the operator has
+# not seen yet. Both are avoided by draining the buffer first.
+#
+# read returns non-zero on both timeout and EOF, so this terminates whether
+# stdin is an idle terminal or a closed pipe.
+_drain_stdin() {
+    local junk
+    while read -r -t 0.05 -n 4096 junk 2>/dev/null; do :; done
+    return 0
 }
 
 # ─── Actions ───────────────────────────────────────────────────────────────────
@@ -570,8 +592,13 @@ action_reset_content_admin() {
 # ─── Main loop ─────────────────────────────────────────────────────────────────
 while true; do
     choice=""
+    _drain_stdin
+    # Box height, width, visible list rows. The list must be tall enough for
+    # every entry — a scrolling menu hides the destructive one below the fold
+    # — and the box needs roughly seven rows more than the list for its
+    # title, prompt, buttons and borders. 22 still fits an 80x24 terminal.
     if ! choice=$(whiptail --title "$(t admin_title)" --menu "$(t admin_menu_prompt)" \
-        20 78 12 \
+        22 78 14 \
         "1"  "$(t admin_menu_status)" \
         "2"  "$(t admin_menu_logs)" \
         "3"  "$(t admin_menu_update)" \
