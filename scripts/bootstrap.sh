@@ -139,7 +139,32 @@ if [[ "$MODE" == "phase1" ]]; then
             "$(t prevrun_abort)")" || exit 0
         case "$prevrun_choice" in
             1) MODE="continue" ;;
-            2) info "$(t prevrun_fresh_note)" ;;   # falls through to the normal phase1 flow below
+            2)
+                info "$(t prevrun_fresh_note)"
+                # Re-running the wizard generates a new set of secrets. That is
+                # fine on a clean machine and quietly destructive on this one:
+                # Postgres, Neo4j, ClickHouse and MinIO each read their
+                # password only when their data directory is first created, so
+                # the new .env and the existing databases would disagree, and
+                # the first sign of it is an authentication failure from a
+                # service that worked yesterday. On the test machine this cost
+                # a full wipe to recover, because nothing said so here.
+                _prev_base="$(grep -m1 '^BASE_DATA_PATH=' "$REPO_ROOT/.env" 2>/dev/null | cut -d= -f2- | tr -d '"')"
+                mapfile -t _init_stores < <(initialised_data_stores "${_prev_base:-}")
+                if (( ${#_init_stores[@]} > 0 )); then
+                    echo
+                    warn "$(t prevrun_data_exists "${#_init_stores[@]}")"
+                    printf '      %s\n' "${_init_stores[@]}"
+                    echo
+                    printf "  %s\n"   "$(t prevrun_data_why)"
+                    echo
+                    printf "  ${BOLD}%s${RESET}\n" "$(t prevrun_data_options)"
+                    printf "  %s\n"   "$(t prevrun_data_option_keep)"
+                    printf "  %s\n"   "$(t prevrun_data_option_wipe "${_prev_base}")"
+                    echo
+                    confirm prevrun_data_confirm "n" || exit 0
+                fi
+                ;;   # falls through to the normal phase1 flow below
             3) exit 0 ;;
         esac
     fi
