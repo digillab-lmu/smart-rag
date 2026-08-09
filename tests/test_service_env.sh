@@ -107,6 +107,34 @@ for v in "${ENVFILE_MUST_RESOLVE[@]}"; do
 done
 
 
+# ─── n8n's database settings carry no N8N_ prefix ───────────────────────────
+# Found on a live install: an execution query answered "relation
+# execution_entity does not exist". n8n reads DB_TYPE and DB_POSTGRESDB_*
+# (packages/@n8n/config/src/configs/database.config.ts), and DB_TYPE defaults
+# to 'sqlite'. We were setting N8N_DB_TYPE and N8N_DB_POSTGRESDB_*, which n8n
+# ignores — so it ran on SQLite while the Postgres database stayed empty, and
+# a backup of Postgres contained none of n8n's workflows, credentials or
+# history. Nothing ever failed, which is exactly why it survived this long.
+n8n_block="$(sed -n '/^  smartrag-n8n:/,/^  smartrag-[a-z]/p' "$COMPOSE")"
+
+for v in DB_TYPE DB_POSTGRESDB_HOST DB_POSTGRESDB_USER DB_POSTGRESDB_PASSWORD DB_POSTGRESDB_DATABASE; do
+    grep -qE "^\s+$v:" <<<"$n8n_block"
+    check "n8n receives $v under the name it reads" $? \
+          "n8n's config decorators use no N8N_ prefix for database settings"
+done
+
+# And the prefixed spellings must not be what the container is given: they
+# look configured and do nothing.
+grep -qE '^\s+N8N_DB_(TYPE|POSTGRESDB)' <<<"$n8n_block"
+check "no N8N_DB_* is passed as if it configured something" $(( $? == 0 ? 1 : 0 )) \
+      "$(grep -nE '^\s+N8N_DB_' <<<"$n8n_block" | head -2)"
+
+# The .env keys keep their namespaced names — renaming them would be a
+# migration for every existing installation, and the container-side name is
+# the only one that has to match.
+grep -qE '^N8N_DB_TYPE=' "$ENV_EXAMPLE"
+check ".env keeps its namespaced key" $? "renaming it would break existing installs"
+
 if (( ${#FAILURES[@]} > 0 )); then
     echo "FAILURES:"; printf '  - %s\n' "${FAILURES[@]}"; exit 1
 fi

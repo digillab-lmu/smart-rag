@@ -586,11 +586,25 @@ services:
       N8N_METRICS_INCLUDE_CACHE_DATA_POINTS: "true"
       N8N_ENCRYPTION_KEY: "${N8N_ENCRYPTION_KEY}"
       N8N_USER_MANAGEMENT_JWT_SECRET: "${N8N_USER_MANAGEMENT_JWT_SECRET}"
-      N8N_DB_TYPE: "${N8N_DB_TYPE}"
-      N8N_DB_POSTGRESDB_HOST: "smartrag-postgres"
-      N8N_DB_POSTGRESDB_USER: "${POSTGRES_USER}"
-      N8N_DB_POSTGRESDB_PASSWORD: "${POSTGRES_PASSWORD}"
-      N8N_DB_POSTGRESDB_DATABASE: "n8n"
+      # NOT N8N_DB_*. n8n's database settings carry no N8N_ prefix — see
+      # packages/@n8n/config/src/configs/database.config.ts, where the
+      # decorators are @Env('DB_TYPE') and @Env('DB_POSTGRESDB_*'), and
+      # DB_TYPE defaults to 'sqlite'. Setting the prefixed names configures
+      # nothing: n8n ignored all five and quietly ran on SQLite instead, so
+      # the Postgres database sat empty while 192 MB of workflows,
+      # credentials and execution history accumulated in a file inside the
+      # volume. Nothing failed — which is why it went unnoticed until an
+      # execution query found no such table.
+      #
+      # The keys in .env stay N8N_DB_* on purpose: that file namespaces by
+      # service, and renaming them would mean a migration for every existing
+      # installation. Only the name the container receives has to be the one
+      # n8n reads.
+      DB_TYPE: "${N8N_DB_TYPE}"
+      DB_POSTGRESDB_HOST: "smartrag-postgres"
+      DB_POSTGRESDB_USER: "${POSTGRES_USER}"
+      DB_POSTGRESDB_PASSWORD: "${POSTGRES_PASSWORD}"
+      DB_POSTGRESDB_DATABASE: "n8n"
       GENERIC_TIMEZONE: "${TZ}"
       TZ: "${TZ}"
       # ── SMTP (strongly recommended — for password resets and invitations) ──
