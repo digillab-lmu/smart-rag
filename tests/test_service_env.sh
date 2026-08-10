@@ -167,6 +167,23 @@ if grep -q 'NODE_FUNCTION_ALLOW_EXTERNAL' "$COMPOSE"; then
     done
 fi
 
+# ─── Flowise's database settings, under the names Flowise reads ─────────────
+# The same check as for n8n, because the same mistake is available here and
+# would be just as quiet: Flowise reads DATABASE_TYPE, DATABASE_HOST,
+# DATABASE_PORT, DATABASE_NAME, DATABASE_USER and DATABASE_PASSWORD directly
+# from process.env (packages/server/src/DataSource.ts) — no prefix. A
+# prefixed spelling would leave it on SQLite inside its volume while the
+# Postgres database stayed empty, and nothing would fail until a restore.
+flowise_env="$(sed -n '/^x-flowise-env:/,/^x-\|^services:/p' "$COMPOSE")"
+for v in DATABASE_TYPE DATABASE_HOST DATABASE_PORT DATABASE_NAME DATABASE_USER DATABASE_PASSWORD; do
+    grep -qE "^\s+$v:" <<<"$flowise_env"
+    check "Flowise receives $v under the name it reads" $? \
+          "DataSource.ts reads it unprefixed from process.env"
+done
+grep -qE '^\s+DATABASE_TYPE: *"postgres"' <<<"$flowise_env"
+check "Flowise is pointed at postgres, not left on the sqlite default" $? \
+      "$(grep -nE '^\s+DATABASE_TYPE:' <<<"$flowise_env")"
+
 if (( ${#FAILURES[@]} > 0 )); then
     echo "FAILURES:"; printf '  - %s\n' "${FAILURES[@]}"; exit 1
 fi
