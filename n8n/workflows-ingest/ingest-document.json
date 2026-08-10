@@ -400,7 +400,7 @@
       "onError": "continueRegularOutput",
       "parameters": {
         "method": "POST",
-        "url": "=http://smartrag-content-admin:{{ $env.CONTENT_ADMIN_PORT }}/api/ingest-status",
+        "url": "http://smartrag-content-admin:5000/api/ingest-status",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -430,7 +430,7 @@
       "onError": "continueRegularOutput",
       "parameters": {
         "method": "POST",
-        "url": "=http://smartrag-content-admin:{{ $env.CONTENT_ADMIN_PORT }}/api/ingest-status",
+        "url": "http://smartrag-content-admin:5000/api/ingest-status",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -460,7 +460,7 @@
       "onError": "continueRegularOutput",
       "parameters": {
         "method": "POST",
-        "url": "=http://smartrag-content-admin:{{ $env.CONTENT_ADMIN_PORT }}/api/ingest-status",
+        "url": "http://smartrag-content-admin:5000/api/ingest-status",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -490,7 +490,7 @@
       "onError": "continueRegularOutput",
       "parameters": {
         "method": "POST",
-        "url": "=http://smartrag-content-admin:{{ $env.CONTENT_ADMIN_PORT }}/api/ingest-status",
+        "url": "http://smartrag-content-admin:5000/api/ingest-status",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -520,7 +520,7 @@
       "onError": "continueRegularOutput",
       "parameters": {
         "method": "POST",
-        "url": "=http://smartrag-content-admin:{{ $env.CONTENT_ADMIN_PORT }}/api/ingest-status",
+        "url": "http://smartrag-content-admin:5000/api/ingest-status",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [

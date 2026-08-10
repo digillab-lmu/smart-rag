@@ -592,6 +592,13 @@ services:
       # We ship no Git-node workflow, so the stricter behaviour costs nothing
       # and silences the second startup deprecation.
       N8N_GIT_NODE_DISABLE_BARE_REPOS: "true"
+      # /home/node/.n8n/config holds the encryption key that every stored
+      # credential — S3, SMTP, the LLM keys — is encrypted with, and n8n
+      # creates it 0644: readable by every user in the container. n8n warns
+      # about this and will enforce 0600 itself in a future version; asking
+      # for that now means the permissions are right from the first start
+      # rather than whenever the image is next bumped.
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
       N8N_ENCRYPTION_KEY: "${N8N_ENCRYPTION_KEY}"
       N8N_USER_MANAGEMENT_JWT_SECRET: "${N8N_USER_MANAGEMENT_JWT_SECRET}"
       # NOT N8N_DB_*. n8n's database settings carry no N8N_ prefix — see
