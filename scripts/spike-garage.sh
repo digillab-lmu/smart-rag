@@ -94,34 +94,52 @@ if [[ "${1:-}" == "--langfuse" || "${1:-}" == "--langfuse-revert" ]]; then
 
     if [[ "${1:-}" == "--langfuse-revert" ]]; then
         header "Pointing Langfuse back at MinIO"
-        # NOT "restore the newest .env backup". That was the first version of
-        # this and it was wrong: every later operation writes its own backup,
-        # so once the upgrade entry has run a few times the newest one already
-        # contains the Garage values — and "revert" would have written them
-        # straight back.
+        # Search for the right backup, do not assume the newest one is it.
         #
-        # The MinIO settings are not something to recover, they are something
-        # to derive: the buckets are fixed names created by MinIO's own
-        # entrypoint, and the credentials are already in .env under their
-        # MinIO names.
+        # The first version restored the most recent .env backup, which was
+        # correct for about ten minutes: every later operation writes its own
+        # backup, and the upgrade entry has run several times since, so the
+        # newest one already contains the Garage values. "Revert" would have
+        # written them straight back and reported success.
+        #
+        # Deriving the MinIO settings instead would work, but it would also
+        # overwrite a deployment that had them customised with whatever this
+        # script believes they should be. So: walk the backups newest-first
+        # and take the first one that is not pointing at the spike — that is
+        # the state this script replaced, whatever it was.
+        chosen=""
+        while IFS= read -r candidate; do
+            [[ -n "$candidate" ]] || continue
+            ep="$(grep -m1 '^LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT=' "$candidate" 2>/dev/null \
+                  | cut -d= -f2- | tr -d '"')"
+            [[ -n "$ep" ]] || continue
+            [[ "$ep" == *"$GARAGE_NAME"* ]] && continue
+            chosen="$candidate"
+            break
+        done < <(ls -1t "$ENVFILE".backup-* 2>/dev/null)
+
+        if [[ -z "$chosen" ]]; then
+            err "No backup found that predates the switch."
+            dim "Every .env.backup-* either points at $GARAGE_NAME or has no"
+            dim "LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT at all. Rather than guess what"
+            dim "the settings used to be, restore them by hand — the six keys per"
+            dim "purpose are BUCKET, ENDPOINT, ACCESS_KEY_ID, SECRET_ACCESS_KEY,"
+            dim "FORCE_PATH_STYLE and REGION."
+            exit 1
+        fi
+
+        info "Restoring from $(basename "$chosen")"
+        dim "  its event endpoint: $(grep -m1 '^LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT=' "$chosen" | cut -d= -f2-)"
+        # Only the LANGFUSE_S3_* keys are put back: anything else changed
+        # since that backup is somebody's work, not this script's to undo.
         restored=0
-        for purpose in EVENT_UPLOAD MEDIA_UPLOAD BATCH_EXPORT; do
-            case "$purpose" in
-                EVENT_UPLOAD) bucket=langfuse-events ;;
-                MEDIA_UPLOAD) bucket=langfuse-media ;;
-                BATCH_EXPORT) bucket=langfuse-exports ;;
-            esac
-            set_env_var "$ENVFILE" "LANGFUSE_S3_${purpose}_BUCKET"            "$bucket"
-            set_env_var "$ENVFILE" "LANGFUSE_S3_${purpose}_ENDPOINT"          "http://smartrag-minio:9000"
-            set_env_var "$ENVFILE" "LANGFUSE_S3_${purpose}_ACCESS_KEY_ID"     "${MINIO_LANGFUSE_ACCESS_KEY:-}"
-            set_env_var "$ENVFILE" "LANGFUSE_S3_${purpose}_SECRET_ACCESS_KEY" "${MINIO_LANGFUSE_SECRET_KEY:-}"
-            set_env_var "$ENVFILE" "LANGFUSE_S3_${purpose}_FORCE_PATH_STYLE"  "true"
-            set_env_var "$ENVFILE" "LANGFUSE_S3_${purpose}_REGION"            "${MINIO_REGION_NAME:-us-east-1}"
-            restored=$((restored+6))
-        done
-        ok "$restored setting(s) pointed back at MinIO"
-        [[ -n "${MINIO_LANGFUSE_ACCESS_KEY:-}" ]] \
-            || warn "MINIO_LANGFUSE_ACCESS_KEY is empty in .env — check it before relying on this"
+        while IFS= read -r line; do
+            [[ "$line" =~ ^(LANGFUSE_S3_[A-Z_]+)=\"?(.*)\"?$ ]] || continue
+            value="${BASH_REMATCH[2]%\"}"
+            set_env_var "$ENVFILE" "${BASH_REMATCH[1]}" "$value"
+            restored=$((restored+1))
+        done < "$chosen"
+        ok "$restored setting(s) restored"
         bash "$SCRIPT_DIR/compose.sh" up -d --force-recreate \
             smartrag-langfuse-web smartrag-langfuse-worker >/dev/null 2>&1 \
             && ok "Langfuse recreated against MinIO" \
