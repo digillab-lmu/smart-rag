@@ -81,6 +81,13 @@ class N8nClient:
         files = {"file": (filename, file_stream, content_type)}
         data = {
             "agent_id": str(agent_id),
+            # Also sent as a plain field, not only as the multipart part's
+            # own name: by the time the workflow needs it, the binary in
+            # hand is Docling's response, not this upload, and the name is
+            # gone. It fell back to "document.pdf" there, so every document
+            # in a course was archived over the previous one at
+            # agent_N/document.md.
+            "filename": filename,
             "title": title,
             "authors": authors,
             "year": year,

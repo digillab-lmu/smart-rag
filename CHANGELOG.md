@@ -46,6 +46,19 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **Every document was archived over the previous one.** The ingest built its
+  object key from the uploaded file's name, read out of the binary in hand —
+  but by that point the binary is Docling's response, not the upload, so the
+  name was gone and a constant fallback took over. Every document in a course
+  landed at `agent_<n>/document.md`, each overwriting the last. Retrieval was
+  unaffected (the chunks in Weaviate are separate and complete), but of the
+  archived markdown only the most recent document survived, and
+  `source_file` is identical on every chunk ingested before this fix.
+  The name now travels as its own form field, and the fallback is derived
+  from the title or a timestamp rather than a constant, so a lost name can
+  never again silently overwrite somebody else's document. **Upgrade
+  required:** re-import the n8n workflows and rebuild the Content Admin;
+  re-upload anything whose archived copy matters.
 - **n8n's settings file is no longer world-readable inside the container.**
   `/home/node/.n8n/config` holds the encryption key that every stored
   credential — S3, SMTP, the LLM keys — is encrypted with, and n8n creates it
