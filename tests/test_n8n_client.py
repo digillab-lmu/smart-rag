@@ -201,6 +201,47 @@ except Exception as exc:  # noqa: BLE001
     failures.append(f"empty 200 body should not raise, got {exc!r}")
 reset()
 
+# ─── The document's own name must reach the workflow ─────────────────────────
+# The workflow cannot recover it later: by the time it builds the object key,
+# the binary in hand is Docling's response, not the upload, and its fileName
+# is gone. It fell back to a constant, so every document in a course was
+# archived over the previous one at agent_N/document.md — the chunks survived,
+# the archived markdown of every earlier document did not. So the name travels
+# as a plain form field, and this pins it.
+reset()
+n8n_client.requests.request = fake_request
+client.upload_document(
+    file_stream=io.BytesIO(b"x"),
+    filename="Sailer et al (2024) — Learning activities.pdf",
+    content_type="application/pdf",
+    agent_id=1,
+    title="Learning activities",
+)
+sent = captured["data"]
+if sent.get("filename") != "Sailer et al (2024) — Learning activities.pdf":
+    failures.append(f"the filename is not sent as a form field: {sent!r}")
+# The multipart part carries it too, but that is the one the workflow loses.
+if captured["files"]["file"][0] != "Sailer et al (2024) — Learning activities.pdf":
+    failures.append("the multipart part lost the filename")
+reset()
+
+# And the workflow must prefer that field over the binary it no longer has.
+import json as _json  # noqa: E402
+wf = _json.load(open(REPO / "n8n" / "workflows-ingest" / "ingest-document.json"))
+extract = [n for n in wf["nodes"] if n["name"] == "Extract Images"][0]["parameters"]["jsCode"]
+if "trigger.body?.filename" not in extract:
+    failures.append("Extract Images does not read the filename from the upload")
+if extract.index("trigger.body?.filename") > extract.index("$binary?.file?.fileName"):
+    failures.append("the binary is preferred over the upload's own field")
+
+# The fallback must not be a constant: a constant is what made two different
+# documents share one key.
+sanitize = [n for n in wf["nodes"] if n["name"] == "Sanitize Filename"][0]["parameters"]["jsCode"]
+if "'document'" in sanitize:
+    failures.append("Sanitize Filename still falls back to a constant name")
+if "Date.now()" not in sanitize:
+    failures.append("Sanitize Filename has no collision-free fallback")
+
 if failures:
     print("FAILURES:")
     for f in failures:
@@ -209,5 +250,7 @@ if failures:
 print(
     "All n8n_client.py checks passed: request shape (URL/method/multipart file field/"
     "form fields), optional-field defaults, base_url normalization, HTTP-error and "
-    "network-error surfacing as N8nError, empty-body tolerance."
+    "network-error surfacing as N8nError, empty-body tolerance, and the document's "
+    "own filename travelling as a form field the workflow prefers over the binary "
+    "it no longer holds — with a fallback that cannot collide."
 )
