@@ -27,8 +27,17 @@
 # container the way a browser would. No new image is pulled.
 #
 # Usage:
-#   sudo bash scripts/spike-garage.sh            # run the evaluation
-#   sudo bash scripts/spike-garage.sh --cleanup  # remove container + data
+#   sudo bash scripts/spike-garage.sh                  # S3 operations only
+#   sudo bash scripts/spike-garage.sh --langfuse       # point Langfuse at it
+#   sudo bash scripts/spike-garage.sh --langfuse-revert
+#   sudo bash scripts/spike-garage.sh --cleanup        # remove container + data
+#
+# --langfuse is the only mode that changes the running deployment, and the
+# only one that answers the question the S3 checks cannot: whether Langfuse's
+# own client works against Garage. It rewrites the LANGFUSE_S3_* keys in .env
+# (backed up first) and recreates the two Langfuse containers. --langfuse-revert
+# puts the previous values back. Nothing else is touched, and MinIO keeps its
+# data throughout — the buckets on Garage start empty.
 # ═════════════════════════════════════════════════════════════════════════════
 
 set -uo pipefail
@@ -69,6 +78,143 @@ if [[ "${1:-}" == "--cleanup" ]]; then
         ok "Data removed: $SPIKE_DIR"
     fi
     ok "Nothing of the evaluation remains. MinIO was never touched."
+    exit 0
+fi
+
+# ─── Langfuse against Garage ─────────────────────────────────────────────────
+# The S3 checks above prove the primitives. They do not prove that Langfuse's
+# client — its key layout, its multipart thresholds, its retry behaviour —
+# works against this server, and "not officially supported" is exactly the
+# kind of claim that is only settled by running it.
+#
+# Event upload is the cheapest decisive test: Langfuse writes a blob for every
+# trace, so one chat message exercises the whole path.
+if [[ "${1:-}" == "--langfuse" || "${1:-}" == "--langfuse-revert" ]]; then
+    ENVFILE="$REPO_ROOT/.env"
+
+    if [[ "${1:-}" == "--langfuse-revert" ]]; then
+        header "Pointing Langfuse back at MinIO"
+        latest="$(ls -1t "$ENVFILE".backup-* 2>/dev/null | head -1)"
+        [[ -n "$latest" ]] || die "No .env backup found — restore by hand."
+        info "Restoring from $(basename "$latest")"
+        # Only the LANGFUSE_S3_* keys are put back: anything else changed
+        # since the backup is somebody's work, not this script's to undo.
+        restored=0
+        while IFS= read -r line; do
+            [[ "$line" =~ ^(LANGFUSE_S3_[A-Z_]+)=\"?(.*[^\"])\"?$ ]] || continue
+            set_env_var "$ENVFILE" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+            restored=$((restored+1))
+        done < "$latest"
+        ok "$restored setting(s) restored"
+        bash "$SCRIPT_DIR/compose.sh" up -d --force-recreate \
+            smartrag-langfuse-web smartrag-langfuse-worker >/dev/null 2>&1 \
+            && ok "Langfuse recreated against MinIO" \
+            || err "Recreate failed — run it by hand"
+        exit 0
+    fi
+
+    header "Pointing Langfuse at Garage"
+    docker ps --format '{{.Names}}' | grep -qx "$GARAGE_NAME" \
+        || die "The Garage container is not running. Run this script without arguments first."
+
+    GARAGE_BIN=/garage
+    docker exec "$GARAGE_NAME" /garage --version >/dev/null 2>&1 || GARAGE_BIN=garage
+    gcmd() { docker exec "$GARAGE_NAME" "$GARAGE_BIN" "$@" 2>&1; }
+
+    LF_KEY_NAME="langfuse-spike"
+    for b in langfuse-events langfuse-media langfuse-exports; do
+        gcmd bucket create "$b" >/dev/null 2>&1
+    done
+    key_out="$(gcmd key create "$LF_KEY_NAME" 2>&1)"
+    # Re-running is normal; an existing key has to be read back instead.
+    if ! grep -qE 'GK[0-9a-f]+' <<<"$key_out"; then
+        key_out="$(gcmd key info --show-secret "$LF_KEY_NAME" 2>&1)"
+    fi
+    LF_ACCESS="$(grep -oE 'GK[0-9a-f]+' <<<"$key_out" | head -1)"
+    LF_SECRET="$(grep -oiE 'secret key: *[0-9a-f]+' <<<"$key_out" | awk '{print $NF}')"
+    [[ -n "$LF_ACCESS" && -n "$LF_SECRET" ]] || die "Could not obtain a key: $key_out"
+    for b in langfuse-events langfuse-media langfuse-exports; do
+        gcmd bucket allow --read --write --owner "$b" --key "$LF_KEY_NAME" >/dev/null 2>&1
+    done
+    ok "Three buckets and one key ready in Garage"
+
+    # Container-to-container: Garage is on smart-rag-network under its name.
+    GARAGE_INTERNAL="http://${GARAGE_NAME}:3900"
+    info "Rewriting the LANGFUSE_S3_* settings (a backup is written first)"
+    for purpose in EVENT_UPLOAD MEDIA_UPLOAD BATCH_EXPORT; do
+        case "$purpose" in
+            EVENT_UPLOAD) bucket=langfuse-events ;;
+            MEDIA_UPLOAD) bucket=langfuse-media ;;
+            BATCH_EXPORT) bucket=langfuse-exports ;;
+        esac
+        set_env_var "$ENVFILE" "LANGFUSE_S3_${purpose}_BUCKET"            "$bucket"
+        set_env_var "$ENVFILE" "LANGFUSE_S3_${purpose}_ENDPOINT"          "$GARAGE_INTERNAL"
+        set_env_var "$ENVFILE" "LANGFUSE_S3_${purpose}_ACCESS_KEY_ID"     "$LF_ACCESS"
+        set_env_var "$ENVFILE" "LANGFUSE_S3_${purpose}_SECRET_ACCESS_KEY" "$LF_SECRET"
+        set_env_var "$ENVFILE" "LANGFUSE_S3_${purpose}_FORCE_PATH_STYLE"  "true"
+        set_env_var "$ENVFILE" "LANGFUSE_S3_${purpose}_REGION"            "${MINIO_REGION_NAME:-us-east-1}"
+    done
+    ok "18 settings rewritten"
+
+    info "Recreating Langfuse so it reads them (env_file is read at creation)"
+    if bash "$SCRIPT_DIR/compose.sh" up -d --force-recreate \
+            smartrag-langfuse-web smartrag-langfuse-worker >/dev/null 2>&1; then
+        ok "Recreated"
+    else
+        err "Recreate failed"
+        exit 1
+    fi
+
+    info "Waiting for Langfuse to become healthy…"
+    healthy=0
+    for _ in $(seq 40); do
+        [[ "$(container_health smartrag-langfuse-web)" == "healthy" ]] && { healthy=1; break; }
+        sleep 5
+    done
+    if (( healthy )); then
+        ok "Langfuse is healthy against Garage"
+    else
+        err "Langfuse did not become healthy — this is the answer, and it is a no"
+        docker logs --tail 25 smartrag-langfuse-web 2>&1 | sed 's/^/    /'
+        echo
+        warn "Revert with: sudo bash scripts/spike-garage.sh --langfuse-revert"
+        exit 1
+    fi
+
+    echo
+    header "Now produce a trace"
+    echo "  Send one message to an agent in the chat. Langfuse writes a blob"
+    echo "  per trace, so that single message exercises its whole S3 path."
+    echo
+    echo "  Then check that objects arrived:"
+    printf "    %s\n" "sudo bash scripts/spike-garage.sh --langfuse-check"
+    echo
+    dim "Revert at any time: sudo bash scripts/spike-garage.sh --langfuse-revert"
+    dim "MinIO still holds everything written before this; nothing was copied or deleted."
+    exit 0
+fi
+
+if [[ "${1:-}" == "--langfuse-check" ]]; then
+    header "Did Langfuse write to Garage?"
+    docker ps --format '{{.Names}}' | grep -qx "$GARAGE_NAME" || die "Garage is not running."
+    GARAGE_BIN=/garage
+    docker exec "$GARAGE_NAME" /garage --version >/dev/null 2>&1 || GARAGE_BIN=garage
+    out="$(docker exec "$GARAGE_NAME" "$GARAGE_BIN" bucket info langfuse-events 2>&1)"
+    printf '%s\n' "$out" | sed 's/^/    /'
+    objects="$(grep -oiE 'objects: *[0-9]+' <<<"$out" | grep -oE '[0-9]+' | head -1)"
+    echo
+    if [[ -n "$objects" ]] && (( objects > 0 )); then
+        ok "$objects object(s) in langfuse-events — Langfuse's own client works against Garage."
+        echo
+        info "That retires the last open risk. What a migration still needs:"
+        echo "    • the layout step in the bootstrap"
+        echo "    • bucket/key provisioning rewritten around Garage's model"
+        echo "    • Flowise moved to local storage, and the ingest's bucket migrated"
+        echo "    • existing objects copied from MinIO"
+    else
+        warn "No objects yet. Send a chat message first, then run this again."
+        dim "If it stays empty after a message, check: docker logs smartrag-langfuse-worker"
+    fi
     exit 0
 fi
 
