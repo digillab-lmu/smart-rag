@@ -700,7 +700,17 @@ def t(key: str, *args, lang: str = DEFAULT_LANGUAGE) -> str:
     mid-render. %s substitution mirrors messages.sh's printf-style usage.
     """
     catalog = _CATALOG.get(lang, MSG_EN)
-    text = catalog.get(key) or MSG_EN.get(key) or key
+    # Presence, not truthiness. An empty string is a legitimate translation —
+    # the document table's action column deliberately has no header — and
+    # `or` treated it as missing, so the column rendered the literal key
+    # "docs_col_action" to every user. Same mistake as testing a jq result
+    # with `//`, which fires on false as well as null.
+    if key in catalog:
+        text = catalog[key]
+    elif key in MSG_EN:
+        text = MSG_EN[key]
+    else:
+        text = key
     if args:
         try:
             return text % args

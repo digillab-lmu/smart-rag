@@ -1423,10 +1423,16 @@ declare -A MSG_DE=(
 t() {
     local key="$1"; shift || true
     local fmt
-    if [[ "$LANG_CHOICE" == "de" && -n "${MSG_DE[$key]:-}" ]]; then
+    # ${arr[k]+x} tests whether the key EXISTS; ${arr[k]:-d} would treat a
+    # deliberately empty string as missing and fall through — which in the
+    # Python port made an intentionally blank table header render as the
+    # literal key name on every page.
+    if [[ "$LANG_CHOICE" == "de" && -n "${MSG_DE[$key]+x}" ]]; then
         fmt="${MSG_DE[$key]}"
+    elif [[ -n "${MSG_EN[$key]+x}" ]]; then
+        fmt="${MSG_EN[$key]}"
     else
-        fmt="${MSG_EN[$key]:-MISSING:$key}"
+        fmt="MISSING:$key"
     fi
     # shellcheck disable=SC2059
     printf "$fmt" "$@"
