@@ -94,18 +94,34 @@ if [[ "${1:-}" == "--langfuse" || "${1:-}" == "--langfuse-revert" ]]; then
 
     if [[ "${1:-}" == "--langfuse-revert" ]]; then
         header "Pointing Langfuse back at MinIO"
-        latest="$(ls -1t "$ENVFILE".backup-* 2>/dev/null | head -1)"
-        [[ -n "$latest" ]] || die "No .env backup found — restore by hand."
-        info "Restoring from $(basename "$latest")"
-        # Only the LANGFUSE_S3_* keys are put back: anything else changed
-        # since the backup is somebody's work, not this script's to undo.
+        # NOT "restore the newest .env backup". That was the first version of
+        # this and it was wrong: every later operation writes its own backup,
+        # so once the upgrade entry has run a few times the newest one already
+        # contains the Garage values — and "revert" would have written them
+        # straight back.
+        #
+        # The MinIO settings are not something to recover, they are something
+        # to derive: the buckets are fixed names created by MinIO's own
+        # entrypoint, and the credentials are already in .env under their
+        # MinIO names.
         restored=0
-        while IFS= read -r line; do
-            [[ "$line" =~ ^(LANGFUSE_S3_[A-Z_]+)=\"?(.*[^\"])\"?$ ]] || continue
-            set_env_var "$ENVFILE" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
-            restored=$((restored+1))
-        done < "$latest"
-        ok "$restored setting(s) restored"
+        for purpose in EVENT_UPLOAD MEDIA_UPLOAD BATCH_EXPORT; do
+            case "$purpose" in
+                EVENT_UPLOAD) bucket=langfuse-events ;;
+                MEDIA_UPLOAD) bucket=langfuse-media ;;
+                BATCH_EXPORT) bucket=langfuse-exports ;;
+            esac
+            set_env_var "$ENVFILE" "LANGFUSE_S3_${purpose}_BUCKET"            "$bucket"
+            set_env_var "$ENVFILE" "LANGFUSE_S3_${purpose}_ENDPOINT"          "http://smartrag-minio:9000"
+            set_env_var "$ENVFILE" "LANGFUSE_S3_${purpose}_ACCESS_KEY_ID"     "${MINIO_LANGFUSE_ACCESS_KEY:-}"
+            set_env_var "$ENVFILE" "LANGFUSE_S3_${purpose}_SECRET_ACCESS_KEY" "${MINIO_LANGFUSE_SECRET_KEY:-}"
+            set_env_var "$ENVFILE" "LANGFUSE_S3_${purpose}_FORCE_PATH_STYLE"  "true"
+            set_env_var "$ENVFILE" "LANGFUSE_S3_${purpose}_REGION"            "${MINIO_REGION_NAME:-us-east-1}"
+            restored=$((restored+6))
+        done
+        ok "$restored setting(s) pointed back at MinIO"
+        [[ -n "${MINIO_LANGFUSE_ACCESS_KEY:-}" ]] \
+            || warn "MINIO_LANGFUSE_ACCESS_KEY is empty in .env — check it before relying on this"
         bash "$SCRIPT_DIR/compose.sh" up -d --force-recreate \
             smartrag-langfuse-web smartrag-langfuse-worker >/dev/null 2>&1 \
             && ok "Langfuse recreated against MinIO" \
