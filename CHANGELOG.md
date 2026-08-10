@@ -13,6 +13,15 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **Memory limits where a runaway is possible.** No container had one, so any
+  single service could push the host into swap and let the kernel choose a
+  victim — not necessarily the culprit. Docling and ClickHouse are now capped;
+  Neo4j's page cache, which it otherwise sizes from whatever RAM it detects,
+  is set explicitly. Postgres, Weaviate, MinIO and Redis are deliberately left
+  unlimited: their memory grows with the data, so a limit would not stop a
+  runaway, it would schedule an outage for whenever the index outgrew the
+  number someone picked today — and a limit on Redis without an eviction
+  policy means the kernel kills the queue rather than Redis dropping keys.
 - **The ingest stops on a failure that cannot resolve.** An OpenAI account
   with no credits produced 23 identical 429s, one per chunk — every call
   doomed the moment the first came back, and the one fact that mattered

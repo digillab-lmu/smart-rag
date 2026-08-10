@@ -335,6 +335,11 @@ services:
       NEO4J_AUTH: "${NEO4J_AUTH}"
       NEO4J_server_memory_heap_initial__size: "512m"
       NEO4J_server_memory_heap_max__size: "1G"
+      # The heap was capped and the page cache was not — and Neo4j sizes that
+      # from the memory it detects, so on a bigger host it quietly claims
+      # more. Capping it makes the service's footprint a property of the
+      # configuration rather than of the machine it happens to run on.
+      NEO4J_server_memory_pagecache__size: "512m"
       TZ: "${TZ}"
     volumes:
       - ${BASE_DATA_PATH}/neo4j/data:/data
@@ -418,6 +423,16 @@ services:
     image: ghcr.io/docling-project/docling-serve-cpu:v1.29.0
     container_name: smartrag-docling
     restart: always
+    # The one service whose peak is driven by what a user uploads. It sits at
+    # roughly 800 MB idle with its models loaded, and a large scanned document
+    # with many figures is what multiplies that. Unlimited, a single upload
+    # can take the host down with it; limited, a runaway conversion costs that
+    # one document and the container restarts.
+    #
+    # Deliberately generous rather than tight: killing a conversion that would
+    # have finished is its own failure. 4 GB fits the documented 8 GB minimum
+    # alongside everything else.
+    mem_limit: 4g
     environment:
       DOCLING_DEVICE: "cpu"
       TZ: "${TZ}"
@@ -692,6 +707,12 @@ services:
     image: clickhouse/clickhouse-server:26.7.1.1315
     container_name: smartrag-clickhouse
     restart: always
+    # ClickHouse sizes its caches from the memory it believes it has, and
+    # recent versions read the cgroup limit rather than the host's total — so
+    # a limit here is also what tells it how much it may use. Without one it
+    # plans against all 16 GB of a machine it shares with twelve other
+    # services. Observed at ~580 MB serving one course.
+    mem_limit: 2g
     env_file: ../.env
     environment:
       CLICKHOUSE_USER: "${CLICKHOUSE_USER}"
