@@ -10,7 +10,7 @@
       "data": {
         "id": "startAgentflow_0",
         "label": "Start",
-        "version": 1.1,
+        "version": 1.4,
         "name": "startAgentflow",
         "type": "Start",
         "color": "#7EE787",

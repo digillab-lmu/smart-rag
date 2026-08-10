@@ -13,6 +13,14 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **The Start node in every agent template was three versions behind.** Flowise
+  3.1.3 ships `startAgentflow` at 1.4; the templates carried 1.1, so every
+  agent showed "Node version 1.1 outdated" when opened. Cosmetic — the node
+  has no version-conditional code, so behaviour came from the current release
+  either way — and worth fixing for that reason: a warning that is always
+  there teaches people to skim past warnings. The other three node types were
+  already current. A test pins the versions against the pinned Flowise image,
+  so upgrading the image has to revisit them.
 - **Observability was installed but never switched on.** The profile ran
   Langfuse and ClickHouse — well over a gigabyte of memory — and received
   nothing: no Langfuse project existed, so there were no API keys for anything
