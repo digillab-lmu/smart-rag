@@ -37,8 +37,8 @@ setup_sandbox() {
     cp "$REPO"/scripts/lib/*.sh "$SANDBOX/scripts/lib/"
 
     for s in install-system-packages install-postfix get-ssl-certs \
-             start-services deploy-schemas generate-lti-keys install-tailscale \
-             deploy-n8n-workflows; do
+             start-services deploy-garage deploy-schemas generate-lti-keys \
+             install-tailscale deploy-n8n-workflows; do
         printf '#!/usr/bin/env bash\necho "STUB %s"\nexit 0\n' "$s" \
             > "$SANDBOX/scripts/$s.sh"
         chmod +x "$SANDBOX/scripts/$s.sh"

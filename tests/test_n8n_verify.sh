@@ -32,9 +32,9 @@ setup() { # $1 = docker-exec behaviour, $2 = webhook body, $3 = healthz (ok|down
 
     cat > "$SANDBOX/.env" <<ENV
 BASE_DATA_PATH="$SANDBOX/data"
-MINIO_REGION_NAME="us-east-1"
-MINIO_ROOT_USER="minio-test-user"
-MINIO_ROOT_PASSWORD="minio-test-password"
+GARAGE_REGION="us-east-1"
+GARAGE_ACCESS_KEY="GKtestaccesskey"
+GARAGE_SECRET_KEY="test-secret-key"
 SMTP_HOST="mail.example.com"
 SMTP_PORT=25
 SMTP_USER="smtp-test-user"

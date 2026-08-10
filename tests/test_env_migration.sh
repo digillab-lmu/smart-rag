@@ -34,8 +34,7 @@ cat > "$SANDBOX/.env.example" <<'EOF'
 DOMAIN="example.com"
 SUBDOMAIN_PREFIX=""
 EXISTING_KEY="kept"
-MINIO_SERVER_URL="https://s3.${DOMAIN}"
-MINIO_BROWSER_REDIRECT_URL="https://minio.${DOMAIN}"
+GARAGE_S3_PUBLIC_URL="https://s3.${DOMAIN}"
 FLOWISE_PUBLIC_URL="https://smart-rag.${DOMAIN}"
 SOME_NEW_PLAIN_KEY="a-literal-default"
 EOF
@@ -52,22 +51,21 @@ source "$HELPERS"
 
 # ─── Which keys are missing ─────────────────────────────────────────────────
 mapfile -t missing < <(_missing_env_keys)
-printf '%s\n' "${missing[@]}" | grep -qx "MINIO_SERVER_URL"
+printf '%s\n' "${missing[@]}" | grep -qx "GARAGE_S3_PUBLIC_URL"
 check "a genuinely missing key is found" $? "${missing[*]}"
 printf '%s\n' "${missing[@]}" | grep -qx "EXISTING_KEY"
 check "a key already present is NOT reported" $(( $? == 0 ? 1 : 0 )) "${missing[*]}"
 printf '%s\n' "${missing[@]}" | grep -qx "DOMAIN"
 check "DOMAIN is not reported as missing" $(( $? == 0 ? 1 : 0 )) "${missing[*]}"
-(( ${#missing[@]} == 4 ))
-check "exactly the four absent keys are found" $? "${#missing[@]}: ${missing[*]}"
+(( ${#missing[@]} == 3 ))
+check "exactly the three absent keys are found" $? "${#missing[@]}: ${missing[*]}"
 
 # ─── The values: derived, not copied ────────────────────────────────────────
 # This is the whole point. .env.example says "https://s3.${DOMAIN}" — using
 # that literally on a prefixed installation points at a host with no DNS
 # record, no vhost and no certificate.
 declare -A EXPECT=(
-    [MINIO_SERVER_URL]="https://smartrag-s3.duenn-mit-pfiff.de"
-    [MINIO_BROWSER_REDIRECT_URL]="https://smartrag-minio.duenn-mit-pfiff.de"
+    [GARAGE_S3_PUBLIC_URL]="https://smartrag-s3.duenn-mit-pfiff.de"
     [FLOWISE_PUBLIC_URL]="https://smartrag-smart-rag.duenn-mit-pfiff.de"
 )
 for key in "${!EXPECT[@]}"; do
@@ -81,8 +79,8 @@ done
 
 # Without a prefix, the same keys come out unprefixed.
 SUBDOMAIN_PREFIX=""
-[[ "$(_default_for_env_key MINIO_SERVER_URL)" == "https://s3.duenn-mit-pfiff.de" ]]
-check "no prefix yields the plain hostname" $? "$(_default_for_env_key MINIO_SERVER_URL)"
+[[ "$(_default_for_env_key GARAGE_S3_PUBLIC_URL)" == "https://s3.duenn-mit-pfiff.de" ]]
+check "no prefix yields the plain hostname" $? "$(_default_for_env_key GARAGE_S3_PUBLIC_URL)"
 SUBDOMAIN_PREFIX="smartrag"
 
 # An unknown new key falls back to .env.example's literal — acceptable, but

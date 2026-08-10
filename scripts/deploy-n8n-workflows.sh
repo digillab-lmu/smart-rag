@@ -4,7 +4,7 @@
 # ═════════════════════════════════════════════════════════════════════════════
 #
 # Provisions everything n8n needs to actually run the ingest pipeline:
-#   1. Credentials (MinIO/S3 + SMTP) — staged as plain JSON, imported via
+#   1. Credentials (Garage/S3 + SMTP) — staged as plain JSON, imported via
 #      `n8n import:credentials`, which encrypts them with the instance's own
 #      N8N_ENCRYPTION_KEY. Deliberately NOT via n8n's public REST API: that
 #      needs an API key which only exists once a human creates one in the UI
@@ -119,13 +119,13 @@ info "$(t n8n_creds_staging)"
 
 CREDS_FILE="$STAGING_HOST/credentials.json"
 
-# MinIO speaks S3. forcePathStyle is required: MinIO serves buckets as
+# Garage speaks S3. forcePathStyle is required: it serves buckets as
 # path segments (host/bucket), not as virtual-host subdomains.
 jq -n \
-    --arg endpoint "http://smartrag-minio:9000" \
-    --arg region "${MINIO_REGION_NAME}" \
-    --arg access "${MINIO_ROOT_USER}" \
-    --arg secret "${MINIO_ROOT_PASSWORD}" \
+    --arg endpoint "http://smartrag-garage:3900" \
+    --arg region "${GARAGE_REGION}" \
+    --arg access "${GARAGE_ACCESS_KEY}" \
+    --arg secret "${GARAGE_SECRET_KEY}" \
     --arg smtp_host "${SMTP_HOST:-}" \
     --arg smtp_user "${SMTP_USER:-}" \
     --arg smtp_pass "${SMTP_PASSWORD:-}" \
@@ -133,8 +133,8 @@ jq -n \
     --argjson smtp_secure "$([[ "${SMTP_SECURE:-false}" == "true" ]] && echo true || echo false)" \
     '[
       {
-        "id": "smartrag-minio-credential",
-        "name": "smartrag-minio",
+        "id": "smartrag-s3-credential",
+        "name": "smartrag-s3",
         "type": "s3",
         "data": {
           "endpoint": $endpoint,

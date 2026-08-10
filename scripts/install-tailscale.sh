@@ -13,8 +13,10 @@
 #     https://<machine>.<tailnet>.ts.net:8443   → Content Admin
 #     https://<machine>.<tailnet>.ts.net:8444   → n8n
 #     https://<machine>.<tailnet>.ts.net:8445   → Langfuse     (if enabled)
-#     https://<machine>.<tailnet>.ts.net:8446   → MinIO console
-#     https://<machine>.<tailnet>.ts.net:8447   → MinIO S3 API
+#     https://<machine>.<tailnet>.ts.net:8447   → S3 endpoint (Garage)
+#
+# There is no storage console on 8446 any more: Garage has no web interface,
+# and nothing replaces it. Buckets and keys are provisioned by the installer.
 #
 # A certificate covers exactly one MagicDNS name — there are no wildcards and
 # no additional names — which is why services are separated by port here
@@ -97,8 +99,7 @@ if [[ -n "${TAILSCALE_HOSTNAME:-}" && "$TAILSCALE_HOSTNAME" != "$MAGIC_DNS_NAME"
     set_env_var "$ENV_FILE" CONTENT_ADMIN_PUBLIC_URL   "https://$MAGIC_DNS_NAME:8443"
     set_env_var "$ENV_FILE" N8N_HOSTNAME               "$MAGIC_DNS_NAME"
     set_env_var "$ENV_FILE" N8N_WEBHOOK_URL            "https://$MAGIC_DNS_NAME:8444"
-    set_env_var "$ENV_FILE" MINIO_BROWSER_REDIRECT_URL "https://$MAGIC_DNS_NAME:8446"
-    set_env_var "$ENV_FILE" MINIO_SERVER_URL           "https://$MAGIC_DNS_NAME:8447"
+    set_env_var "$ENV_FILE" GARAGE_S3_PUBLIC_URL       "https://$MAGIC_DNS_NAME:8447"
     if [[ "${COMPOSE_PROFILES:-core}" == *observability* ]]; then
         set_env_var "$ENV_FILE" NEXTAUTH_URL "https://$MAGIC_DNS_NAME:8445"
         set_env_var "$ENV_FILE" LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT "https://$MAGIC_DNS_NAME:8447"
@@ -125,8 +126,7 @@ fi
 declare -A SERVE_PORTS=(
     [8443]="${CONTENT_ADMIN_PORT:-3002}"
     [8444]="${N8N_PORT:-5678}"
-    [8446]="${MINIO_CONSOLE_PORT:-9001}"
-    [8447]="${MINIO_API_PORT:-9000}"
+    [8447]="${GARAGE_S3_PORT:-3900}"
 )
 [[ "${COMPOSE_PROFILES:-core}" == *observability* ]] && SERVE_PORTS[8445]="${LANGFUSE_PORT:-3001}"
 
@@ -166,7 +166,6 @@ echo "  $(t ts_url_flowise "https://$MAGIC_DNS_NAME")"
 echo "  $(t ts_url_content "https://$MAGIC_DNS_NAME:8443")"
 echo "  $(t ts_url_n8n     "https://$MAGIC_DNS_NAME:8444")"
 [[ -n "${SERVE_PORTS[8445]:-}" ]] && echo "  $(t ts_url_langfuse "https://$MAGIC_DNS_NAME:8445")"
-echo "  $(t ts_url_minio   "https://$MAGIC_DNS_NAME:8446")"
 echo
 dim "$(t ts_urls_note)"
 

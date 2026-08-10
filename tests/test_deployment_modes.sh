@@ -125,8 +125,6 @@ declare -A WANT=(
     [FLOWISE_PUBLIC_URL]="https://i5.tail1234.ts.net"
     [CONTENT_ADMIN_PUBLIC_URL]="https://i5.tail1234.ts.net:8443"
     [N8N_WEBHOOK_URL]="https://i5.tail1234.ts.net:8444"
-    [MINIO_BROWSER_REDIRECT_URL]="https://i5.tail1234.ts.net:8446"
-    [MINIO_SERVER_URL]="https://i5.tail1234.ts.net:8447"
     [TAILSCALE_HOSTNAME]="i5.tail1234.ts.net"
     [N8N_HOSTNAME]="i5.tail1234.ts.net"
 )
@@ -193,7 +191,7 @@ grep -qE '\[8444\]="\$\{N8N_PORT' "$TS"
 check "serve ports read the host bindings from .env" $? "$(grep -n '\[8444\]' "$TS")"
 
 # The MagicDNS name has to reach .env, or nothing downstream knows the URLs.
-for key in FLOWISE_PUBLIC_URL MINIO_SERVER_URL N8N_WEBHOOK_URL TAILSCALE_HOSTNAME; do
+for key in FLOWISE_PUBLIC_URL GARAGE_S3_PUBLIC_URL N8N_WEBHOOK_URL TAILSCALE_HOSTNAME; do
     grep -q "set_env_var \"\$ENV_FILE\" $key" "$TS"
     check "install-tailscale.sh writes $key" $? ""
 done
