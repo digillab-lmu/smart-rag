@@ -300,6 +300,15 @@ case "$verify_state" in
         # is actually known and where to see the real answer, and exit
         # non-zero so a caller can't treat this as a finished job.
         warn "$(t n8n_verify_unreachable "$N8N_LOCAL_URL" "$VERIFY_TIMEOUT")"
+        # "Unreachable" alone does not say which of two very different
+        # things happened, and this warning has now fired twice on an
+        # installation whose webhook answered correctly a minute later.
+        # Docker's own view of the container separates them: a container
+        # still "starting" was merely slow, one reported "healthy" while
+        # HTTP stayed silent is a real problem and a different hunt. Say
+        # which, so the next occurrence is diagnosable without an
+        # experiment that costs another restart.
+        warn "$(t n8n_verify_container "$(container_health smartrag-n8n)")"
         warn "$(t n8n_verify_recheck)"
         # Not exit 1: nothing observably broke, and aborting a whole
         # install because n8n was still restarting would be wrong. But not
