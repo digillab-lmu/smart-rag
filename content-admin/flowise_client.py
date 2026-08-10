@@ -124,26 +124,40 @@ class FlowiseClient:
     def list_credentials(self) -> list[dict]:
         return self._request("GET", "/credentials") or []
 
-    def get_or_create_credential(
+    def upsert_credential(
         self, name: str, credential_name: str, plain_data: dict
     ) -> str:
         """
         credential_name is Flowise's *type* identifier (e.g. "anthropicApi",
         "openAIApi"), name is the human label we look it up by.
 
+        Writes the value every time, including when the credential already
+        exists. The previous version returned an existing credential
+        untouched, which made a rotated API key impossible to apply: changing
+        it in .env did not reach Flowise, and re-importing the agent found the
+        credential by name and reused the old value. Nothing reported a
+        problem — the agents simply kept authenticating with a key that had
+        been replaced.
+
+        Flowise's own routes allow this: PUT /credentials/:id needs
+        credentials:create OR credentials:update (packages/server/src/routes/
+        credentials/index.ts), and credentials:create is already required to
+        import an agent at all.
+
         Note: POST /credentials is not in Flowise's published API reference,
         but is the real, working endpoint (verified against community usage).
         If a future Flowise release changes it, this call is where it breaks —
         the error surfaces to the operator rather than failing silently.
         """
-        for cred in self.list_credentials():
-            if cred.get("name") == name:
-                return cred["id"]
         payload = {
             "name": name,
             "credentialName": credential_name,
             "plainDataObj": plain_data,
         }
+        for cred in self.list_credentials():
+            if cred.get("name") == name:
+                self._request("PUT", f"/credentials/{cred['id']}", json=payload)
+                return cred["id"]
         created = self._request("POST", "/credentials", json=payload)
         return created["id"]
 

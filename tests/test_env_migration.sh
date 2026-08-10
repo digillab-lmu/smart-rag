@@ -116,9 +116,12 @@ check "uninstall sits immediately before exit, at the end of the menu" $? \
       "uninstall=$uninstall_key exit=$exit_key"
 
 # And every dispatched number must have a menu label, or an entry becomes
-# unreachable (or worse, reachable but unlabelled).
-for n in $(grep -oE '^\s+[0-9]+\)' "$REPO/scripts/admin.sh" | grep -oE '[0-9]+'); do
-    grep -qE "\"$n\" +\"" "$REPO/scripts/admin.sh"
+# unreachable (or worse, reachable but unlabelled). Scoped to the main loop:
+# `case "$rc" in 0)` inside a helper is not a menu entry, and treating it as
+# one made this fail on a function that had nothing to do with the menu.
+main_loop="$(sed -n '/^while true; do/,$p' "$REPO/scripts/admin.sh")"
+for n in $(grep -oE '^\s+[0-9]+\)' <<<"$main_loop" | grep -oE '[0-9]+'); do
+    grep -qE "\"$n\" +\"" <<<"$main_loop"
     check "menu entry $n has a label" $? "dispatched but not listed"
 done
 

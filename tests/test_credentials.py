@@ -132,7 +132,7 @@ captured = {}
 
 
 class FakeFlowise:
-    def get_or_create_credential(self, name, cred_type, data):
+    def upsert_credential(self, name, cred_type, data):
         created.append({"name": name, "type": cred_type, "data": data})
         return f"id-of-{cred_type}"
 

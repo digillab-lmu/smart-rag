@@ -634,12 +634,12 @@ def _do_import(slot: int, archetype: str, client: FlowiseClient) -> str | None:
         env.get("EMBEDDING_PROVIDER", "openai"), agent_templates.EMBEDDING_PROVIDER_MAP["openai"]
     )
 
-    llm_cred_id = client.get_or_create_credential(
+    llm_cred_id = client.upsert_credential(
         f"smartrag-llm-{env.get('LLM_PROVIDER', 'anthropic')}",
         llm_map["credential_name"],
         {llm_map["credential_key"]: env.get("LLM_API_KEY", "")},
     )
-    embed_cred_id = client.get_or_create_credential(
+    embed_cred_id = client.upsert_credential(
         f"smartrag-embedding-{env.get('EMBEDDING_PROVIDER', 'openai')}",
         embed_map["credential_name"],
         {embed_map["credential_key"]: env.get("EMBEDDING_API_KEY", "")},
@@ -648,7 +648,7 @@ def _do_import(slot: int, archetype: str, client: FlowiseClient) -> str | None:
     # vector-store node needs its own credential. Names verified against
     # Flowise's WeaviateApi.credential.ts (flowise@3.1.3): "weaviateApi"
     # with a single "weaviateApiKey" input.
-    weaviate_cred_id = client.get_or_create_credential(
+    weaviate_cred_id = client.upsert_credential(
         "smartrag-weaviate",
         "weaviateApi",
         {"weaviateApiKey": env.get("WEAVIATE_API_KEY", "")},
