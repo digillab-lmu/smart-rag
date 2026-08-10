@@ -350,7 +350,8 @@
           "id": "smartrag-smtp-credential",
           "name": "smartrag-smtp"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {},
@@ -384,7 +385,8 @@
           "id": "smartrag-smtp-credential",
           "name": "smartrag-smtp"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     }
   ],
   "pinData": {},

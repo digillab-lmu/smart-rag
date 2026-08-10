@@ -1,12 +1,5 @@
 # SMART RAG
 
-> **Status: pre-1.0.** The infrastructure deploys, and the regression suite
-> covers every stage of the pipeline in isolation. What has *not* happened yet
-> is one document-ingest run end to end on a live server — "upload a PDF and
-> have an agent answer from it". Until that is demonstrated, treat this as a
-> system to evaluate and test with, not one to put a course on. See the
-> [CHANGELOG](CHANGELOG.md) for what each release actually changed.
-
 **Shared Memory Agent-Based Retrieval for Teaching**
 
 An open-source, course-agnostic deployment of a multi-agent AI tutoring system.

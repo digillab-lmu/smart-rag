@@ -257,8 +257,6 @@ services:
       MINIO_ROOT_USER: "${MINIO_ROOT_USER}"
       MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD}"
       MINIO_REGION_NAME: "${MINIO_REGION_NAME}"
-      MINIO_NOTIFY_WEBHOOK_ENABLE_PRIMARY: "on"
-      MINIO_NOTIFY_WEBHOOK_ENDPOINT_PRIMARY: "${MINIO_NOTIFY_WEBHOOK_ENDPOINT}"
       # Both resolved in .env, because building them here from ${DOMAIN}
       # dropped SUBDOMAIN_PREFIX and sent the console to a hostname that
       # does not exist.
@@ -280,8 +278,16 @@ services:
     # this on a MinIO version bump: `mc event add` for a notification rule
     # that already existed (from a previous run, persisted in the data
     # volume) started failing with "overlapping prefixes/suffixes" instead
-    # of silently succeeding — hence the `|| true` on that line too, same
+    # of silently succeeding — hence the `|| true` on those lines too, same
     # as the `mc admin user add`/`policy attach` lines already had.
+    #
+    # The notification itself is gone. MinIO was told to POST to
+    # /webhook/minio-notify on every object, and no workflow has ever served
+    # that path: the ingest calls its chunk-and-embed sub-workflow directly
+    # via executeWorkflow. The only effect was an error line in n8n's log for
+    # every document uploaded. `mc event remove` stays — the rule persists in
+    # the data volume, so dropping both lines would leave existing
+    # installations notifying a dead endpoint forever.
     entrypoint: >
       /bin/sh -c "
       minio server /data --console-address ':9001' &
@@ -299,7 +305,6 @@ services:
       mc admin policy attach smartrag readwrite --user=$$MINIO_LANGFUSE_ACCESS_KEY 2>/dev/null || true &&
 
       mc event remove smartrag/$$COURSE_ID-rag arn:minio:sqs::PRIMARY:webhook 2>/dev/null || true &&
-      mc event add    smartrag/$$COURSE_ID-rag arn:minio:sqs::PRIMARY:webhook --event put 2>/dev/null || true &&
 
       wait $$MINIO_PID
       "
