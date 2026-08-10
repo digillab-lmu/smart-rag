@@ -580,6 +580,57 @@ initialised_data_stores() {   # $1 = BASE_DATA_PATH
     done
 }
 
+# Which services depend on $1, transitively — the ones that hold connections
+# to it and will not notice it was replaced.
+#
+# Restarting a backend leaves its dependents pointing at what used to be
+# there: a recreated container gets a new address, and a client that resolved
+# the name once keeps dialling the old one. Observed on a live install, where
+# Redis was recreated after Langfuse and Langfuse then reported
+# `connect ETIMEDOUT` against an address nothing answered on — a failure that
+# names the symptom and not the cause. `depends_on` does not help here: it
+# orders startup, it does not propagate a restart.
+#
+# The graph comes from Compose's own normalised configuration rather than
+# from parsing the YAML, so profiles are already applied and indentation is
+# irrelevant. If it cannot be obtained, this echoes nothing and the caller
+# falls back to touching only what it was asked to — degraded, not wrong.
+#
+# Args: $1 = service name, $2 = path to compose.sh
+compose_dependents() {
+    local target="$1" helper="$2" json
+    command -v jq >/dev/null 2>&1 || return 0
+    json="$(bash "$helper" config --format json 2>/dev/null)" || return 0
+    [[ -n "$json" ]] || return 0
+
+    local frontier=("$target") found=() svc next
+    # The graph is a handful of nodes; a bounded sweep is clearer than
+    # recursion and cannot loop on a cycle.
+    local depth=0
+    while (( ${#frontier[@]} > 0 && depth < 10 )); do
+        next=()
+        for svc in "${frontier[@]}"; do
+            while IFS= read -r dep; do
+                [[ -n "$dep" ]] || continue
+                # Already recorded? Then its own dependents are too.
+                local seen=0 f
+                for f in "${found[@]:-}"; do [[ "$f" == "$dep" ]] && seen=1; done
+                (( seen )) && continue
+                found+=("$dep")
+                next+=("$dep")
+            done < <(jq -r --arg t "$svc" '
+                .services // {} | to_entries
+                | map(select(.value.depends_on? and (.value.depends_on | type == "object") and (.value.depends_on | has($t))))
+                | .[].key' <<<"$json" 2>/dev/null)
+        done
+        frontier=("${next[@]:-}")
+        # An empty expansion ends it; the guard above only catches cycles.
+        [[ -z "${next[*]:-}" ]] && break
+        depth=$((depth+1))
+    done
+    printf '%s\n' "${found[@]:-}" | grep -v '^$' || true
+}
+
 # Reports a container's health as exactly one of:
 #   healthy | starting | unhealthy | none | absent
 #

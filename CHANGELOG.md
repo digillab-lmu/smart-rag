@@ -13,6 +13,14 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **Restarting a service offers to restart what depends on it.** A recreated
+  container can come back at a different address, and a client that resolved
+  the name once keeps dialling the old one — reported as a timeout against
+  something that is demonstrably running. `depends_on` orders startup and
+  does not propagate a restart, so the admin tool now reads the reverse graph
+  from Compose's own configuration, transitively. Offered rather than done:
+  restarting Postgres would otherwise sweep half the stack along unasked, and
+  declining says what the consequence will look like.
 - **Memory limits where a runaway is possible.** No container had one, so any
   single service could push the host into swap and let the kernel choose a
   victim — not necessarily the culprit. Docling and ClickHouse are now capped;
