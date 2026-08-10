@@ -238,6 +238,29 @@ for script in (REPO / "scripts").rglob("*.sh"):
         bad = _re.findall(r'^\s*mv\s+.*\$\{?(?:tmp|TMP)\b.*$', body, _re.M)
         check(f"{script.name} does not mv over .env", not bad, str(bad))
 
+# ─── 8. Repeated writes must not bury the output in backup notices ───────────
+# The upgrade entry and the Garage spike each write many keys in a row.
+# backup_file announced every one, so a single change produced eighteen
+# "Backed up" lines — which hides whatever else the operation reported and
+# makes a routine action look drastic. Within one second the later calls
+# overwrote the same file anyway.
+p9 = fresh_env()
+res9 = subprocess.run(
+    [bash, "-c",
+     f'source "{REPO}/scripts/lib/common.sh" >/dev/null 2>&1; '
+     f'for k in A B C D E F; do set_env_var "{p9}" "K$k" "v"; done'],
+    capture_output=True, text=True,
+)
+notices = res9.stdout.count("Backed up")
+check("six writes announce at most one backup per second", notices <= 2,
+      f"{notices} notices for six writes")
+backups = list(p9.parent.glob(".env.backup-*"))
+check("and leave at most one backup file per second", len(backups) <= 2,
+      f"{len(backups)} files: {[b.name for b in backups]}")
+env9 = read_env(p9)
+check("every key was still written", all(env9.get(f"K{k}") == "v" for k in "ABCDEF"),
+      "quieter must not mean fewer writes")
+
 # ─── Result ──────────────────────────────────────────────────────────────────
 if failures:
     print("FAILURES:")
