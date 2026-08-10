@@ -193,6 +193,51 @@ res6 = subprocess.run(
 check("bash does not see the forged key either", res6.stdout.strip() == "UNSET",
       res6.stdout.strip())
 
+# ─── 7. The bash port must not replace the file's inode ──────────────────────
+# Docker bind-mounts a single file by inode. A writer that does tmp+mv gives
+# the destination a new one, and every container mounting .env then keeps
+# reading the file it started with — silently, for as long as it lives.
+#
+# Observed: a rotated LLM key kept failing with the old key's billing error,
+# while the very same key worked when tested from the shell. Host inode
+# 6553919, container inode 6553909, two different keys.
+#
+# Python's set_env_var uses write_text(), which truncates in place. The bash
+# port is the one that had to change, and both write this same file.
+import shutil  # noqa: E402
+
+bash = shutil.which("bash")
+p7 = fresh_env()
+before_inode = p7.stat().st_ino
+res7 = subprocess.run(
+    [bash, "-c",
+     f'source "{REPO}/scripts/lib/common.sh" >/dev/null 2>&1; '
+     f'backup_file() {{ :; }}; '
+     f'set_env_var "{p7}" NEW_KEY "new-value"'],
+    capture_output=True, text=True,
+)
+check("bash set_env_var runs", res7.returncode == 0, res7.stderr[-300:])
+check("the bash port keeps the inode", p7.stat().st_ino == before_inode,
+      f"{before_inode} -> {p7.stat().st_ino} — a container's mount would go stale")
+check("and the value was written", 'NEW_KEY="new-value"' in p7.read_text(), p7.read_text())
+
+# Python's port, same requirement, same file.
+p8 = fresh_env()
+before8 = p8.stat().st_ino
+set_env_var("ANOTHER", "v", env_path=p8)
+check("the Python port keeps the inode", p8.stat().st_ino == before8,
+      f"{before8} -> {p8.stat().st_ino}")
+
+# No writer anywhere may replace it.
+for script in (REPO / "scripts").rglob("*.sh"):
+    body = "\n".join(
+        l for l in script.read_text().splitlines() if not l.strip().startswith("#")
+    )
+    if "mv " in body and ".env" in body:
+        import re as _re
+        bad = _re.findall(r'^\s*mv\s+.*\$\{?(?:tmp|TMP)\b.*$', body, _re.M)
+        check(f"{script.name} does not mv over .env", not bad, str(bad))
+
 # ─── Result ──────────────────────────────────────────────────────────────────
 if failures:
     print("FAILURES:")

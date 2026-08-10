@@ -704,7 +704,24 @@ set_env_var() {
     done < "$env_file"
     (( found )) || printf '%s="%s"\n' "$key" "$val" >> "$tmp"
 
-    mv "$tmp" "$env_file"
+    # `cat >`, deliberately NOT `mv`. Docker bind-mounts a single file by its
+    # inode, and `mv` gives the destination a new one — so every container
+    # that mounts .env keeps reading the file it was started with, for as
+    # long as it lives. Nothing errors: the host shows the new value, the
+    # container serves the old one.
+    #
+    # This is how a freshly rotated LLM key kept failing with the previous
+    # key's account error while the same key worked when tested from the
+    # shell. It also explains why REDIS_AUTH and SMTP_SENDER_EMAIL only took
+    # effect earlier today — both times the containers happened to be
+    # recreated right afterwards, which rebuilds the mount.
+    #
+    # The temporary file is still built in full first, so a failure part-way
+    # through composing the new content cannot truncate the real file; and
+    # backup_file() above ran before any of this.
+    cat "$tmp" > "$env_file"
+    rm -f "$tmp"
+    chmod 600 "$env_file"
 }
 
 # Computes the actual hostname for one of our services, honoring an optional
