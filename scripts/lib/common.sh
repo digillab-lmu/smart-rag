@@ -549,6 +549,13 @@ backup_file() {
     [[ -f "$f" ]] || return 0
     local ts; ts="$(date +%Y%m%dT%H%M%S)"
     local backup="${f}.backup-${ts}"
+    # One backup per second, announced once. Callers that write several keys
+    # in a row — the upgrade entry, the Langfuse spike — otherwise produced a
+    # line per key: eighteen "Backed up" messages for one change, which buries
+    # whatever else the operation had to say and makes a routine action look
+    # like something drastic. The second and later calls within the same
+    # second would have overwritten the same file anyway.
+    [[ -e "$backup" ]] && return 0
     cp -p "$f" "$backup"
     dim "Backed up: $(basename "$f") → $(basename "$backup")"
 }
