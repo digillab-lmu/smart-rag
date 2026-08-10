@@ -185,6 +185,23 @@ body = resp.get_data(as_text=True)
 check("switch back to English", "Topic Name" in body, body[:300])
 check("no German left after switching back", "Name des Kapitels" not in body)
 
+# An empty translation is a value, not a missing key.
+# The document table's action column deliberately has no header. t() looked it
+# up with `catalog.get(key) or ... or key`, and an empty string is falsy — so
+# the column rendered the literal text "docs_col_action" to every user. Same
+# mistake as testing a jq result with `//`, which fires on false as well as
+# null; this project has now made it in two languages.
+for empty_key in [k for k, v in i18n.MSG_EN.items() if v == ""]:
+    for lang in ("en", "de"):
+        got = i18n.t(empty_key, lang=lang)
+        check(f"[{lang}] an empty translation stays empty: {empty_key}",
+              got == "", f"rendered {got!r} instead of nothing")
+
+# And an genuinely unknown key must still degrade to the key itself.
+check("an unknown key falls back to the key",
+      i18n.t("definitely_not_a_key") == "definitely_not_a_key",
+      i18n.t("definitely_not_a_key"))
+
 if failures:
     print("FAILURES:")
     for f in failures:
