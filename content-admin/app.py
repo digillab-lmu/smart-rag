@@ -78,10 +78,13 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
 
 def _subdomain_host(service: str, env: dict) -> str:
     """Mirrors subdomain_host() in scripts/lib/common.sh — the same rule the
-    bootstrap wizard used to name the vhost and request the certificate, so a
-    URL shown here is the one nginx actually serves. Kept as an exact mirror
-    (prefix-service.domain when SUBDOMAIN_PREFIX is set, service.domain
-    otherwise) rather than a second, divergent naming scheme."""
+    bootstrap wizard used to name the vhost and request the certificate.
+
+    Only valid in domain mode. Tailscale mode has no subdomains at all: a
+    Tailscale certificate covers exactly one MagicDNS name and has no
+    wildcards, which is why services are separated by port there. Kept as a
+    last-resort fallback for an .env written before FLOWISE_PUBLIC_URL
+    existed; new code should read the resolved URL instead."""
     domain = env.get("DOMAIN", "").strip()
     if not domain:
         return ""
@@ -90,11 +93,31 @@ def _subdomain_host(service: str, env: dict) -> str:
 
 
 def _public_chat_url(chatflow_id: str, env: dict) -> str:
-    """The student-facing URL of a published agent. Flowise serves its public
-    chat UI at /chatbot/<id> (ChatbotRoutes), and the smart-rag vhost proxies
-    everything, so no extra routing is needed."""
-    host = _subdomain_host("smart-rag", env)
-    return f"https://{host}/chatbot/{chatflow_id}" if host and chatflow_id else ""
+    """The student-facing URL of a published agent.
+
+    Read from FLOWISE_PUBLIC_URL, never assembled. The wizard resolves that
+    value for whichever deployment mode is in use — a subdomain in domain
+    mode, the bare MagicDNS name in tailscale mode — and assembling it here
+    from DOMAIN reproduced the domain-mode rule everywhere. On a tailscale
+    install that produced https://smart-rag.<machine>.<tailnet>.ts.net, a
+    host with no certificate and no DNS record, handed to students as the
+    address of their chat.
+
+    This is the same rule as ARCHITECTURE decision 2 — public URLs are
+    resolved in .env, never assembled — which had been applied to the compose
+    file and missed here.
+    """
+    if not chatflow_id:
+        return ""
+    base = (env.get("FLOWISE_PUBLIC_URL") or "").strip().rstrip("/")
+    if not base:
+        # Pre-dates FLOWISE_PUBLIC_URL: fall back to the domain-mode rule,
+        # which is what such an installation was using anyway.
+        host = _subdomain_host("smart-rag", env)
+        if not host:
+            return ""
+        base = f"https://{host}"
+    return f"{base}/chatbot/{chatflow_id}"
 
 
 def _flowise_client() -> FlowiseClient | None:
