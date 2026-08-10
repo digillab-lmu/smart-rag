@@ -570,10 +570,25 @@ services:
       # the startup warning and stay ready for when it becomes mandatory.
       N8N_RUNNERS_ENABLED: "true"
       N8N_PROTOCOL: "https"
-      N8N_TRUST_PROXY: "true"
+      # NOT N8N_TRUST_PROXY — no such setting exists. n8n reads
+      # @Env('N8N_PROXY_HOPS') (packages/@n8n/config), a COUNT of reverse
+      # proxies, defaulting to 0. With the wrong name, Express kept
+      # trust-proxy off and logged a ValidationError on every request that
+      # carried X-Forwarded-For: rate limiting was then keyed on the proxy's
+      # address rather than the client's, so one visitor could exhaust the
+      # limit for everyone. Found in a live log, which is also what finally
+      # proved the name wrong — a source search had been inconclusive.
+      #
+      # 1 in both deployment modes: nginx in domain mode, `tailscale serve`
+      # in tailscale mode. Exactly one hop either way.
+      N8N_PROXY_HOPS: "1"
       WEBHOOK_URL: "${N8N_WEBHOOK_URL}"
       N8N_PATH: "/"
       N8N_PAYLOAD_SIZE_MAX: "256"
+      # UNVERIFIED: no @Env('N8N_DEFAULT_HTTP_TIMEOUT') exists in
+      # @n8n/config (the nearest is N8N_HTTP_RESPONSE_BODY_READ_TIMEOUT).
+      # That package is not the only place n8n reads settings, so this is
+      # left in place and flagged rather than removed on incomplete evidence.
       N8N_DEFAULT_HTTP_TIMEOUT: "600000"
       N8N_AI_TIMEOUT_MAX: "3600000"
       EXECUTIONS_TIMEOUT: "14400"
@@ -599,7 +614,6 @@ services:
       # We ship no Git-node workflow, so the stricter behaviour costs nothing
       # and silences the second startup deprecation.
       N8N_GIT_NODE_DISABLE_BARE_REPOS: "true"
-      N8N_METRICS_INCLUDE_CACHE_DATA_POINTS: "true"
       N8N_ENCRYPTION_KEY: "${N8N_ENCRYPTION_KEY}"
       N8N_USER_MANAGEMENT_JWT_SECRET: "${N8N_USER_MANAGEMENT_JWT_SECRET}"
       # NOT N8N_DB_*. n8n's database settings carry no N8N_ prefix — see
