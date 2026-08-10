@@ -362,6 +362,17 @@ _default_for_env_key() {
         REDIS_AUTH)                 echo "${REDIS_PASSWORD:-}" ;;
         # Must be resolved: env_file does not expand ${DOMAIN}.
         SMTP_SENDER_EMAIL)          echo "noreply@${DOMAIN}" ;;
+        # Langfuse validates these on startup and refuses to initialise on a
+        # bad one — a literal ${ADMIN_EMAIL} is rejected as "Invalid input",
+        # which is what happened when the fallback copied .env.example's
+        # literal instead of resolving it. The two project keys are generated
+        # here for the same reason they are generated in the wizard: an
+        # installation whose keys are predictable is one with no keys.
+        LANGFUSE_INIT_USER_EMAIL)         echo "${ADMIN_EMAIL:-}" ;;
+        LANGFUSE_INIT_USER_PASSWORD)      echo "${ADMIN_PASSWORD:-}" ;;
+        LANGFUSE_INIT_PROJECT_NAME)       echo "${COURSE_NAME:-SMART RAG}" ;;
+        LANGFUSE_INIT_PROJECT_PUBLIC_KEY) echo "pk-lf-$(openssl rand -hex 16)" ;;
+        LANGFUSE_INIT_PROJECT_SECRET_KEY) echo "sk-lf-$(openssl rand -hex 16)" ;;
         *)
             # Unknown new key: fall back to whatever .env.example carries,
             # and let the caller flag it for review rather than pretending
