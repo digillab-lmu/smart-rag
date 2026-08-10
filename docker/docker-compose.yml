@@ -581,8 +581,24 @@ services:
       N8N_RUNNERS_TASK_TIMEOUT: "1800"
       N8N_RUNNERS_TASK_REQUEST_TIMEOUT: "300"
       NODE_OPTIONS: "--max-old-space-size=4096"
-      NODE_FUNCTION_ALLOW_EXTERNAL: "pdf-lib"
+      # pdf-lib was allowlisted here and is neither installed nor used by any
+      # workflow, so it only produced a warning on every start. Removed.
       NODE_FUNCTION_ALLOW_BUILTIN: "http"
+      # Pinned deliberately. n8n warns that this default flips from false to
+      # true in a future version, and our workflows read $env at 24 places —
+      # the Weaviate collection name, the embedding key and model, the course
+      # id, the LLM credentials. When the default flips, a plain image bump
+      # would break the entire ingest with nobody having changed anything.
+      #
+      # It does keep the container's environment readable from Code nodes,
+      # which is a real trade-off. The cleaner alternative is to move those
+      # values into n8n credentials and reference them per node; that is a
+      # rework of five workflows, not a setting, and is worth doing on its
+      # own rather than under time pressure from an upstream default change.
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      # We ship no Git-node workflow, so the stricter behaviour costs nothing
+      # and silences the second startup deprecation.
+      N8N_GIT_NODE_DISABLE_BARE_REPOS: "true"
       N8N_METRICS_INCLUDE_CACHE_DATA_POINTS: "true"
       N8N_ENCRYPTION_KEY: "${N8N_ENCRYPTION_KEY}"
       N8N_USER_MANAGEMENT_JWT_SECRET: "${N8N_USER_MANAGEMENT_JWT_SECRET}"

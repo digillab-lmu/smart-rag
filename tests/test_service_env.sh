@@ -135,6 +135,38 @@ check "no N8N_DB_* is passed as if it configured something" $(( $? == 0 ? 1 : 0 
 grep -qE '^N8N_DB_TYPE=' "$ENV_EXAMPLE"
 check ".env keeps its namespaced key" $? "renaming it would break existing installs"
 
+# ─── Every $env. a workflow reads must exist in .env ────────────────────────
+# The workflows reach into the container's environment 24 times — collection
+# name, embedding key and model, course id, LLM credentials. A reference to a
+# variable nobody sets resolves to undefined and fails somewhere downstream,
+# far from the cause.
+missing_env=""
+for v in $(grep -ohE '\$env\.[A-Z][A-Z0-9_]*' "$REPO"/n8n/workflows*/*.json \
+           | sed 's/\$env\.//' | sort -u); do
+    grep -qE "^$v=" "$ENV_EXAMPLE" || missing_env="$missing_env $v"
+done
+check "every \$env a workflow reads is defined in .env.example" \
+      $([[ -z "$missing_env" ]] && echo 0 || echo 1) "missing:$missing_env"
+
+# And that access must stay switched on. n8n warns that
+# N8N_BLOCK_ENV_ACCESS_IN_NODE flips from false to true in a future release;
+# unpinned, a plain image bump would break the whole ingest with nothing
+# changed on our side.
+grep -q 'N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"' "$COMPOSE"
+check "env access from nodes is pinned on" $? \
+      "an image bump would silently break every \$env reference"
+
+# Nothing should be allowlisted that is neither installed nor used: it only
+# produces a warning at every start, which trains people to ignore warnings.
+if grep -q 'NODE_FUNCTION_ALLOW_EXTERNAL' "$COMPOSE"; then
+    for m in $(grep -oE 'NODE_FUNCTION_ALLOW_EXTERNAL: "[^"]*"' "$COMPOSE" \
+               | sed 's/.*"\(.*\)"/\1/' | tr ',' ' '); do
+        [[ -z "$m" ]] && continue
+        grep -q "$m" "$REPO"/n8n/workflows*/*.json
+        check "allowlisted module $m is actually used" $? "allowlisted but unused"
+    done
+fi
+
 if (( ${#FAILURES[@]} > 0 )); then
     echo "FAILURES:"; printf '  - %s\n' "${FAILURES[@]}"; exit 1
 fi
