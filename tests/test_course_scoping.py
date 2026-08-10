@@ -168,6 +168,10 @@ check("COURSE_ID is auto-filled, never asked for in the content form",
 for path in sorted(TEMPLATES.glob("*.json")):
     flow = at.load_template(path.name)
     at.auto_fill_from_env(flow, {
+        # The provider is required, not defaulted: it selects the Flowise node
+        # type for the model, so a missing one would build the agent against
+        # the wrong vendor's node.
+        "LLM_PROVIDER": "anthropic", "EMBEDDING_PROVIDER": "openai",
         "COURSE_ID": COURSE, "COURSE_NAME": "Einführung",
         "WEAVIATE_COLLECTION_NAME": "SmartRagChunks",
         "EMBEDDING_MODEL": "text-embedding-3-small",
@@ -193,7 +197,9 @@ for path in sorted(TEMPLATES.glob("*.json")):
 # An empty COURSE_ID must not silently produce a filter matching everything
 # with an empty course — it should be visibly empty, not absent.
 flow = at.load_template("agent-11-expert-feedback.json")
-at.auto_fill_from_env(flow, {"COURSE_ID": "", "COURSE_NAME": "x",
+at.auto_fill_from_env(flow, {"LLM_PROVIDER": "anthropic",
+                             "EMBEDDING_PROVIDER": "openai",
+                             "COURSE_ID": "", "COURSE_NAME": "x",
                              "WEAVIATE_COLLECTION_NAME": "c", "EMBEDDING_MODEL": "m"}, slot=1)
 for cfg in vector_stores(flow):
     raw = cfg.get("weaviateFilter") or ""

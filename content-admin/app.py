@@ -650,20 +650,22 @@ def _do_import(slot: int, archetype: str, client: FlowiseClient) -> str | None:
     if missing:
         return _t("slot_err_missing_content", ", ".join(missing))
 
-    llm_map = agent_templates.LLM_PROVIDER_MAP.get(
-        env.get("LLM_PROVIDER", "anthropic"), agent_templates.LLM_PROVIDER_MAP["anthropic"]
-    )
-    embed_map = agent_templates.EMBEDDING_PROVIDER_MAP.get(
-        env.get("EMBEDDING_PROVIDER", "openai"), agent_templates.EMBEDDING_PROVIDER_MAP["openai"]
-    )
+    # Refuses rather than substituting a different provider — see
+    # agent_templates._resolve_provider. The credential name is built from the
+    # resolved value, so it can never disagree with the credential's type.
+    try:
+        llm_provider, llm_map = agent_templates.resolve_llm_provider(env)
+        embed_provider, embed_map = agent_templates.resolve_embedding_provider(env)
+    except agent_templates.ProviderNotConfigured as exc:
+        return _t("import_err_provider", str(exc))
 
     llm_cred_id = client.upsert_credential(
-        f"smartrag-llm-{env.get('LLM_PROVIDER', 'anthropic')}",
+        f"smartrag-llm-{llm_provider}",
         llm_map["credential_name"],
         {llm_map["credential_key"]: env.get("LLM_API_KEY", "")},
     )
     embed_cred_id = client.upsert_credential(
-        f"smartrag-embedding-{env.get('EMBEDDING_PROVIDER', 'openai')}",
+        f"smartrag-embedding-{embed_provider}",
         embed_map["credential_name"],
         {embed_map["credential_key"]: env.get("EMBEDDING_API_KEY", "")},
     )

@@ -13,6 +13,17 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **An unconfigured provider is refused, not substituted.** Nine places
+  resolved `LLM_PROVIDER`/`EMBEDDING_PROVIDER` with a default of
+  `anthropic`/`openai`. With the variable empty or misspelled, the request
+  went to a vendor nobody had configured, carrying a credential shaped for a
+  different one, and came back as an authentication error from a service the
+  operator had never chosen — pointing away from the actual problem. The
+  resolver now names the variable and lists the accepted values, the GUI
+  turns that into a message saying no agent was changed, and the ingest's
+  image-description node skips with a stated reason instead of calling
+  Anthropic with an OpenAI key.
+
 - The two n8n variable names 1.0.0 listed as unverified are settled.
   `WEBHOOK_URL` is deprecated by n8n itself — its config documents
   `N8N_WEBHOOK_URL` as "Successor to the deprecated `WEBHOOK_URL`" — so the

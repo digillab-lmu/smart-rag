@@ -117,6 +117,36 @@ EMBEDDING_PROVIDER_MAP: dict[str, dict[str, str]] = {
     },
 }
 
+class ProviderNotConfigured(ValueError):
+    """LLM_PROVIDER or EMBEDDING_PROVIDER is empty or names something unknown."""
+
+
+def _resolve_provider(env: dict, key: str, table: dict) -> tuple[str, dict]:
+    """The provider and its Flowise mapping, or a refusal.
+
+    Deliberately no default. Falling back to a *different* provider than the
+    one configured is the worst of the three options: the request then goes
+    to the wrong vendor with the wrong credential shape, and the error comes
+    back as "invalid x-api-key" from a service nobody meant to call — which
+    points the reader away from the actual problem, an empty variable.
+    """
+    provider = (env.get(key) or "").strip()
+    if not provider:
+        raise ProviderNotConfigured(f"{key} is empty in .env.")
+    if provider not in table:
+        known = ", ".join(sorted(table))
+        raise ProviderNotConfigured(f"{key} is {provider!r}; known values: {known}.")
+    return provider, table[provider]
+
+
+def resolve_llm_provider(env: dict) -> tuple[str, dict]:
+    return _resolve_provider(env, "LLM_PROVIDER", LLM_PROVIDER_MAP)
+
+
+def resolve_embedding_provider(env: dict) -> tuple[str, dict]:
+    return _resolve_provider(env, "EMBEDDING_PROVIDER", EMBEDDING_PROVIDER_MAP)
+
+
 PLACEHOLDER_RE = re.compile(r"\{\{([A-Z0-9_]+)\}\}")
 
 # Everything below is operator-facing copy, so it exists per language.
@@ -682,10 +712,8 @@ def auto_fill_from_env(
     {{COURSE_ID}} and {{AGENT_NUMBER}} are all handled here, not as content
     fields.
     """
-    llm_provider = env.get("LLM_PROVIDER", "anthropic")
-    embed_provider = env.get("EMBEDDING_PROVIDER", "openai")
-    llm_map = LLM_PROVIDER_MAP.get(llm_provider, LLM_PROVIDER_MAP["anthropic"])
-    embed_map = EMBEDDING_PROVIDER_MAP.get(embed_provider, EMBEDDING_PROVIDER_MAP["openai"])
+    llm_provider, llm_map = resolve_llm_provider(env)
+    embed_provider, embed_map = resolve_embedding_provider(env)
 
     course_name = env.get("COURSE_NAME", "")
     course_id = env.get("COURSE_ID", "")
