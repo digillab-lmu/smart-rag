@@ -85,15 +85,31 @@ with mock.patch("flowise_client.requests.request") as req:
         pass
 
 # ── Public URL derivation (must mirror scripts/lib/common.sh) ───────────────
+# FLOWISE_PUBLIC_URL is what the wizard resolved for this deployment; it is
+# read, never reassembled. Assembling it from DOMAIN applied the domain-mode
+# naming rule to every mode — on a tailscale install that produced
+# https://smart-rag.<machine>.<tailnet>.ts.net, a host with no certificate
+# and no DNS record, shown to the operator as the students' chat address.
 cases = [
-    ({"DOMAIN": "example.com", "SUBDOMAIN_PREFIX": ""},
-     "https://smart-rag.example.com/chatbot/" + CFID, "no prefix"),
-    ({"DOMAIN": "example.com", "SUBDOMAIN_PREFIX": "kurs"},
-     "https://kurs-smart-rag.example.com/chatbot/" + CFID, "with prefix"),
-    ({"DOMAIN": "", "SUBDOMAIN_PREFIX": ""}, "", "no DOMAIN -> no URL"),
-    # Whitespace in .env values must not produce "https:// smart-rag…".
-    ({"DOMAIN": "  example.com  ", "SUBDOMAIN_PREFIX": "  "},
+    ({"FLOWISE_PUBLIC_URL": "https://smart-rag.example.com"},
+     "https://smart-rag.example.com/chatbot/" + CFID, "resolved URL is used"),
+    ({"FLOWISE_PUBLIC_URL": "https://kurs-smart-rag.example.com"},
+     "https://kurs-smart-rag.example.com/chatbot/" + CFID, "prefix comes from .env"),
+    # Tailscale mode: one MagicDNS name, no subdomain, chat on 443 via Funnel.
+    ({"FLOWISE_PUBLIC_URL": "https://hp-i5.tail1234.ts.net",
+      "DOMAIN": "hp-i5.tail1234.ts.net", "SUBDOMAIN_PREFIX": ""},
+     "https://hp-i5.tail1234.ts.net/chatbot/" + CFID, "tailscale: no subdomain"),
+    # A trailing slash in .env must not double up.
+    ({"FLOWISE_PUBLIC_URL": "https://smart-rag.example.com/"},
+     "https://smart-rag.example.com/chatbot/" + CFID, "trailing slash tolerated"),
+    ({"FLOWISE_PUBLIC_URL": "  https://smart-rag.example.com  "},
      "https://smart-rag.example.com/chatbot/" + CFID, "values are stripped"),
+    # Only when .env predates FLOWISE_PUBLIC_URL does the old rule apply.
+    ({"DOMAIN": "example.com", "SUBDOMAIN_PREFIX": ""},
+     "https://smart-rag.example.com/chatbot/" + CFID, "fallback: no prefix"),
+    ({"DOMAIN": "example.com", "SUBDOMAIN_PREFIX": "kurs"},
+     "https://kurs-smart-rag.example.com/chatbot/" + CFID, "fallback: with prefix"),
+    ({"DOMAIN": "", "SUBDOMAIN_PREFIX": ""}, "", "nothing to build from -> no URL"),
 ]
 for env, expected, label in cases:
     got = m._public_chat_url(CFID, env)
