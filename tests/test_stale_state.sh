@@ -50,10 +50,12 @@ check "a populated store is found" $? "$out"
 grep -qx neo4j <<<"$out"
 check "a still-empty store beside it is not" $(( $? == 0 ? 1 : 0 )) "$out"
 
-touch "$SANDBOX/minio/.keep" 2>/dev/null || { mkdir -p "$SANDBOX/minio"; touch "$SANDBOX/minio/.keep"; }
-touch "$SANDBOX/clickhouse/x" 2>/dev/null || { mkdir -p "$SANDBOX/clickhouse"; touch "$SANDBOX/clickhouse/x"; }
+mkdir -p "$SANDBOX/clickhouse"; touch "$SANDBOX/clickhouse/x"
 out="$(initialised_data_stores "$SANDBOX")"
-(( $(grep -c . <<<"$out") == 3 ))
+# Garage is deliberately absent: its keys are imported after the fact by
+# deploy-garage.sh, not baked in at first start, so regenerating them is not
+# the one-way door it is for a database.
+(( $(grep -c . <<<"$out") == 2 ))
 check "every store that reads its password at init is checked" $? "$out"
 
 # ─── 2. The wizard must warn before regenerating over data ───────────────────

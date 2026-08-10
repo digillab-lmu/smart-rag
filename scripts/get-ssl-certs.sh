@@ -80,7 +80,6 @@ header "$(t phase_ssl)"
 SUBDOMAINS=(
     "$(subdomain_host smart-rag "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")"
     "$(subdomain_host n8n       "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")"
-    "$(subdomain_host minio     "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")"
     "$(subdomain_host s3        "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")"
     "$(subdomain_host content   "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")"
 )

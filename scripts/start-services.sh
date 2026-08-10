@@ -52,7 +52,7 @@ require_command docker
 CORE_SERVICES=(
     smartrag-postgres
     smartrag-redis
-    smartrag-minio
+    smartrag-garage
     smartrag-weaviate
     smartrag-neo4j
     smartrag-flowise

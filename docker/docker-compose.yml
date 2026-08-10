@@ -84,14 +84,14 @@ x-flowise-env: &flowise-env
   ENCRYPTION_KEY: "${ENCRYPTION_KEY}"
   SALT: "${SALT}"
 
-  # ── Object Storage (MinIO / S3-compatible) ───────────────────────────────────
-  STORAGE_TYPE: "s3"
-  S3_STORAGE_BUCKET_NAME: "${COURSE_ID}-media"
-  S3_STORAGE_REGION: "${MINIO_REGION_NAME}"
-  S3_ENDPOINT_URL: "http://smartrag-minio:9000"
-  S3_FORCE_PATH_STYLE: "true"
-  S3_STORAGE_ACCESS_KEY_ID: "${MINIO_ROOT_USER}"
-  S3_STORAGE_SECRET_ACCESS_KEY: "${MINIO_ROOT_PASSWORD}"
+  # ── File storage ─────────────────────────────────────────────────────────────
+  # Local, not S3. Flowise stores chat attachments and uploaded files here;
+  # they are per-chatflow working data, not course content, and the course
+  # documents that matter go through the ingest into Weaviate. Keeping them
+  # in the object store bought nothing and made Flowise a second consumer of
+  # it — one more thing to migrate, and one more place credentials had to be
+  # right. The directory is already a persistent volume.
+  STORAGE_TYPE: "local"
   BLOB_STORAGE_PATH: "/root/.flowise/storage"
 
   # ── Queue (Redis / BullMQ) ────────────────────────────────────────────────────
@@ -229,97 +229,46 @@ services:
   #
   # On every document upload to ${COURSE_ID}-rag, MinIO fires a webhook to n8n
   # which triggers the ingest pipeline.
-  smartrag-minio:
+  # ── Garage (S3 object storage) ───────────────────────────────────────────
+  # Replaces MinIO, which was archived upstream on 2026-04-24. Garage was
+  # chosen after running this stack's actual S3 operations against it — put,
+  # get, list, head, a 32 MB multipart round trip, a presigned URL fetched
+  # without credentials, recursive delete — and then running Langfuse's own
+  # client against it, which is the part documentation could not answer.
+  #
+  # Two differences from MinIO shape everything below:
+  #
+  # It needs a configuration FILE (written by the wizard, secrets in it) and
+  # cannot be configured from the environment alone.
+  #
+  # It stores nothing until a layout assigns capacity, and its image is FROM
+  # scratch — no shell, so MinIO's entrypoint-does-the-provisioning trick is
+  # impossible. Layout, buckets and keys are applied from outside by
+  # scripts/deploy-garage.sh, which runs the binary directly via docker exec.
+  #
+  # There is no web console. Garage has none, and nothing replaces it.
+  smartrag-garage:
     profiles: [core]
-    # RELEASE.2025-09-07T16-13-09Z is the last release MinIO ever actually
-    # PUBLISHED AS A DOCKER IMAGE. There's one later git tag on GitHub
-    # (RELEASE.2025-10-15, "point to source-only releases") but it was
-    # docs-only — no image was ever pushed to Docker Hub for it (confirmed:
-    # that tag 404s on Docker Hub's registry API). minio/minio was archived
-    # on GitHub 2026-04-25, so no NEW releases are coming.
-    #
-    # Not quite "frozen with no further patches", though: quay.io/minio/minio
-    # carries hotfix rebuilds of this same release — e.g.
-    # RELEASE.2025-09-07T16-13-09Z.hotfix.7aa24e772, pushed 2026-04-01 —
-    # published after the archival. They are rebuilds of this exact release
-    # rather than new versions, and they are not on Docker Hub. Worth
-    # knowing if a CVE lands here; worth verifying what a given hotfix
-    # actually contains before adopting it. Otherwise, consider an
-    # alternative (Garage, SeaweedFS).
-    #
-    # quay.io/minio/minio:latest is this same release, so an instance built
-    # from it runs identical code to this one.
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
-    container_name: smartrag-minio
+    image: dxflrs/garage:v2.3.0
+    container_name: smartrag-garage
     restart: always
-    env_file: ../.env
-    environment:
-      MINIO_ROOT_USER: "${MINIO_ROOT_USER}"
-      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD}"
-      MINIO_REGION_NAME: "${MINIO_REGION_NAME}"
-      # Both resolved in .env, because building them here from ${DOMAIN}
-      # dropped SUBDOMAIN_PREFIX and sent the console to a hostname that
-      # does not exist.
-      MINIO_SERVER_URL: "${MINIO_SERVER_URL}"
-      MINIO_BROWSER_REDIRECT_URL: "${MINIO_BROWSER_REDIRECT_URL}"
-      TZ: "${TZ}"
     volumes:
-      - ${BASE_DATA_PATH}/minio/data:/data
+      - ${BASE_DATA_PATH}/garage/garage.toml:/etc/garage.toml:ro
+      - ${BASE_DATA_PATH}/garage/meta:/var/lib/garage/meta
+      - ${BASE_DATA_PATH}/garage/data:/var/lib/garage/data
     ports:
-      - "127.0.0.1:${MINIO_API_PORT}:9000"
-      - "127.0.0.1:${MINIO_CONSOLE_PORT}:9001"
+      - "127.0.0.1:${GARAGE_S3_PORT}:3900"
     networks: [smart-rag-network]
-    # This whole block re-runs on every container start, chained with `&&`.
-    # If ANY step fails without its own `|| true`, the chain stops before
-    # ever reaching `wait $$MINIO_PID` — the shell (PID 1) then exits even
-    # though the actual `minio server` background process is still healthy,
-    # and `restart: always` crash-loops the container forever on a failure
-    # that was really just a harmless "already configured" no-op. Live-hit
-    # this on a MinIO version bump: `mc event add` for a notification rule
-    # that already existed (from a previous run, persisted in the data
-    # volume) started failing with "overlapping prefixes/suffixes" instead
-    # of silently succeeding — hence the `|| true` on those lines too, same
-    # as the `mc admin user add`/`policy attach` lines already had.
-    #
-    # The notification itself is gone. MinIO was told to POST to
-    # /webhook/minio-notify on every object, and no workflow has ever served
-    # that path: the ingest calls its chunk-and-embed sub-workflow directly
-    # via executeWorkflow. The only effect was an error line in n8n's log for
-    # every document uploaded. `mc event remove` stays — the rule persists in
-    # the data volume, so dropping both lines would leave existing
-    # installations notifying a dead endpoint forever.
-    entrypoint: >
-      /bin/sh -c "
-      minio server /data --console-address ':9001' &
-      MINIO_PID=$$!
-      sleep 5 &&
-      mc alias set smartrag http://localhost:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
-
-      mc mb --ignore-existing smartrag/$$COURSE_ID-rag &&
-      mc mb --ignore-existing smartrag/$$COURSE_ID-media &&
-      mc mb --ignore-existing smartrag/langfuse-events &&
-      mc mb --ignore-existing smartrag/langfuse-media &&
-      mc mb --ignore-existing smartrag/langfuse-exports &&
-
-      mc admin user add smartrag $$MINIO_LANGFUSE_ACCESS_KEY $$MINIO_LANGFUSE_SECRET_KEY 2>/dev/null || true &&
-      mc admin policy attach smartrag readwrite --user=$$MINIO_LANGFUSE_ACCESS_KEY 2>/dev/null || true &&
-
-      mc event remove smartrag/$$COURSE_ID-rag arn:minio:sqs::PRIMARY:webhook 2>/dev/null || true &&
-
-      wait $$MINIO_PID
-      "
+    # No shell in the image, so this runs the binary directly. `status` needs
+    # the RPC secret from the mounted config and therefore also proves the
+    # node is reachable to itself rather than merely that a process exists.
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "/garage", "status"]
       interval: 15s
-      timeout: 5s
-      retries: 5
+      timeout: 10s
+      retries: 10
       start_period: 30s
 
-
-  # ── Neo4j ────────────────────────────────────────────────────────────────────
-  # Graph database storing the course concept prerequisite graph.
-  # Used by Flowise agents to understand concept dependencies.
-  # Seed graph: scripts/init-neo4j.sh (runs neo4j/seed.example.cypher)
   smartrag-neo4j:
     profiles: [core]
     image: neo4j:5.26.28
@@ -495,8 +444,6 @@ services:
       smartrag-postgres:
         condition: service_healthy
       smartrag-redis:
-        condition: service_healthy
-      smartrag-minio:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/v1/ping"]

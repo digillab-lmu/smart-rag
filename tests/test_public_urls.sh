@@ -23,18 +23,24 @@ while IFS= read -r line; do
 done < "$REPO/docker/docker-compose.yml"
 
 # ─── The keys compose now expects must exist in .env.example ────────────────
-for key in MINIO_SERVER_URL MINIO_BROWSER_REDIRECT_URL FLOWISE_PUBLIC_URL; do
+for key in GARAGE_S3_PUBLIC_URL FLOWISE_PUBLIC_URL; do
     grep -q "^${key}=" "$REPO/.env.example"
     check "$key is declared in .env.example" $? ""
-    grep -q "\${${key}}" "$REPO/docker/docker-compose.yml"
-    check "$key is actually used by compose" $? ""
 done
+# FLOWISE_PUBLIC_URL reaches its container through compose. The S3 public URL
+# does not: nothing in compose needs it. It exists so the wizard can resolve
+# LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT — the address a browser is given
+# for a batch-export download, which a container name cannot serve.
+grep -q '\${FLOWISE_PUBLIC_URL}' "$REPO/docker/docker-compose.yml"
+check "FLOWISE_PUBLIC_URL is used by compose" $? ""
+grep -q 'REPL\[LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT\]' "$REPO/scripts/lib/templates.sh"
+check "the S3 public URL is what resolves the external export endpoint" $? ""
 
 # ─── …and bootstrap must fill them, prefix-aware ────────────────────────────
 # shellcheck source=/dev/null
 source "$REPO/scripts/lib/common.sh"
 
-for key in MINIO_SERVER_URL MINIO_BROWSER_REDIRECT_URL FLOWISE_PUBLIC_URL \
+for key in GARAGE_S3_PUBLIC_URL FLOWISE_PUBLIC_URL \
            N8N_WEBHOOK_URL N8N_HOSTNAME NEXTAUTH_URL \
            LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT; do
     grep -q "REPL\[$key\]=" "$REPO/scripts/lib/templates.sh"
@@ -56,7 +62,7 @@ check "unprefixed host is service.domain" $? "$(subdomain_host s3 lmu.de '')"
 # all about, so check the two lists agree.
 mapfile -t VHOSTS < <(sed -n 's/^[[:space:]]*server_name \([a-z0-9-]*\)\.YOUR_DOMAIN;.*/\1/p' \
     "$REPO/nginx/smartrag-suite.conf" | sort -u)
-for svc in s3 minio smart-rag; do
+for svc in s3 smart-rag; do
     printf '%s\n' "${VHOSTS[@]}" | grep -qx "$svc"
     check "nginx serves a vhost for '$svc'" $? "vhosts: ${VHOSTS[*]}"
 done
@@ -67,5 +73,5 @@ fi
 echo "All public-URL checks passed: docker-compose.yml no longer assembles any"
 echo "subdomain from \${DOMAIN}; every public URL it consumes is declared in"
 echo ".env.example, used by compose, and resolved by bootstrap through"
-echo "subdomain_host() so SUBDOMAIN_PREFIX is applied; and s3, minio and"
+echo "subdomain_host() so SUBDOMAIN_PREFIX is applied; and s3 and"
 echo "smart-rag each have a vhost nginx actually serves."

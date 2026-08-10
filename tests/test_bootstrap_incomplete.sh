@@ -22,7 +22,8 @@ setup_sandbox() { # $1 = exit code the n8n phase should return
     # Every phase script becomes a stub that just says it ran. The n8n one
     # returns whatever this test is exercising.
     for s in install-system-packages install-postfix get-ssl-certs \
-             start-services deploy-schemas generate-lti-keys install-tailscale; do
+             start-services deploy-garage deploy-schemas generate-lti-keys \
+             install-tailscale; do
         printf '#!/usr/bin/env bash\necho "STUB %s"\nexit 0\n' "$s" \
             > "$SANDBOX/scripts/$s.sh"
         chmod +x "$SANDBOX/scripts/$s.sh"

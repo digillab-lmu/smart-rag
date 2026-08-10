@@ -51,22 +51,20 @@ write_env_file() {
         REPL[N8N_WEBHOOK_URL]="https://$ts:8444"
         REPL[N8N_HOSTNAME]="$ts"
         REPL[NEXTAUTH_URL]="https://$ts:8445"
-        REPL[MINIO_BROWSER_REDIRECT_URL]="https://$ts:8446"
-        REPL[MINIO_SERVER_URL]="https://$ts:8447"
+        REPL[GARAGE_S3_PUBLIC_URL]="https://$ts:8447"
         REPL[LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT]="https://$ts:8447"
     else
         REPL[TAILSCALE_HOSTNAME]=""
         REPL[N8N_WEBHOOK_URL]="https://$(subdomain_host n8n "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
         REPL[N8N_HOSTNAME]="$(subdomain_host n8n "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
         REPL[NEXTAUTH_URL]="https://$(subdomain_host langfuse "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
-        REPL[LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT]="https://$(subdomain_host minio "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
+        REPL[LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT]="https://$(subdomain_host s3 "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
         # These four were once built inline in docker-compose.yml as
         # "https://s3.${DOMAIN}", which silently dropped the prefix and
         # pointed services at hostnames with no DNS record, vhost or
         # certificate. APP_URL was wrong even without a prefix — it named
         # the bare domain, while Flowise lives on the smart-rag subdomain.
-        REPL[MINIO_SERVER_URL]="https://$(subdomain_host s3 "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
-        REPL[MINIO_BROWSER_REDIRECT_URL]="https://$(subdomain_host minio "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
+        REPL[GARAGE_S3_PUBLIC_URL]="https://$(subdomain_host s3 "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
         REPL[FLOWISE_PUBLIC_URL]="https://$(subdomain_host smart-rag "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
         REPL[CONTENT_ADMIN_PUBLIC_URL]="https://$(subdomain_host content "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
     fi
@@ -91,6 +89,28 @@ write_env_file() {
     REPL[LANGFUSE_INIT_USER_PASSWORD]="$SECRET_ADMIN_PASSWORD"
     REPL[LANGFUSE_INIT_PROJECT_PUBLIC_KEY]="$SECRET_LANGFUSE_PUBLIC_KEY"
     REPL[LANGFUSE_INIT_PROJECT_SECRET_KEY]="$SECRET_LANGFUSE_SECRET_KEY"
+
+    # ── Object storage ──────────────────────────────────────────────────────
+    REPL[GARAGE_ACCESS_KEY]="$SECRET_GARAGE_ACCESS_KEY"
+    REPL[GARAGE_SECRET_KEY]="$SECRET_GARAGE_SECRET_KEY"
+    REPL[GARAGE_LANGFUSE_ACCESS_KEY]="$SECRET_GARAGE_LANGFUSE_ACCESS_KEY"
+    REPL[GARAGE_LANGFUSE_SECRET_KEY]="$SECRET_GARAGE_LANGFUSE_SECRET_KEY"
+    REPL[GARAGE_RPC_SECRET]="$SECRET_GARAGE_RPC_SECRET"
+    REPL[GARAGE_ADMIN_TOKEN]="$SECRET_GARAGE_ADMIN_TOKEN"
+
+    # Langfuse's own S3 settings, resolved. These carried ${MINIO_LANGFUSE_*}
+    # before and were never substituted — Langfuse reads its whole
+    # configuration through env_file, which passes ${...} through literally,
+    # so it had been authenticating with the nine characters of a variable
+    # name. Nobody noticed because nothing ever wrote a trace; the same
+    # investigation that found tracing switched off found this.
+    local _lf_region="${CFG_GARAGE_REGION:-eu-central-1}"
+    local _purpose
+    for _purpose in EVENT_UPLOAD MEDIA_UPLOAD BATCH_EXPORT; do
+        REPL[LANGFUSE_S3_${_purpose}_ACCESS_KEY_ID]="$SECRET_GARAGE_LANGFUSE_ACCESS_KEY"
+        REPL[LANGFUSE_S3_${_purpose}_SECRET_ACCESS_KEY]="$SECRET_GARAGE_LANGFUSE_SECRET_KEY"
+        REPL[LANGFUSE_S3_${_purpose}_REGION]="$_lf_region"
+    done
     REPL[COMPOSE_PROFILES]="$CFG_COMPOSE_PROFILES"
 
     # LLM
@@ -143,8 +163,6 @@ write_env_file() {
     REPL[NEO4J_PASSWORD]="$SECRET_NEO4J_PASSWORD"
     REPL[REDIS_PASSWORD]="$SECRET_REDIS_PASSWORD"
     REPL[CLICKHOUSE_PASSWORD]="$SECRET_CLICKHOUSE_PASSWORD"
-    REPL[MINIO_ROOT_PASSWORD]="$SECRET_MINIO_ROOT_PASSWORD"
-    REPL[MINIO_LANGFUSE_SECRET_KEY]="$SECRET_MINIO_LANGFUSE_SECRET_KEY"
 
     # Flowise / n8n / Langfuse secrets
     REPL[FLOWISE_PASSWORD]="$SECRET_FLOWISE_PASSWORD"
@@ -248,14 +266,13 @@ write_nginx_config() {
     # actually internet-facing. Falls back to defaults if RESOLVED_PORTS
     # isn't set (e.g. this function called outside the normal wizard flow).
     local flowise_port=3000 n8n_port=5678 langfuse_port=3001
-    local minio_console_port=9001 minio_api_port=9000 lti_port=10088
+    local garage_s3_port=3900 lti_port=10088
     local content_admin_port=3002
     if declare -p RESOLVED_PORTS >/dev/null 2>&1; then
         [[ -n "${RESOLVED_PORTS[FLOWISE_PORT]:-}" ]]        && flowise_port="${RESOLVED_PORTS[FLOWISE_PORT]}"
         [[ -n "${RESOLVED_PORTS[N8N_PORT]:-}" ]]             && n8n_port="${RESOLVED_PORTS[N8N_PORT]}"
         [[ -n "${RESOLVED_PORTS[LANGFUSE_PORT]:-}" ]]        && langfuse_port="${RESOLVED_PORTS[LANGFUSE_PORT]}"
-        [[ -n "${RESOLVED_PORTS[MINIO_CONSOLE_PORT]:-}" ]]   && minio_console_port="${RESOLVED_PORTS[MINIO_CONSOLE_PORT]}"
-        [[ -n "${RESOLVED_PORTS[MINIO_API_PORT]:-}" ]]       && minio_api_port="${RESOLVED_PORTS[MINIO_API_PORT]}"
+        [[ -n "${RESOLVED_PORTS[GARAGE_S3_PORT]:-}" ]]       && garage_s3_port="${RESOLVED_PORTS[GARAGE_S3_PORT]}"
         [[ -n "${RESOLVED_PORTS[LTI_PORT]:-}" ]]             && lti_port="${RESOLVED_PORTS[LTI_PORT]}"
         [[ -n "${RESOLVED_PORTS[CONTENT_ADMIN_PORT]:-}" ]]   && content_admin_port="${RESOLVED_PORTS[CONTENT_ADMIN_PORT]}"
     fi
@@ -264,7 +281,6 @@ write_nginx_config() {
         -e "s|n8n\.YOUR_DOMAIN|$n8n_host|g" \
         -e "s|n8n\\\\\.YOUR_DOMAIN|$n8n_host_escaped|g" \
         -e "s|langfuse\.YOUR_DOMAIN|$(subdomain_host langfuse "$CFG_DOMAIN" "$prefix")|g" \
-        -e "s|minio\.YOUR_DOMAIN|$(subdomain_host minio "$CFG_DOMAIN" "$prefix")|g" \
         -e "s|s3\.YOUR_DOMAIN|$(subdomain_host s3 "$CFG_DOMAIN" "$prefix")|g" \
         -e "s|lti\.YOUR_DOMAIN|$(subdomain_host lti "$CFG_DOMAIN" "$prefix")|g" \
         -e "s|content\.YOUR_DOMAIN|$(subdomain_host content "$CFG_DOMAIN" "$prefix")|g" \
@@ -273,8 +289,7 @@ write_nginx_config() {
         -e "s|__FLOWISE_PORT__|$flowise_port|g" \
         -e "s|__N8N_PORT__|$n8n_port|g" \
         -e "s|__LANGFUSE_PORT__|$langfuse_port|g" \
-        -e "s|__MINIO_CONSOLE_PORT__|$minio_console_port|g" \
-        -e "s|__MINIO_API_PORT__|$minio_api_port|g" \
+        -e "s|__GARAGE_S3_PORT__|$garage_s3_port|g" \
         -e "s|__LTI_PORT__|$lti_port|g" \
         -e "s|__CONTENT_ADMIN_PORT__|$content_admin_port|g" \
         "$src" > "$out"
@@ -287,6 +302,47 @@ write_nginx_config() {
 # Substitutes __COLLECTION_NAME__ in weaviate/schema.json and writes the
 # result to a staging path that deploy-weaviate-schema.sh will POST.
 # Args: $1 = repo root, $2 = output path
+# Garage needs a configuration FILE — unlike MinIO, it cannot be configured
+# from the environment alone. Written here rather than shipped as a template
+# with placeholders because two of its values are secrets: an rpc_secret in a
+# file committed to a public repository would be a shared cluster key.
+#
+# db_engine sqlite and replication_factor 1 are the single-node settings.
+# Garage refuses to start with a replication factor it cannot satisfy, so a
+# multi-node deployment is a deliberate change here and not something that
+# happens by accident.
+#
+# Args: $1 = output path
+write_garage_config() {
+    local out="$1"
+    info "$(t tpl_writing_garage)"
+    mkdir -p "$(dirname "$out")"
+    cat > "$out" <<TOML
+# Written by scripts/lib/templates.sh — regenerated on every wizard run.
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "sqlite"
+replication_factor = 1
+
+rpc_bind_addr = "[::]:3901"
+rpc_public_addr = "127.0.0.1:3901"
+rpc_secret = "$SECRET_GARAGE_RPC_SECRET"
+
+[s3_api]
+# Must match what every client sends: clients sign requests for a region, and
+# a mismatch is rejected as a signature error rather than as a wrong region.
+s3_region = "${CFG_GARAGE_REGION:-eu-central-1}"
+api_bind_addr = "[::]:3900"
+root_domain = ".s3.garage"
+
+[admin]
+api_bind_addr = "[::]:3903"
+admin_token = "$SECRET_GARAGE_ADMIN_TOKEN"
+TOML
+    chmod 600 "$out"
+    ok "Garage configuration written to $out"
+}
+
 write_weaviate_schema() {
     local repo="$1"
     local out="$2"

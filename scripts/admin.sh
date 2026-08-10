@@ -93,7 +93,7 @@ fi
 # COMPOSE_PROFILES — same set start-services.sh waits on.
 _active_services() {
     local services=(
-        smartrag-postgres smartrag-redis smartrag-minio smartrag-weaviate
+        smartrag-postgres smartrag-redis smartrag-garage smartrag-weaviate
         smartrag-neo4j smartrag-flowise smartrag-flowise-worker smartrag-n8n
         smartrag-content-admin
     )
@@ -362,8 +362,7 @@ _missing_env_keys() {
 _default_for_env_key() {
     local key="$1" prefix="${SUBDOMAIN_PREFIX:-}"
     case "$key" in
-        MINIO_SERVER_URL)           echo "https://$(subdomain_host s3        "$DOMAIN" "$prefix")" ;;
-        MINIO_BROWSER_REDIRECT_URL) echo "https://$(subdomain_host minio     "$DOMAIN" "$prefix")" ;;
+        GARAGE_S3_PUBLIC_URL)       echo "https://$(subdomain_host s3        "$DOMAIN" "$prefix")" ;;
         FLOWISE_PUBLIC_URL)         echo "https://$(subdomain_host smart-rag "$DOMAIN" "$prefix")" ;;
         # Langfuse reads REDIS_AUTH, not REDIS_PASSWORD.
         REDIS_AUTH)                 echo "${REDIS_PASSWORD:-}" ;;
@@ -531,7 +530,6 @@ action_dns() {
     local prefix="${SUBDOMAIN_PREFIX:-}"
     check_dns "$(subdomain_host smart-rag "$DOMAIN" "$prefix")"
     check_dns "$(subdomain_host n8n       "$DOMAIN" "$prefix")"
-    check_dns "$(subdomain_host minio     "$DOMAIN" "$prefix")"
     check_dns "$(subdomain_host content   "$DOMAIN" "$prefix")"
     [[ "${COMPOSE_PROFILES:-core}" == *observability* ]] && check_dns "$(subdomain_host langfuse "$DOMAIN" "$prefix")"
     [[ "${COMPOSE_PROFILES:-core}" == *lti* ]]           && check_dns "$(subdomain_host lti       "$DOMAIN" "$prefix")"
@@ -550,7 +548,7 @@ action_secrets() {
     fi
     echo
     local keys=(
-        POSTGRES_PASSWORD REDIS_PASSWORD MINIO_ROOT_PASSWORD NEO4J_PASSWORD
+        POSTGRES_PASSWORD REDIS_PASSWORD GARAGE_SECRET_KEY NEO4J_PASSWORD
         WEAVIATE_API_KEY ENCRYPTION_KEY JWT_AUTH_TOKEN_SECRET
         N8N_ENCRYPTION_KEY LLM_API_KEY EMBEDDING_API_KEY SMTP_PASSWORD
     )

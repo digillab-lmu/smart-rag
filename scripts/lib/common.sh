@@ -569,7 +569,7 @@ require_command() {
 # Which database data directories already exist and hold data.
 #
 # Matters because of one property that is easy to forget and impossible to
-# see: Postgres, Neo4j, ClickHouse and MinIO all read their password ONCE,
+# see: Postgres, Neo4j and ClickHouse all read their password ONCE,
 # when their data directory is first created. A later change to .env does not
 # reach them. Generating fresh secrets over an initialised data directory
 # therefore produces a deployment whose .env and databases disagree, and the
@@ -580,7 +580,7 @@ require_command() {
 initialised_data_stores() {   # $1 = BASE_DATA_PATH
     local base="${1:-}" d
     [[ -n "$base" && -d "$base" ]] || return 0
-    for d in postgres neo4j clickhouse minio; do
+    for d in postgres neo4j clickhouse; do
         if [[ -d "$base/$d" ]] && [[ -n "$(ls -A "$base/$d" 2>/dev/null)" ]]; then
             echo "$d"
         fi

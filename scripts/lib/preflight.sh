@@ -477,7 +477,7 @@ check_nginx_subdomains() {
 # already running on this host), offers ONE shared prefix applied to every
 # one of our subdomains — mirrors resolve_ports()'s auto-resolve-on-conflict
 # approach — and retries, up to a few attempts before giving up.
-# Args: $1=domain  $2...=service labels (e.g. smart-rag n8n minio s3 [langfuse] [lti])
+# Args: $1=domain  $2...=service labels (e.g. smart-rag n8n s3 [langfuse] [lti])
 # Echoes the final prefix (possibly "").
 resolve_subdomain_prefix() {
     local domain="$1"; shift
@@ -561,7 +561,7 @@ check_base_data_path() {
     fi
 
     # Detect SMART RAG markers (subdirs we create)
-    local known_subdirs=(postgres redis neo4j weaviate minio clickhouse flowise n8n langfuse staging)
+    local known_subdirs=(postgres redis neo4j weaviate garage clickhouse flowise n8n langfuse staging)
     local foreign_items=()
     local item base
     for item in "$path"/*; do
@@ -609,7 +609,7 @@ check_nginx_config_valid() {
 # ─── Memory ──────────────────────────────────────────────────────────────────
 # RAM, not CPU, is what this stack runs out of first. A deployment that fits
 # in neither RAM nor swap doesn't fail cleanly: it thrashes, and the symptoms
-# surface far from the cause — MinIO taking its own drive offline after a
+# surface far from the cause — an object store taking its drive offline after a
 # 31-second write-read stall, n8n needing minutes to restart, containers
 # dying under an OOM kill. Every one of those reads as a bug in the thing
 # that reported it.
@@ -701,7 +701,7 @@ run_preflight() {
 # Called after the config wizard, when we know which domain and ports to check.
 # Expects globals from .env to be sourced:
 #   DOMAIN, BASE_DATA_PATH, COMPOSE_PROFILES,
-#   FLOWISE_PORT, N8N_PORT, LANGFUSE_PORT, MINIO_API_PORT, MINIO_CONSOLE_PORT, LTI_PORT,
+#   FLOWISE_PORT, N8N_PORT, LANGFUSE_PORT, GARAGE_S3_PORT, LTI_PORT,
 #   NEO4J_HTTP_PORT, NEO4J_BOLT_PORT, WEAVIATE_HTTP_PORT, WEAVIATE_GRPC_PORT
 #
 # After this runs, RESOLVED_PORTS[VARNAME] contains the final port for each
@@ -712,7 +712,7 @@ run_coexistence_preflight() {
     # Build the list of SERVICE LABELS (not yet combined with domain/prefix —
     # resolve_subdomain_prefix() does that, retrying with a shared prefix if
     # the unprefixed names collide with something already on this host).
-    local services=(smart-rag n8n minio s3 content)
+    local services=(smart-rag n8n s3 content)
     [[ "${COMPOSE_PROFILES:-core}" == *observability* ]] && services+=(langfuse)
     [[ "${COMPOSE_PROFILES:-core}" == *lti*           ]] && services+=(lti)
 
@@ -725,8 +725,7 @@ run_coexistence_preflight() {
         "WEAVIATE_GRPC_PORT=${WEAVIATE_GRPC_PORT:-50051}:Weaviate gRPC"
         "NEO4J_HTTP_PORT=${NEO4J_HTTP_PORT:-7474}:Neo4j HTTP"
         "NEO4J_BOLT_PORT=${NEO4J_BOLT_PORT:-7687}:Neo4j Bolt"
-        "MINIO_API_PORT=${MINIO_API_PORT:-9000}:MinIO API"
-        "MINIO_CONSOLE_PORT=${MINIO_CONSOLE_PORT:-9001}:MinIO Console"
+        "GARAGE_S3_PORT=${GARAGE_S3_PORT:-3900}:S3 endpoint"
         "CONTENT_ADMIN_PORT=${CONTENT_ADMIN_PORT:-3002}:Content Admin GUI"
     )
     [[ "${COMPOSE_PROFILES:-core}" == *observability* ]] && \

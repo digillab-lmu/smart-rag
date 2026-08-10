@@ -206,6 +206,10 @@ run_deployment_phases() {
         bash "$SCRIPT_DIR/get-ssl-certs.sh"       --lang "$LANG_CHOICE"
         bash "$SCRIPT_DIR/start-services.sh"      --lang "$LANG_CHOICE"
     fi
+    # Before the schemas, and before anything writes an object: Garage accepts
+    # connections without a layout and refuses every write, so a stack started
+    # against an unprovisioned one looks healthy and loses data.
+    bash "$SCRIPT_DIR/deploy-garage.sh"           --lang "$LANG_CHOICE"
     bash "$SCRIPT_DIR/deploy-schemas.sh"          --lang "$LANG_CHOICE"
     # Exits EXIT_SKIPPED if n8n has no owner account yet — expected on a
     # first run, since creating that account is a manual browser step. The
@@ -548,8 +552,8 @@ if [[ -f "$REPO_ROOT/.env.example" ]]; then
     while IFS='=' read -r k v; do
         case "$k" in
             FLOWISE_PORT|N8N_PORT|WEAVIATE_HTTP_PORT|WEAVIATE_GRPC_PORT| \
-            NEO4J_HTTP_PORT|NEO4J_BOLT_PORT|LANGFUSE_PORT|MINIO_API_PORT| \
-            MINIO_CONSOLE_PORT|LTI_PORT)
+            NEO4J_HTTP_PORT|NEO4J_BOLT_PORT|LANGFUSE_PORT|GARAGE_S3_PORT| \
+            LTI_PORT)
                 v="${v#\"}"; v="${v%\"}"
                 export "$k=$v"
                 ;;
@@ -583,7 +587,6 @@ elif command -v dig >/dev/null 2>&1; then
     _warn_before_dns=$PREFLIGHT_WARN
     check_dns "$(subdomain_host smart-rag "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
     check_dns "$(subdomain_host n8n       "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
-    check_dns "$(subdomain_host minio     "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
     [[ "$CFG_ENABLE_OBSERVABILITY" == "yes" ]] && check_dns "$(subdomain_host langfuse "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
     [[ "$CFG_ENABLE_LTI" == "yes" ]]           && check_dns "$(subdomain_host lti       "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
     [[ "$PREFLIGHT_WARN" -eq "$_warn_before_dns" ]] && DNS_ALL_OK=1
@@ -612,6 +615,7 @@ STAGING_DIR="$CFG_BASE_DATA_PATH/staging"
 mkdir -p "$STAGING_DIR"
 
 write_env_file "$REPO_ROOT"
+write_garage_config "$CFG_BASE_DATA_PATH/garage/garage.toml"
 write_weaviate_schema "$REPO_ROOT" "$STAGING_DIR/weaviate-schema.json"
 
 # nginx target — only write if /etc/nginx/sites-available exists (otherwise
@@ -667,7 +671,7 @@ echo
 # so there is nothing for the operator to create.
 SUBDOMAINS=""
 if [[ "$CFG_DEPLOYMENT_MODE" == "domain" ]]; then
-    SUBDOMAINS="$(subdomain_host smart-rag "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")  $(subdomain_host n8n "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")  $(subdomain_host minio "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")  $(subdomain_host s3 "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
+    SUBDOMAINS="$(subdomain_host smart-rag "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")  $(subdomain_host n8n "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")  $(subdomain_host s3 "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
     [[ "$CFG_ENABLE_OBSERVABILITY" == "yes" ]] && SUBDOMAINS="$SUBDOMAINS  $(subdomain_host langfuse "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
     [[ "$CFG_ENABLE_LTI" == "yes" ]] && SUBDOMAINS="$SUBDOMAINS  $(subdomain_host lti "$CFG_DOMAIN" "$CFG_SUBDOMAIN_PREFIX")"
 fi

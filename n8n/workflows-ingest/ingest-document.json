@@ -284,7 +284,7 @@
         "additionalFields": {}
       },
       "id": "a1a1b1c1-0003-4a1a-9a1a-000000000010",
-      "name": "Upload to MinIO",
+      "name": "Upload to object storage",
       "type": "n8n-nodes-base.s3",
       "typeVersion": 1,
       "position": [
@@ -293,8 +293,8 @@
       ],
       "credentials": {
         "s3": {
-          "id": "smartrag-minio-credential",
-          "name": "smartrag-minio"
+          "id": "smartrag-s3-credential",
+          "name": "smartrag-s3"
         }
       }
     },
@@ -334,7 +334,7 @@
         "fromEmail": "={{ $env.SMTP_SENDER_EMAIL }}",
         "toEmail": "={{ $('Upload Webhook').first().json.body?.notify_email || $env.ADMIN_EMAIL }}",
         "subject": "Document processed — SMART RAG Ingest",
-        "html": "=<div style=\"font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; border: 1px solid #e5e7eb; padding: 20px; border-radius: 10px;\">\n  <h2 style=\"color: #00883a; margin-top: 0;\">Processing complete</h2>\n  <p>Your document has been converted, described, chunked, and embedded — it's now searchable by its assigned agent.</p>\n  <div style=\"background-color: #f8fafc; border-left: 4px solid #00883a; padding: 15px; margin: 20px 0;\">\n    <p style=\"margin: 5px 0;\"><strong>File:</strong> {{ $('Build Frontmatter').first().json.originalFileName }}</p>\n    <p style=\"margin: 5px 0;\"><strong>Agent:</strong> {{ $('Upload Webhook').first().json.body?.agent_id }}</p>\n  </div>\n  <div style=\"text-align: center; margin: 25px 0;\">\n    <a href=\"https://minio.{{ $env.DOMAIN }}\" style=\"background-color: #00883a; color: white; padding: 12px 25px; text-decoration: none; font-weight: bold; border-radius: 5px; display: inline-block;\">View file in MinIO</a>\n  </div>\n</div>",
+        "html": "=<div style=\"font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; border: 1px solid #e5e7eb; padding: 20px; border-radius: 10px;\">\n  <h2 style=\"color: #00883a; margin-top: 0;\">Processing complete</h2>\n  <p>Your document has been converted, described, chunked, and embedded — it's now searchable by its assigned agent.</p>\n  <div style=\"background-color: #f8fafc; border-left: 4px solid #00883a; padding: 15px; margin: 20px 0;\">\n    <p style=\"margin: 5px 0;\"><strong>File:</strong> {{ $('Build Frontmatter').first().json.originalFileName }}</p>\n    <p style=\"margin: 5px 0;\"><strong>Agent:</strong> {{ $('Upload Webhook').first().json.body?.agent_id }}</p>\n  </div>\n</div>",
         "options": {}
       },
       "id": "a1a1b1c1-0003-4a1a-9a1a-000000000012",
@@ -570,14 +570,14 @@
       "main": [
         [
           {
-            "node": "Upload to MinIO",
+            "node": "Upload to object storage",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Upload to MinIO": {
+    "Upload to object storage": {
       "main": [
         [
           {
