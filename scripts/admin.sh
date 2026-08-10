@@ -329,6 +329,13 @@ _stale_env_keys() {
         [[ -n "$value" ]] || continue
         [[ "$value" == *'${'* ]] && echo "$key"
     done < <(_wizard_resolved_keys)
+
+    # Separately, and for EVERY key rather than only the wizard-written ones:
+    # the placeholder itself. It is a fixed string published in this
+    # repository, and all twenty-two keys that carry it in .env.example are
+    # secrets, so finding it in a live file means that secret is public.
+    grep -oE '^[A-Z][A-Z0-9_]*="generate-with-bootstrap"' "$envfile" 2>/dev/null \
+        | cut -d= -f1
 }
 
 # A key that appears more than once. Both bash and read_env() take the last
@@ -382,6 +389,16 @@ _default_for_env_key() {
             raw="${raw#*=}"          # strip KEY=
             raw="${raw%\"}"          # strip the surrounding quotes, if any
             raw="${raw#\"}"
+            # …except when that literal is the placeholder. Twenty-two keys in
+            # .env.example say "generate-with-bootstrap", and every one of
+            # them is a secret. Copying it into a live .env produces a
+            # credential that is published in this repository and identical on
+            # every installation — which is what happened to the Langfuse
+            # project keys: Langfuse accepted the placeholder as a key,
+            # because as a string there is nothing wrong with it.
+            if [[ "$raw" == "generate-with-bootstrap" ]]; then
+                raw="$(openssl rand -hex 24)"
+            fi
             printf '%s' "$raw"
             ;;
     esac
