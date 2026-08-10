@@ -37,7 +37,6 @@ EXISTING_KEY="kept"
 MINIO_SERVER_URL="https://s3.${DOMAIN}"
 MINIO_BROWSER_REDIRECT_URL="https://minio.${DOMAIN}"
 FLOWISE_PUBLIC_URL="https://smart-rag.${DOMAIN}"
-MINIO_NOTIFY_WEBHOOK_ENDPOINT="http://smartrag-n8n:5678/webhook/minio-notify"
 SOME_NEW_PLAIN_KEY="a-literal-default"
 EOF
 cat > "$SANDBOX/.env" <<'EOF'
@@ -59,8 +58,8 @@ printf '%s\n' "${missing[@]}" | grep -qx "EXISTING_KEY"
 check "a key already present is NOT reported" $(( $? == 0 ? 1 : 0 )) "${missing[*]}"
 printf '%s\n' "${missing[@]}" | grep -qx "DOMAIN"
 check "DOMAIN is not reported as missing" $(( $? == 0 ? 1 : 0 )) "${missing[*]}"
-(( ${#missing[@]} == 5 ))
-check "exactly the five absent keys are found" $? "${#missing[@]}: ${missing[*]}"
+(( ${#missing[@]} == 4 ))
+check "exactly the four absent keys are found" $? "${#missing[@]}: ${missing[*]}"
 
 # ─── The values: derived, not copied ────────────────────────────────────────
 # This is the whole point. .env.example says "https://s3.${DOMAIN}" — using
@@ -70,7 +69,6 @@ declare -A EXPECT=(
     [MINIO_SERVER_URL]="https://smartrag-s3.duenn-mit-pfiff.de"
     [MINIO_BROWSER_REDIRECT_URL]="https://smartrag-minio.duenn-mit-pfiff.de"
     [FLOWISE_PUBLIC_URL]="https://smartrag-smart-rag.duenn-mit-pfiff.de"
-    [MINIO_NOTIFY_WEBHOOK_ENDPOINT]="http://smartrag-n8n:5678/webhook/minio-notify"
 )
 for key in "${!EXPECT[@]}"; do
     got="$(_default_for_env_key "$key")"
@@ -80,11 +78,6 @@ for key in "${!EXPECT[@]}"; do
     [[ "$got" != *'${'* ]]
     check "$key contains no unexpanded variable" $? "$got"
 done
-
-# The notify endpoint is a container-to-container URL: it must use n8n's
-# container port, never the host-side N8N_PORT the wizard may have moved.
-[[ "$(_default_for_env_key MINIO_NOTIFY_WEBHOOK_ENDPOINT)" == *":5678/"* ]]
-check "the notify endpoint uses n8n's container port" $? ""
 
 # Without a prefix, the same keys come out unprefixed.
 SUBDOMAIN_PREFIX=""

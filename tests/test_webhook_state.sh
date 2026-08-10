@@ -80,9 +80,18 @@ while IFS= read -r line; do
     FAILURES+=("internal URL built from the host-side N8N_PORT: $line")
 done < "$REPO/.env.example"
 
-grep -q 'smartrag-n8n:5678/webhook/minio-notify' "$REPO/.env.example"
-check "the MinIO notify endpoint uses n8n's container port" $? \
-      "$(grep MINIO_NOTIFY_WEBHOOK_ENDPOINT "$REPO/.env.example")"
+# The MinIO notification is gone: MinIO was told to POST to
+# /webhook/minio-notify on every object and no workflow ever served that path
+# — the ingest calls its sub-workflow directly. It must not come back, since
+# its only effect was an error line per uploaded document.
+grep -rq 'minio-notify' "$REPO/.env.example" "$REPO/docker/docker-compose.yml" \
+    --include='*' 2>/dev/null && found=1 || found=0
+# The cleanup line in MinIO's entrypoint is allowed to mention the ARN: it
+# removes a rule that persists in existing data volumes.
+leftover="$(grep -n 'minio-notify' "$REPO/.env.example" "$REPO/docker/docker-compose.yml" 2>/dev/null \
+            | grep -v '^\S*:[0-9]*: *#' || true)"
+check "no live minio-notify configuration remains" \
+      $([[ -z "$leftover" ]] && echo 0 || echo 1) "$leftover"
 
 if (( ${#FAILURES[@]} > 0 )); then
     echo "FAILURES:"; printf '  - %s\n' "${FAILURES[@]}"; exit 1

@@ -9,6 +9,139 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ---
 
+## 1.0.0 — 2026-08-10
+
+The reason 0.9.0 was not 1.0 is gone: the ingest pipeline has now run end to
+end on a live server. A PDF was uploaded through the Content Admin, converted
+by Docling, cleaned, chunked into 23 pieces, embedded, written to Weaviate —
+and an agent answered a question from it that is only answerable from that
+document, citing the source.
+
+Everything below was found by getting to that point. Most of it had been
+sitting in the code unnoticed, because nothing had exercised it.
+
+### Added
+
+- **Tailscale deployment mode.** A second way to deploy: no domain, no DNS,
+  no port forwarding, no nginx. Tailscale issues the certificate over DNS-01,
+  the chat is public via Funnel, and every administrative interface is
+  reachable only from inside the tailnet. Chosen as the wizard's first
+  question. LTI is not available in this mode — an LMS needs stable,
+  institutionally approved URLs, not a `*.ts.net` name.
+- **The installer verifies instead of instructing.** Three steps happen in a
+  browser and cannot be scripted: the Flowise account and its API key, the
+  n8n owner account, the Content Admin account. The installer now stays open,
+  checks each against the running services, stores the Flowise key only after
+  Flowise has accepted it, and announces readiness only once everything has
+  passed. Stopping early says exactly what is left unproven.
+- **Password reset by email** in the Content Admin, plus a way back in
+  without it: `sudo smartrag` → *Reset Content Admin account*. The reply is
+  identical for an existing and an invented username, the link only ever goes
+  to `ADMIN_EMAIL`, and the token works once within an hour.
+- **API key rotation** for the LLM and embedding providers in the admin menu —
+  including pushing the new value into Flowise, which keeps its own copy.
+- **Upgrade detects values that were never resolved**, not just missing keys,
+  and cleans up duplicated ones.
+
+### Fixed
+
+Three that made the system unusable in ways nothing reported:
+
+- **n8n was never using PostgreSQL.** Its database settings carry no `N8N_`
+  prefix — `DB_TYPE`, `DB_POSTGRESDB_*` — so all five of ours were ignored and
+  n8n ran on SQLite while the Postgres database sat empty. Nothing failed;
+  a backup of Postgres would simply have contained none of n8n's workflows,
+  credentials or history. **Upgrade required.**
+- **Backticks in one message string forked twelve thousand processes.** A
+  command name written as markdown inside a double-quoted bash string is
+  command substitution. The command was this project's own admin tool, which
+  sources the same catalogue — so it recursed about four thousand levels deep
+  and held six gigabytes. It surfaced as "high RAM usage".
+- **Writing `.env` replaced its inode**, and Docker bind-mounts a single file
+  by inode. Every container kept reading the version it started with, for its
+  whole lifetime, while the host showed the new value. A rotated API key kept
+  failing with the old key's billing error.
+
+And the rest:
+
+- Langfuse reads `REDIS_AUTH`, not `REDIS_PASSWORD`, and answered `WRONGPASS`
+  to the empty password it therefore used. **Upgrade required.**
+- `SMTP_SENDER_EMAIL` stayed `noreply@${DOMAIN}` in `.env`. Compose expands
+  that for `environment:` but not for `env_file`, and n8n takes its whole
+  environment from `env_file` — the ingest's completion mail would have gone
+  out with a literal `${DOMAIN}` in the sender. **Upgrade required.**
+- `smartrag-langfuse-web` had no healthcheck, and the wait loop could not tell
+  "no healthcheck" from "still starting", so every install lost 180 seconds
+  and printed unrelated logs beside the timeout.
+- `N8N_TRUST_PROXY` does not exist; the setting is `N8N_PROXY_HOPS`, a count.
+  Without it, rate limiting keyed on the proxy's address rather than the
+  client's — behind one reverse proxy, that is everyone at once.
+- The public chat URL was assembled from `DOMAIN`, applying the domain-mode
+  naming rule in every mode. On a Tailscale install it named a host with no
+  certificate and no DNS record, and handed it to students.
+- An empty translation was treated as a missing one, so a deliberately blank
+  table header rendered as the literal key `docs_col_action`.
+- Rotating an API key did not reach Flowise: an existing credential was looked
+  up by name and returned untouched, so agents kept using the replaced key —
+  and re-importing found the same stale credential.
+- The admin menu's first entry was overwritten by buffered keystrokes, and the
+  menu had outgrown its own height, hiding entries below a scroll fold.
+- `exit` at a wizard prompt did not exit.
+- Tailscale setup could not tell "MagicDNS is off" from "the name has not
+  arrived yet", and read a peer's hostname instead of this machine's.
+- The MinIO notification to `/webhook/minio-notify` was configured and served
+  by nothing, producing an error line for every uploaded document.
+- The mail nodes in the ingest workflow made a delivery failure fail the whole
+  run, so a successful ingest looked like a failed one wherever no relay is
+  configured.
+
+### Changed
+
+- `.env` values may no longer contain a line break: bash keeps everything
+  after it inside the value while the Content Admin's reader splits on lines,
+  so the two would disagree about which keys exist.
+- The installer warns before regenerating secrets over initialised databases,
+  naming which stores hold data and why a password cannot be changed after
+  initdb.
+- `start-services.sh` recreates containers when `.env` is newer than they are.
+- The `smartrag` command installs itself without asking.
+
+### Upgrading from 0.9.0
+
+```bash
+cd /srv/smart-rag && git pull
+sudo smartrag        # → Upgrade — apply pending migrations
+bash scripts/compose.sh up -d --build
+```
+
+The upgrade entry now reports both missing keys and values that were never
+resolved; accept both.
+
+**n8n moves from SQLite to PostgreSQL** the next time its container is
+recreated, which the compose change alone will trigger. The new database is
+empty: the owner account has to be created again in the browser, and the
+workflows re-imported via `sudo smartrag` → *Ingest*. Nothing is deleted —
+the old `database.sqlite` stays in the volume — but nothing is migrated
+either. Plan for it rather than discovering it.
+
+Any `.env` change made from the admin TUI before this release never reached
+the running containers. If a value looks right on the host and wrong in the
+application, recreate the container once; from this release on, it applies.
+
+### Known limitations
+
+- MinIO is archived upstream. The pinned image is the last one published and
+  works; replacing it is a decision to be made, not an emergency. See below.
+- Several courses can share one installation, but the Content Admin still has
+  a single account and a single course selection. The design that resolves
+  this is recorded in `docs/ARCHITECTURE.md` (6a, 6b).
+- The knowledge graph is seeded through a guided path, not automatically.
+- `WEBHOOK_URL` and `N8N_DEFAULT_HTTP_TIMEOUT` are passed to n8n under names
+  that could not be confirmed against its configuration package. They are
+  marked as unverified in the compose file rather than changed on a guess.
+
+---
+
 ## 0.9.0 — 2026-08-05
 
 First tagged release. Everything before this was an untagged `main`.

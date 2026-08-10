@@ -330,7 +330,6 @@ _default_for_env_key() {
         MINIO_SERVER_URL)           echo "https://$(subdomain_host s3        "$DOMAIN" "$prefix")" ;;
         MINIO_BROWSER_REDIRECT_URL) echo "https://$(subdomain_host minio     "$DOMAIN" "$prefix")" ;;
         FLOWISE_PUBLIC_URL)         echo "https://$(subdomain_host smart-rag "$DOMAIN" "$prefix")" ;;
-        MINIO_NOTIFY_WEBHOOK_ENDPOINT) echo "http://smartrag-n8n:5678/webhook/minio-notify" ;;
         # Langfuse reads REDIS_AUTH, not REDIS_PASSWORD.
         REDIS_AUTH)                 echo "${REDIS_PASSWORD:-}" ;;
         # Must be resolved: env_file does not expand ${DOMAIN}.
