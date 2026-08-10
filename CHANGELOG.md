@@ -23,6 +23,8 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
   configured it offers to send it to an address you give it; without one it
   prints it between two lines to be copied out. Nothing is sent without the
   message being shown in full first and the send confirmed.
+  Also available afterwards as *Hand-over message for the Content Admin* in
+  `sudo smartrag` — for a second person, or when the role changes hands.
 
 ### Fixed
 

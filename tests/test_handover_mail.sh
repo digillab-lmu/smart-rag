@@ -36,15 +36,48 @@ source "$REPO/scripts/lib/messages.sh"
 # shellcheck source=/dev/null
 source "$REPO/scripts/lib/config-wizard.sh"
 
-# bootstrap.sh runs its work at source time, so the functions are lifted out
-# rather than sourced. Lifting them means this test reads the shipped code and
-# not a copy of it.
 REPO_ROOT="$SANDBOX"
-eval "$(sed -n '/^_handover_body() {/,/^}/p' "$REPO/scripts/bootstrap.sh")"
-eval "$(sed -n '/^_handover_mail() {/,/^}/p' "$REPO/scripts/bootstrap.sh")"
+# shellcheck source=/dev/null
+source "$REPO/scripts/lib/handover.sh"
 declare -F _handover_body >/dev/null && declare -F _handover_mail >/dev/null
-check "both hand-over functions were found in bootstrap.sh" $? \
-      "the sed extraction found nothing — renamed or reindented?"
+check "both hand-over functions are in the shared library" $? ""
+
+# Both callers must use that library rather than growing a copy: the installer
+# offers the message once, the admin tool offers it afterwards, and the fiddly
+# parts (which account sentence is true, whether Tailscale needs explaining)
+# are identical in both.
+for caller in bootstrap.sh admin.sh; do
+    grep -q 'source "$LIB_DIR/handover.sh"' "$REPO/scripts/$caller"
+    check "$caller sources the hand-over library" $? ""
+    grep -q '_handover_mail' "$REPO/scripts/$caller"
+    check "$caller offers the message" $? ""
+done
+
+# ─── The admin menu's numbering ─────────────────────────────────────────────
+# Inserting an entry shifts every number after it, in two places that are 20
+# lines apart. Getting it half right is silent: the first attempt at this
+# entry left two branches numbered 14, so Exit was dead and Uninstall ran in
+# its place. whiptail also scrolls a list that is taller than its window, and
+# what scrolls off is the end — which is where the destructive entries are.
+menu="$(sed -n '/whiptail --title "$(t admin_title)" --menu "$(t admin_menu_prompt)"/,/3>&1/p' "$REPO/scripts/admin.sh")"
+mapfile -t menu_nums < <(grep -oE '^\s+"[0-9]+"' <<<"$menu" | tr -d ' "')
+mapfile -t case_nums < <(sed -n '/case "\$choice" in/,/^    esac/p' "$REPO/scripts/admin.sh" \
+                         | grep -oE '^\s+[0-9]+\)' | tr -d ' )')
+(( ${#menu_nums[@]} > 0 ))
+check "the admin menu was found" $? ""
+[[ "$(printf '%s\n' "${menu_nums[@]}")" == "$(printf '%s\n' "${case_nums[@]}")" ]]
+check "every menu number has exactly one branch, in the same order" $? \
+      "menu: ${menu_nums[*]} / case: ${case_nums[*]}"
+[[ "$(printf '%s\n' "${case_nums[@]}" | sort -n | uniq -d)" == "" ]]
+check "no number is handled twice" $? \
+      "duplicate: $(printf '%s\n' "${case_nums[@]}" | sort -n | uniq -d)"
+# The visible list must be at least as tall as the number of entries.
+read -r _h _w _rows <<<"$(grep -oE '^\s+[0-9]+ [0-9]+ [0-9]+ \\' <<<"$menu" | tr -d '\\')"
+(( _rows >= ${#menu_nums[@]} ))
+check "the whole menu is visible without scrolling" $? \
+      "$_rows visible rows for ${#menu_nums[@]} entries"
+(( _h <= 24 ))
+check "the box still fits an 80x24 terminal" $? "height $_h"
 
 write_env() {   # write_env KEY=VALUE ...
     : > "$SANDBOX/.env"

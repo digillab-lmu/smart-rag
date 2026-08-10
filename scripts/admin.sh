@@ -43,6 +43,8 @@ source "$LIB_DIR/messages.sh"
 source "$LIB_DIR/preflight.sh"
 # shellcheck source=lib/config-wizard.sh
 source "$LIB_DIR/config-wizard.sh"
+# shellcheck source=lib/handover.sh
+source "$LIB_DIR/handover.sh"
 
 # ─── Arg parsing ─────────────────────────────────────────────────────────────
 while (( $# > 0 )); do
@@ -752,6 +754,18 @@ action_config() {
     esac
 }
 
+action_handover() {
+    clear
+    header "$(t admin_menu_handover)"
+    # The installer offers this once, at the end of a run nobody repeats. It
+    # is needed again more often than that: a second person joins, the first
+    # one leaves, or the mail was written down and lost. Same message, same
+    # data, so it is also still correct — the account sentence follows what
+    # .env says today, not what it said on installation day.
+    _handover_mail
+    press_enter
+}
+
 action_uninstall() {
     clear
     header "$(t admin_menu_uninstall)"
@@ -813,9 +827,11 @@ while true; do
     # Box height, width, visible list rows. The list must be tall enough for
     # every entry — a scrolling menu hides the destructive one below the fold
     # — and the box needs roughly seven rows more than the list for its
-    # title, prompt, buttons and borders. 22 still fits an 80x24 terminal.
+    # title, prompt, buttons and borders. 22 is the ceiling here: it still
+    # fits an 80x24 terminal, so a sixteenth entry needs the list trimmed or
+    # split, not the box grown.
     if ! choice=$(whiptail --title "$(t admin_title)" --menu "$(t admin_menu_prompt)" \
-        22 78 14 \
+        22 78 15 \
         "1"  "$(t admin_menu_status)" \
         "2"  "$(t admin_menu_logs)" \
         "3"  "$(t admin_menu_update)" \
@@ -828,8 +844,9 @@ while true; do
         "10" "$(t admin_menu_config)" \
         "11" "$(t admin_menu_migrate)" \
         "12" "$(t admin_menu_reset_ca)" \
-        "13" "$(t admin_menu_uninstall)" \
-        "14" "$(t admin_menu_exit)" \
+        "13" "$(t admin_menu_handover)" \
+        "14" "$(t admin_menu_uninstall)" \
+        "15" "$(t admin_menu_exit)" \
         3>&1 1>&2 2>&3); then
         clear
         break
@@ -848,7 +865,8 @@ while true; do
         10) action_config ;;
         11) action_migrate ;;
         12) action_reset_content_admin ;;
-        13) action_uninstall ;;
-        14) clear; break ;;
+        13) action_handover ;;
+        14) action_uninstall ;;
+        15) clear; break ;;
     esac
 done
