@@ -192,6 +192,37 @@ check "a duplicated key is found" $? "${dupes[*]}"
 (( ${#dupes[@]} == 1 ))
 check "only the duplicated key is reported" $? "${dupes[*]}"
 
+# ─── Values a service validates must be resolved, not copied ────────────────
+# Langfuse refuses to initialise on a bad one and says so: the upgrade path's
+# fallback copied .env.example's literal, so LANGFUSE_INIT_USER_EMAIL reached
+# the container as "${ADMIN_EMAIL}" and Langfuse rejected it as "Invalid
+# input" — no organisation, no project, no API keys, and therefore nothing
+# able to report a trace.
+DOMAIN="duenn-mit-pfiff.de"
+ADMIN_EMAIL="kurs@example.org"
+ADMIN_PASSWORD="a-generated-password"
+COURSE_NAME="Testkurs"
+
+for key in LANGFUSE_INIT_USER_EMAIL LANGFUSE_INIT_USER_PASSWORD LANGFUSE_INIT_PROJECT_NAME; do
+    got="$(_default_for_env_key "$key")"
+    [[ -n "$got" && "$got" != *'${'* ]]
+    check "$key is resolved, not copied" $? "got '$got'"
+done
+[[ "$(_default_for_env_key LANGFUSE_INIT_USER_EMAIL)" == "kurs@example.org" ]]
+check "the admin address is used verbatim" $? "$(_default_for_env_key LANGFUSE_INIT_USER_EMAIL)"
+
+# The two project keys are secrets: generated per installation, never a
+# literal that would be identical everywhere.
+k1="$(_default_for_env_key LANGFUSE_INIT_PROJECT_PUBLIC_KEY)"
+k2="$(_default_for_env_key LANGFUSE_INIT_PROJECT_PUBLIC_KEY)"
+[[ "$k1" == pk-lf-* && ${#k1} -gt 20 ]]
+check "the public key looks like a Langfuse key" $? "$k1"
+[[ "$k1" != "$k2" ]]
+check "the project keys are generated, not fixed" $? "two calls returned '$k1'"
+s1="$(_default_for_env_key LANGFUSE_INIT_PROJECT_SECRET_KEY)"
+[[ "$s1" == sk-lf-* ]]
+check "the secret key is generated too" $? "$s1"
+
 # ─── The upgrade must patch in place, never append ──────────────────────────
 # Appending is how the duplicate above came to exist, and it cannot fix a key
 # that is already present — which is the whole point of this entry.
