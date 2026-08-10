@@ -11,6 +11,19 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ## Unreleased
 
+### Added
+
+- **The installer writes the hand-over message to the Content Admin.**
+  Everything else it prints is read by a system administrator in a terminal on
+  the server; the person who will use the system daily gets none of it, and
+  cannot guess the address — least of all in Tailscale mode, where it is a
+  machine name on a private network. So the closing step now composes that
+  message: what this is, where to work, the first three things to do in order,
+  whether an account already exists, and who to ask. With a mail relay
+  configured it offers to send it to an address you give it; without one it
+  prints it between two lines to be copied out. Nothing is sent without the
+  message being shown in full first and the send confirmed.
+
 ### Fixed
 
 - **The Start node in every agent template was three versions behind.** Flowise
