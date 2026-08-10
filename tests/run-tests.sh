@@ -82,7 +82,14 @@ for suite in "${SUITES[@]}"; do
 
     printf '  %-32s ' "$name"
     if [[ "$suite" == *.py ]]; then
-        output="$("$PYTHON" "$suite" 2>&1)"; rc=$?
+        # PYTHONDONTWRITEBYTECODE: a stale .pyc can make a suite pass against
+        # code that no longer says what it did. Python invalidates the cache
+        # on the source's mtime in WHOLE SECONDS, so a file rewritten within
+        # the same second as the cache — an edit-and-rerun loop, or a restore
+        # during a red-test check — keeps executing the old bytecode. That
+        # happened here: a counter-proof appeared to pass because the module
+        # under test was never recompiled.
+        output="$(PYTHONDONTWRITEBYTECODE=1 "$PYTHON" "$suite" 2>&1)"; rc=$?
     else
         output="$(bash "$suite" 2>&1)"; rc=$?
     fi

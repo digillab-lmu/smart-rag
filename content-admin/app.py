@@ -694,10 +694,41 @@ def _do_import(slot: int, archetype: str, client: FlowiseClient) -> str | None:
     ):
         client.get_or_create_variable(name, value)
 
+    # Tracing. Without this the observability profile runs Langfuse and
+    # ClickHouse — well over a gigabyte of memory — and receives nothing,
+    # while an n8n workflow patches traces that do not exist every 30 minutes.
+    # Flowise has no global switch for Langfuse: its env-based tracing covers
+    # LangSmith only, so the setting belongs on each chatflow.
+    #
+    # Skipped, not failed, when Langfuse is not part of this deployment: the
+    # profile is optional and an agent must still import without it.
+    analytic = None
+    if "observability" in env.get("COMPOSE_PROFILES", "") \
+            and env.get("LANGFUSE_INIT_PROJECT_PUBLIC_KEY", "").strip():
+        try:
+            lf_cred_id = client.upsert_credential(
+                "smartrag-langfuse",
+                "langfuseApi",
+                {
+                    "langFusePublicKey": env.get("LANGFUSE_INIT_PROJECT_PUBLIC_KEY", ""),
+                    "langFuseSecretKey": env.get("LANGFUSE_INIT_PROJECT_SECRET_KEY", ""),
+                    # The internal name: Flowise reports from inside the
+                    # network, so the public URL would be a detour through
+                    # nginx or Funnel for a container-to-container call.
+                    "langFuseEndpoint": "http://smartrag-langfuse-web:3001",
+                },
+            )
+            analytic = FlowiseClient.langfuse_analytic(lf_cred_id)
+        except FlowiseError as exc:
+            # An agent that works without tracing beats no agent.
+            logger.error("Could not configure Langfuse tracing: %s", exc)
+
     agent_name = slot_data.get("name") or f"Agent {slot:02d}"
     chatflow_name = f"SMART RAG — {agent_name}"
     flow_data_json = __import__("json").dumps(flow)
-    chatflow_id, _created = client.upsert_chatflow(chatflow_name, flow_data_json)
+    chatflow_id, _created = client.upsert_chatflow(
+        chatflow_name, flow_data_json, analytic=analytic
+    )
     storage.set_chatflow_id(slot, chatflow_id)
     set_env_var(f"CHATFLOW_AGENT{slot:02d}", chatflow_id)
     return None

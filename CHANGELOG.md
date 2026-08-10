@@ -13,6 +13,20 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **Observability was installed but never switched on.** The profile ran
+  Langfuse and ClickHouse — well over a gigabyte of memory — and received
+  nothing: no Langfuse project existed, so there were no API keys for anything
+  to report with, and no agent template carried tracing configuration. An n8n
+  workflow had been patching traces that were never created, every thirty
+  minutes. Langfuse now initialises its organisation, project, user and keys
+  headlessly on first start, and importing an agent creates the Flowise
+  credential and switches tracing on for that chatflow. Flowise has no global
+  switch for Langfuse — its env-based tracing covers LangSmith only — so the
+  setting belongs on each chatflow.
+
+  Found by a Garage evaluation that checked whether Langfuse had written any
+  objects and found none. The MinIO bucket it had been using all along was
+  empty too, which is what ruled out the store as the cause.
 - **Restarting a service offers to restart what depends on it.** A recreated
   container can come back at a different address, and a client that resolved
   the name once keeps dialling the old one — reported as a timeout against
