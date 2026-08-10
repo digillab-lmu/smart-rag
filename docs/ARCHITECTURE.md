@@ -63,7 +63,7 @@ Weaviate 8080, Flowise 3000, Docling 5001, markdowncleaner 8000.
 **Why.** Only the host binding can move. Inside the network the port is
 fixed by the image.
 
-**If you change it.** `MINIO_NOTIFY_WEBHOOK_ENDPOINT` once used
+**If you change it.** In the MinIO era, `MINIO_NOTIFY_WEBHOOK_ENDPOINT` used
 `${N8N_PORT}` for an internal URL. On a deployment where the wizard had
 resolved n8n to 5778, MinIO logged `connect: connection refused` against
 `smartrag-n8n:5778` on every object written.
@@ -354,12 +354,10 @@ no `:latest`. Python dependencies are pinned exactly.
 **Why.** A silent upstream change in a teaching system during term is not
 recoverable on a useful timescale.
 
-**Known consequence.** `minio/minio` is archived upstream (confirmed via the
-GitHub API: `archived: true`, last push 2026-04-24) and
-`RELEASE.2025-09-07T16-13-09Z` is the last image ever published to Docker
-Hub. quay.io carries hotfix rebuilds of that same release. A migration to
-Garage or SeaweedFS is a known future decision, not an emergency — but it is
-a decision someone will have to make.
+**Known consequence, since resolved.** `minio/minio` was archived upstream
+(confirmed via the GitHub API: `archived: true`, last push 2026-04-24) with
+`RELEASE.2025-09-07T16-13-09Z` as its final image. That decision has been
+made — see 16.
 
 ---
 
@@ -377,3 +375,57 @@ assert on the mechanism rather than the symptom, and prove the test fails
 against the bug before trusting it. One test here silently covered nothing
 for a while because it grepped a function with a fixed context window that
 stopped reaching the lines it was meant to check.
+
+---
+
+## 16 · Garage, not MinIO — and how it differs
+
+**Decision.** Object storage is Garage (`dxflrs/garage`, pinned). It holds
+uploaded course documents and Langfuse's blobs. Flowise does not use it at
+all: its files are local.
+
+**Why.** MinIO was archived eight days after its last release. Nothing broke,
+but nothing would be fixed either, and choosing a successor on a quiet test
+machine is cheaper than choosing one under pressure.
+
+**Why this candidate, and on what evidence.** Not the documentation. Every S3
+operation this stack performs was run against a real Garage — put, get with a
+byte comparison, list, head, a 32 MB multipart round trip, a presigned URL
+fetched with plain curl and no credentials, recursive delete — and then
+Langfuse's own client was pointed at it and wrote objects. That last step
+mattered most: Langfuse does not list Garage as supported, and its key layout
+and multipart behaviour are not something its server-side feature table can
+answer. `scripts/spike-garage.sh` is that evaluation, kept so the next
+candidate can be judged the same way.
+
+**Three differences that shape the code.**
+
+*It stores nothing until a layout assigns capacity.* A Garage with no layout
+is healthy, accepts connections, and refuses every write. `deploy-garage.sh`
+therefore applies the layout before creating anything, and reads the pending
+layout's version rather than passing `1` — a hard-coded `1` succeeds exactly
+once and fails for the rest of the installation's life.
+
+*Its image is `FROM scratch`.* There is no shell, so MinIO's trick of
+provisioning itself from its own entrypoint is impossible. Provisioning runs
+the binary directly through `docker exec`, from outside.
+
+*There is no root user and there are no bucket policies.* Permissions are per
+key and per bucket. Two keys exist: one for the ingest's document bucket, one
+for Langfuse's three. The separation MinIO had by convention is enforced here.
+
+**Credentials stay ours.** `garage key import` accepts an id and a secret, so
+the wizard generates them as before and Garage adopts them; `.env` remains the
+source of truth. They are generated in Garage's own shapes — `GK` + 24 hex,
+64 hex — rather than betting on how strictly it validates.
+
+**What was given up.** The web console. Garage has none and nothing replaces
+it; the nginx vhost, the Tailscale port, the certificate and the DNS check for
+it are gone. Buckets and keys are provisioned by the installer, so there is
+nothing routine to click.
+
+**If you change it back.** The Langfuse settings are the trap: they reach the
+container through `env_file`, which does not interpolate, so every one has to
+be written resolved. They were not, for the whole MinIO era — Langfuse
+authenticated with the literal string `${MINIO_LANGFUSE_SECRET_KEY}` and
+nobody noticed, because tracing was switched off and nothing ever wrote.
