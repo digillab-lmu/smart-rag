@@ -13,6 +13,24 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Added
 
+- **The document list shows what is still being processed.** It is built from
+  Weaviate, so an upload used to show nothing at all until its chunks existed
+  — twenty minutes of an unchanged page for a scanned PDF with figures, with
+  no way to tell work from silent failure. The ingest workflow now reports its
+  own stages (converted, figures described, archived, chunked and embedded),
+  and the page lists them and refreshes itself while something is moving.
+  n8n's public API was the alternative and was rejected: it needs an API key
+  a human must create in a browser, and mapping an execution back to a
+  document is guesswork as soon as two uploads overlap.
+
+  A run that dies between two stages reports nothing, so its row says how long
+  it has been silent rather than claiming to work or inventing a failure.
+  Nothing about the display can affect the ingest: the reports hang off side
+  branches, swallow their own errors, time out in five seconds, and a progress
+  row that cannot be written loses the row, not the upload. **Upgrade
+  required:** `sudo smartrag` → *Upgrade* adds `INGEST_STATUS_TOKEN`, then
+  re-import the n8n workflows.
+
 - **The installer writes the hand-over message to the Content Admin.**
   Everything else it prints is read by a system administrator in a terminal on
   the server; the person who will use the system daily gets none of it, and

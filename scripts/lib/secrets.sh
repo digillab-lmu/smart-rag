@@ -16,6 +16,7 @@
 #   SECRET_GARAGE_ACCESS_KEY / SECRET_GARAGE_SECRET_KEY
 #   SECRET_GARAGE_LANGFUSE_ACCESS_KEY / SECRET_GARAGE_LANGFUSE_SECRET_KEY
 #   SECRET_GARAGE_RPC_SECRET / SECRET_GARAGE_ADMIN_TOKEN
+#   SECRET_INGEST_STATUS_TOKEN
 #   SECRET_CLICKHOUSE_PASSWORD
 #   SECRET_FLOWISE_PASSWORD
 #   SECRET_SALT
@@ -78,6 +79,7 @@ generate_all_secrets() {
     # Node-to-node authentication and the admin API. A single-node deployment
     # still requires both to be set — Garage refuses to start without an
     # rpc_secret.
+    SECRET_INGEST_STATUS_TOKEN="$(gen_hex 32)"
     SECRET_GARAGE_RPC_SECRET="$(gen_hex 32)"
     SECRET_GARAGE_ADMIN_TOKEN="$(gen_hex 32)"
 

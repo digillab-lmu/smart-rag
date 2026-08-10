@@ -6,6 +6,58 @@
 <p class="note">{{ t('docs_intro') }}</p>
 <p class="note">{{ t('docs_why_delete') }}</p>
 
+{# ─── In flight ────────────────────────────────────────────────────────────
+   Documents that have been accepted but are not in the index yet. Without
+   this the page shows nothing at all between the upload and the first chunk,
+   which for a scanned PDF with figures is twenty minutes of a page that
+   looks like the upload did not happen. #}
+{% if jobs %}
+<h2>{{ t('docs_running_heading') }}</h2>
+<p class="note">{{ t('docs_running_intro') }}</p>
+<table>
+  <tr>
+    <th>{{ t('docs_col_title') }}</th>
+    <th>{{ t('docs_col_agent') }}</th>
+    <th>{{ t('docs_col_stage') }}</th>
+    <th>{{ t('docs_col_elapsed') }}</th>
+  </tr>
+  {% for j in jobs %}
+  <tr>
+    <td><strong>{{ j.filename }}</strong></td>
+    <td>
+      {% set slot = slots.get(j.agent_id|string) %}
+      {% if slot and slot.get('name') %}{{ j.agent_id }} · {{ slot.name }}
+      {% else %}{{ j.agent_id }}{% endif %}
+    </td>
+    <td>
+      {% if j.failed %}
+        <strong>{{ t('docs_stage_failed') }}</strong>
+        {% if j.detail %}<br><span class="note">{{ j.detail }}</span>{% endif %}
+      {% elif j.finished %}
+        {{ t('docs_stage_done') }}
+      {% else %}
+        {{ t('docs_stage_' ~ j.stage) }} ({{ j.step }}/{{ j.steps }})
+        {# Silence is reported as silence. The pipeline reports on completing
+           a stage, so one that dies between two stages sends nothing at all
+           — and a row invented as "failed" would be as wrong as one left
+           claiming to be busy. #}
+        {% if j.stalled %}
+        <br><span class="note">{{ t('docs_stage_stalled', (j.silent_for // 60)) }}</span>
+        {% endif %}
+      {% endif %}
+    </td>
+    <td>{{ (j.elapsed // 60) }}&nbsp;min</td>
+  </tr>
+  {% endfor %}
+</table>
+{% if jobs | rejectattr('finished') | list %}
+{# Reload while something is still moving, and stop once nothing is. Uses
+   replace() rather than reload() because this page also handles the delete
+   POST, and reload() would re-submit it. #}
+<script>setTimeout(function () { location.replace(location.pathname); }, 15000);</script>
+{% endif %}
+{% endif %}
+
 {% if truncated %}
 <div class="error">{{ t('docs_truncated') }}</div>
 {% endif %}

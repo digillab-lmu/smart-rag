@@ -67,6 +67,7 @@ class N8nClient:
         language: str = "de",
         force_ocr: bool = False,
         notify_email: str = "",
+        job_id: str = "",
     ) -> None:
         """
         Forwards one uploaded file plus its metadata to the ingest webhook.
@@ -89,5 +90,11 @@ class N8nClient:
         }
         if notify_email:
             data["notify_email"] = notify_email
+        # Echoed back by the workflow's progress callbacks. It is what ties a
+        # callback to a row in the GUI, and it is generated here rather than
+        # derived from the filename because two uploads of the same file
+        # would otherwise share a row.
+        if job_id:
+            data["job_id"] = job_id
 
         self._request("POST", "/webhook/document-ingest", files=files, data=data)
