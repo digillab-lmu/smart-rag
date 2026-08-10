@@ -213,6 +213,34 @@ action_restart() {
         ok "$(t admin_restart_done "$svc")"
     else
         err "$(t admin_restart_failed "$svc")"
+        press_enter
+        return 0
+    fi
+
+    # Whatever depends on this service is still holding a connection to the
+    # instance that just went away. `depends_on` orders startup; it does not
+    # propagate a restart. Offered rather than done automatically: restarting
+    # Postgres would otherwise sweep half the stack along without being asked.
+    local dependents=()
+    mapfile -t dependents < <(compose_dependents "$svc" "$SCRIPT_DIR/compose.sh")
+    if (( ${#dependents[@]} > 0 )); then
+        echo
+        info "$(t admin_restart_dependents "$svc" "${#dependents[@]}")"
+        printf '      %s\n' "${dependents[@]}"
+        dim "$(t admin_restart_dependents_why)"
+        echo
+        if confirm admin_restart_dependents_confirm "y"; then
+            local dep
+            for dep in "${dependents[@]}"; do
+                if docker restart "$dep" >/dev/null 2>&1; then
+                    ok "$(t admin_restart_done "$dep")"
+                else
+                    err "$(t admin_restart_failed "$dep")"
+                fi
+            done
+        else
+            warn "$(t admin_restart_dependents_skipped)"
+        fi
     fi
     press_enter
 }
