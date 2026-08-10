@@ -17,15 +17,18 @@ Configuration (all via .env, read through env_file.py):
                                                             written by bootstrap.sh
 """
 
+import hmac
 import logging
 import os
+import secrets
 
-from flask import Flask, redirect, render_template, request, session, url_for
+from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 
 import agent_templates
 import auth
 import citation
 import i18n
+import ingest_status
 import mailer
 import setup_checks
 import storage
@@ -775,8 +778,10 @@ def upload():
         elif form["year"] and not form["year"].isdigit():
             error = _t("upload_err_bad_year")
         else:
+            job_id = secrets.token_hex(8)
             try:
                 _n8n_client().upload_document(
+                    job_id=job_id,
                     file_stream=upload_file.stream,
                     filename=upload_file.filename,
                     content_type=upload_file.mimetype or "application/octet-stream",
@@ -796,6 +801,22 @@ def upload():
                 logger.error("Upload failed for slot %s: %s", form["slot"], exc)
                 error = _t("upload_err_failed", exc)
             else:
+                # The row is created here, by the side that knows the upload
+                # was accepted — not by the first callback. A pipeline that
+                # reports nothing at all is precisely the case worth showing,
+                # and a row that only appears once n8n speaks would show
+                # nothing in exactly that case.
+                try:
+                    ingest_status.start(job_id, upload_file.filename,
+                                        int(form["slot"]))
+                except OSError as exc:
+                    # The document is already with n8n at this point. Failing
+                    # the request now would report a failure that did not
+                    # happen and invite a second upload of the same file — so
+                    # the progress row is lost, the ingest is not, and the log
+                    # says which.
+                    logger.warning("Could not record ingest progress for %s: %s",
+                                   upload_file.filename, exc)
                 agent_label = configured[form["slot"]].get("name") or f"Agent {form['slot']}"
                 success = _t("upload_ok", upload_file.filename, agent_label)
                 form = {}
@@ -807,6 +828,42 @@ def upload():
         error=error,
         success=success,
     )
+
+
+# ─── Ingest progress, reported by the pipeline itself ────────────────────────
+@app.route("/api/ingest-status", methods=["POST"])
+def api_ingest_status():
+    """Called by ingest-document.json as it works, never by a browser.
+
+    No session: n8n has none. A shared token instead, compared in constant
+    time — this endpoint is reachable from anywhere on the Docker network,
+    and without it any container could rewrite what the operator is told
+    about their documents.
+
+    It answers 200 to anything it understood, including a callback for a job
+    it does not know. That is deliberate: n8n retries on an error status, and
+    a retry cannot make an unknown job known. The pipeline must never be
+    disturbed by the progress display failing — the display is the optional
+    part, the ingest is not.
+    """
+    expected = read_env().get("INGEST_STATUS_TOKEN", "").strip()
+    supplied = request.headers.get("X-Ingest-Token", "")
+    # An unset token would otherwise make every caller authorised, which is
+    # the failure mode that looks like it works.
+    if not expected or not hmac.compare_digest(expected, supplied):
+        return jsonify({"error": "unauthorized"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    job_id = str(payload.get("job_id", "")).strip()
+    stage = str(payload.get("stage", "")).strip()
+    detail = str(payload.get("detail", ""))
+    if not job_id or not stage:
+        return jsonify({"error": "job_id and stage are required"}), 400
+
+    applied = ingest_status.update(job_id, stage, detail)
+    if not applied:
+        logger.info("Ingest callback ignored (job=%s, stage=%s)", job_id, stage)
+    return jsonify({"applied": applied}), 200
 
 
 @app.route("/upload/lookup", methods=["POST"])
@@ -972,10 +1029,17 @@ def documents():
     error = None
     success = None
 
+    # Independent of Weaviate on purpose: a document being processed has no
+    # chunks yet, so if this were read from the index it would show nothing
+    # during the exact window it exists for. It is also why it is fetched
+    # before the not-configured bail-out — an upload in flight is worth
+    # showing even when the index cannot be listed.
+    jobs = ingest_status.active()
+
     if not course_id or not collection:
         return render_template(
             "documents.html", documents=[], slots=slots, truncated=False,
-            error=_t("docs_err_not_configured"), success=None, total=0)
+            jobs=jobs, error=_t("docs_err_not_configured"), success=None, total=0)
 
     client = _weaviate_client()
 
@@ -1012,7 +1076,7 @@ def documents():
 
     return render_template(
         "documents.html", documents=documents, slots=slots, truncated=truncated,
-        total=total, error=error, success=success)
+        jobs=jobs, total=total, error=error, success=success)
 
 
 # ─── Knowledge-graph guidance ────────────────────────────────────────────────────

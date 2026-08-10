@@ -26,6 +26,10 @@ env_path.write_text(
 )
 os.environ["SMARTRAG_ENV_PATH"] = str(env_path)
 os.environ["SMARTRAG_SLOTS_PATH"] = str(Path(tmpdir) / "slots.json")
+# Without this the progress store falls back to /app/data, which does not
+# exist outside the container — an upload would fail on the display, not on
+# the ingest.
+os.environ["SMARTRAG_INGEST_STATUS_PATH"] = str(Path(tmpdir) / "ingest-status.json")
 os.environ["SMARTRAG_TEMPLATES_DIR"] = str(Path(APP_DIR).parent / "flowise" / "agents")
 os.environ["CONTENT_ADMIN_SESSION_SECRET"] = "test-secret-not-real"
 

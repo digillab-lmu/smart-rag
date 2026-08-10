@@ -387,6 +387,156 @@
         }
       },
       "onError": "continueRegularOutput"
+    },
+    {
+      "id": "a1a1b1c1-0003-4a1a-9a1a-000000000030",
+      "name": "Report: converted",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        620
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "=http://smartrag-content-admin:{{ $env.CONTENT_ADMIN_PORT }}/api/ingest-status",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Ingest-Token",
+              "value": "={{ $env.INGEST_STATUS_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ job_id: $('Upload Webhook').first().json.body.job_id || '', stage: 'converted' }) }}",
+        "options": {
+          "timeout": 5000
+        }
+      }
+    },
+    {
+      "id": "a1a1b1c1-0003-4a1a-9a1a-000000000031",
+      "name": "Report: described",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2400,
+        380
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "=http://smartrag-content-admin:{{ $env.CONTENT_ADMIN_PORT }}/api/ingest-status",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Ingest-Token",
+              "value": "={{ $env.INGEST_STATUS_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ job_id: $('Upload Webhook').first().json.body.job_id || '', stage: 'described' }) }}",
+        "options": {
+          "timeout": 5000
+        }
+      }
+    },
+    {
+      "id": "a1a1b1c1-0003-4a1a-9a1a-000000000032",
+      "name": "Report: stored",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3360,
+        580
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "=http://smartrag-content-admin:{{ $env.CONTENT_ADMIN_PORT }}/api/ingest-status",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Ingest-Token",
+              "value": "={{ $env.INGEST_STATUS_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ job_id: $('Upload Webhook').first().json.body.job_id || '', stage: 'stored' }) }}",
+        "options": {
+          "timeout": 5000
+        }
+      }
+    },
+    {
+      "id": "a1a1b1c1-0003-4a1a-9a1a-000000000033",
+      "name": "Report: embedded",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3840,
+        580
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "=http://smartrag-content-admin:{{ $env.CONTENT_ADMIN_PORT }}/api/ingest-status",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Ingest-Token",
+              "value": "={{ $env.INGEST_STATUS_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ job_id: $('Upload Webhook').first().json.body.job_id || '', stage: 'embedded' }) }}",
+        "options": {
+          "timeout": 5000
+        }
+      }
+    },
+    {
+      "id": "a1a1b1c1-0003-4a1a-9a1a-000000000034",
+      "name": "Report: done",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4080,
+        580
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "=http://smartrag-content-admin:{{ $env.CONTENT_ADMIN_PORT }}/api/ingest-status",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Ingest-Token",
+              "value": "={{ $env.INGEST_STATUS_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ job_id: $('Upload Webhook').first().json.body.job_id || '', stage: 'done' }) }}",
+        "options": {
+          "timeout": 5000
+        }
+      }
     }
   ],
   "pinData": {},
@@ -429,6 +579,11 @@
         [
           {
             "node": "Has Images?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Report: converted",
             "type": "main",
             "index": 0
           }
@@ -529,6 +684,11 @@
             "node": "Sanitize Filename",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Report: described",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -584,6 +744,11 @@
             "node": "Prepare Chunk+Embed Input",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Report: stored",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -606,6 +771,11 @@
             "node": "Send Success Email",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Report: embedded",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -615,6 +785,17 @@
         [
           {
             "node": "Send Error Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Success Email": {
+      "main": [
+        [
+          {
+            "node": "Report: done",
             "type": "main",
             "index": 0
           }

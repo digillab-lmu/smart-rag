@@ -379,6 +379,7 @@ _default_for_env_key() {
         LANGFUSE_INIT_USER_EMAIL)         echo "${ADMIN_EMAIL:-}" ;;
         LANGFUSE_INIT_USER_PASSWORD)      echo "${ADMIN_PASSWORD:-}" ;;
         LANGFUSE_INIT_PROJECT_NAME)       echo "${COURSE_NAME:-SMART RAG}" ;;
+        INGEST_STATUS_TOKEN)              echo "$(openssl rand -hex 32)" ;;
         LANGFUSE_INIT_PROJECT_PUBLIC_KEY) echo "pk-lf-$(openssl rand -hex 16)" ;;
         LANGFUSE_INIT_PROJECT_SECRET_KEY) echo "sk-lf-$(openssl rand -hex 16)" ;;
         *)
