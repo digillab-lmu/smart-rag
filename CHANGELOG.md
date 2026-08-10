@@ -21,6 +21,15 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
   there teaches people to skim past warnings. The other three node types were
   already current. A test pins the versions against the pinned Flowise image,
   so upgrading the image has to revisit them.
+- **The upgrade path could turn a placeholder into a live credential.**
+  Twenty-two keys in `.env.example` read `generate-with-bootstrap`, and every
+  one is a secret. A key added by an upgrade got that literal copied into the
+  real `.env` — a credential published in this repository and identical on
+  every installation that took the same route. It reached a live deployment
+  as both Langfuse project keys, and nothing objected: as a string there is
+  nothing wrong with it. The fallback now generates a value whenever the
+  example carries the placeholder, and the upgrade entry reports any key in a
+  live `.env` still holding it.
 - **Observability was installed but never switched on.** The profile ran
   Langfuse and ClickHouse — well over a gigabyte of memory — and received
   nothing: no Langfuse project existed, so there were no API keys for anything

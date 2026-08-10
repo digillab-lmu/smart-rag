@@ -223,6 +223,46 @@ s1="$(_default_for_env_key LANGFUSE_INIT_PROJECT_SECRET_KEY)"
 [[ "$s1" == sk-lf-* ]]
 check "the secret key is generated too" $? "$s1"
 
+# ─── The placeholder must never survive into a live .env ────────────────────
+# Twenty-two keys in .env.example read "generate-with-bootstrap", and every
+# one is a secret. The upgrade path's fallback copied that literal verbatim,
+# so a key added by an upgrade became a credential that is published in this
+# repository and identical on every installation. Langfuse accepted it as a
+# project key without complaint — as a string there is nothing wrong with it,
+# which is exactly why nothing caught it.
+cat > "$SANDBOX/.env.example" <<'EOF'
+DOMAIN="example.com"
+SUBDOMAIN_PREFIX=""
+SOME_NEW_SECRET="generate-with-bootstrap"
+SOME_NEW_PLAIN_KEY="a-literal-default"
+EOF
+g1="$(_default_for_env_key SOME_NEW_SECRET)"
+g2="$(_default_for_env_key SOME_NEW_SECRET)"
+[[ "$g1" != "generate-with-bootstrap" ]]
+check "the placeholder is never handed out as a value" $? "got '$g1'"
+(( ${#g1} >= 24 ))
+check "what replaces it is long enough to be a secret" $? "${#g1} characters"
+[[ "$g1" != "$g2" ]]
+check "and is generated per call, not fixed" $? "two calls returned '$g1'"
+# A genuine literal default must still be copied — this only targets the
+# placeholder, not every default.
+[[ "$(_default_for_env_key SOME_NEW_PLAIN_KEY)" == "a-literal-default" ]]
+check "a real default is still used as-is" $? "$(_default_for_env_key SOME_NEW_PLAIN_KEY)"
+
+# And an .env that already contains one must be reported, whether or not the
+# key is one the wizard writes.
+cat > "$SANDBOX/.env" <<'EOF'
+DOMAIN="duenn-mit-pfiff.de"
+SUBDOMAIN_PREFIX="smartrag"
+LANGFUSE_INIT_PROJECT_SECRET_KEY="generate-with-bootstrap"
+SOMETHING_ELSE="fine"
+EOF
+mapfile -t stale2 < <(_stale_env_keys)
+printf '%s\n' "${stale2[@]}" | grep -qx "LANGFUSE_INIT_PROJECT_SECRET_KEY"
+check "a placeholder left in .env is reported" $? "${stale2[*]}"
+printf '%s\n' "${stale2[@]}" | grep -qx "SOMETHING_ELSE"
+check "a real value is not reported" $(( $? == 0 ? 1 : 0 )) "${stale2[*]}"
+
 # ─── The upgrade must patch in place, never append ──────────────────────────
 # Appending is how the duplicate above came to exist, and it cannot fix a key
 # that is already present — which is the whole point of this entry.
