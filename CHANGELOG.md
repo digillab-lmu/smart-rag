@@ -13,6 +13,13 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **The ingest stops on a failure that cannot resolve.** An OpenAI account
+  with no credits produced 23 identical 429s, one per chunk — every call
+  doomed the moment the first came back, and the one fact that mattered
+  buried in a wall of repeated text. A rejected key, a 403 and an exhausted
+  quota now stop the run and report how much was left. A plain rate limit, a
+  5xx and a timeout deliberately do not: those clear by themselves, and
+  giving up on them throws away work the run could have finished.
 - **An unconfigured provider is refused, not substituted.** Nine places
   resolved `LLM_PROVIDER`/`EMBEDDING_PROVIDER` with a default of
   `anthropic`/`openai`. With the variable empty or misspelled, the request
