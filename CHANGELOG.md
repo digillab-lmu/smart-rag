@@ -9,6 +9,21 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ---
 
+## Unreleased
+
+### Fixed
+
+- The two n8n variable names 1.0.0 listed as unverified are settled.
+  `WEBHOOK_URL` is deprecated by n8n itself — its config documents
+  `N8N_WEBHOOK_URL` as "Successor to the deprecated `WEBHOOK_URL`" — so the
+  current name is used. `N8N_DEFAULT_HTTP_TIMEOUT` is read nowhere: absent
+  from all 471 `@Env` declarations in `@n8n/config`, absent from the
+  near-empty legacy convict schema, and the request helpers that build every
+  outbound call contain no `process.env` read at all. Removed; a setting that
+  looks like it configures a timeout and does not is worse than no setting.
+
+---
+
 ## 1.0.0 — 2026-08-10
 
 The reason 0.9.0 was not 1.0 is gone: the ingest pipeline has now run end to
@@ -136,9 +151,8 @@ application, recreate the container once; from this release on, it applies.
   a single account and a single course selection. The design that resolves
   this is recorded in `docs/ARCHITECTURE.md` (6a, 6b).
 - The knowledge graph is seeded through a guided path, not automatically.
-- `WEBHOOK_URL` and `N8N_DEFAULT_HTTP_TIMEOUT` are passed to n8n under names
-  that could not be confirmed against its configuration package. They are
-  marked as unverified in the compose file rather than changed on a guess.
+- ~~`WEBHOOK_URL` and `N8N_DEFAULT_HTTP_TIMEOUT` are passed to n8n under names
+  that could not be confirmed.~~ Resolved after 1.0.0 — see the entry above.
 
 ---
 
