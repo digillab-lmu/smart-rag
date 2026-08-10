@@ -28,6 +28,13 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **Langfuse against Garage is now proven, not assumed.** One trace through the
+  ingestion API, with the bucket's object count taken before and after: 0
+  objects, HTTP 207, then one object of 227 bytes, and the trace readable back
+  through the API — so the write reached the store and the worker carried it
+  on to ClickHouse. The runbook carries that probe, because a Garage without a
+  layout is healthy, answers, and discards every write, and no amount of
+  correct-looking configuration distinguishes the two.
 - **The Start node in every agent template was three versions behind.** Flowise
   3.1.3 ships `startAgentflow` at 1.4; the templates carried 1.1, so every
   agent showed "Node version 1.1 outdated" when opened. Cosmetic — the node

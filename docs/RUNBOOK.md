@@ -143,6 +143,30 @@ docker exec smartrag-garage /garage key list
 `bucket info` lists the keys permitted on it, with `RWO` for read/write/owner.
 A bucket with no key listed is a bucket nothing can write to.
 
+**To prove the write path end to end**, send Langfuse one trace and watch the
+object count. This isolates the store from everything else — no agent, no
+Flowise, no chat — and it is the only check that distinguishes "configured
+correctly" from "actually writing":
+
+```bash
+cd /srv/smart-rag && set -a && . ./.env && set +a
+docker exec smartrag-garage /garage bucket info langfuse-events | grep -i objects
+curl -sS -o /dev/null -w 'HTTP %{http_code}\n' \
+  -u "${LANGFUSE_INIT_PROJECT_PUBLIC_KEY}:${LANGFUSE_INIT_PROJECT_SECRET_KEY}" \
+  -H 'Content-Type: application/json' \
+  -X POST "http://127.0.0.1:${LANGFUSE_PORT}/api/public/ingestion" \
+  -d "{\"batch\":[{\"id\":\"probe-$(date +%s)\",\"type\":\"trace-create\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)\",\"body\":{\"id\":\"probe-$(date +%s)\",\"name\":\"s3-probe\"}}]}"
+sleep 20
+docker exec smartrag-garage /garage bucket info langfuse-events | grep -i objects
+```
+
+`HTTP 207` is the success answer here — batch ingestion replies multi-status,
+not 200 — and the count must be higher afterwards. Take the count BEFORE as
+well as after: without it, "there are objects" does not distinguish this write
+from an older one. A 401 is an authentication problem and says nothing about
+the store; note that the project keys are named
+`LANGFUSE_INIT_PROJECT_PUBLIC_KEY` and `LANGFUSE_INIT_PROJECT_SECRET_KEY`.
+
 **There is no web console.** Garage has none. Everything above is the
 interface, and the installer does the routine parts.
 
