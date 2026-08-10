@@ -38,7 +38,12 @@ def _complete(system_prompt: str, user_prompt: str, env: dict) -> str:
     single provider dispatch — a new one (keyword suggestions, prompt
     translation) doesn't mean another copy of this ladder to keep in step.
     """
-    provider = env.get("LLM_PROVIDER", "anthropic")
+    # No default: an absent LLM_PROVIDER is a misconfiguration, and
+    # answering it by calling a different vendor produces an auth error
+    # that points at the wrong thing. An empty value already fell
+    # through to the "Unknown LLM_PROVIDER" below; a missing one now
+    # does too.
+    provider = (env.get("LLM_PROVIDER") or "").strip()
     api_key = env.get("LLM_API_KEY", "")
     model = env.get("LLM_MODEL_STRONG", "")
     if not api_key:

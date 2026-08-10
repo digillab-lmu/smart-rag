@@ -36,14 +36,8 @@ def _targets(env: dict) -> list[tuple[str, str, str, dict]]:
     Only credentials appear here. The five Flowise *variables* are handled by
     get_or_create_variable(), which already rewrites a changed value.
     """
-    llm_provider = env.get("LLM_PROVIDER", "anthropic")
-    embed_provider = env.get("EMBEDDING_PROVIDER", "openai")
-    llm_map = agent_templates.LLM_PROVIDER_MAP.get(
-        llm_provider, agent_templates.LLM_PROVIDER_MAP["anthropic"]
-    )
-    embed_map = agent_templates.EMBEDDING_PROVIDER_MAP.get(
-        embed_provider, agent_templates.EMBEDDING_PROVIDER_MAP["openai"]
-    )
+    llm_provider, llm_map = agent_templates.resolve_llm_provider(env)
+    embed_provider, embed_map = agent_templates.resolve_embedding_provider(env)
     return [
         (
             f"LLM ({llm_provider})",
@@ -80,8 +74,14 @@ def main() -> int:
         print(f"Flowise is not accepting the stored API key: {exc}", file=sys.stderr)
         return 1
 
+    try:
+        targets = _targets(env)
+    except agent_templates.ProviderNotConfigured as exc:
+        print(f"Cannot push keys: {exc}", file=sys.stderr)
+        return 1
+
     applied, failed = 0, 0
-    for label, name, cred_type, data in _targets(env):
+    for label, name, cred_type, data in targets:
         # An empty key would overwrite a working credential with nothing.
         if not next(iter(data.values()), ""):
             print(f"  skipped {label}: no value in .env")
