@@ -184,6 +184,25 @@ grep -qE '^\s+DATABASE_TYPE: *"postgres"' <<<"$flowise_env"
 check "Flowise is pointed at postgres, not left on the sqlite default" $? \
       "$(grep -nE '^\s+DATABASE_TYPE:' <<<"$flowise_env")"
 
+# ─── n8n: current names, and nothing inert ──────────────────────────────────
+# WEBHOOK_URL is deprecated by n8n itself — @Env('N8N_WEBHOOK_URL') is
+# documented as "Successor to the deprecated `WEBHOOK_URL`". The old spelling
+# still works today and will not forever, and a webhook base URL silently
+# ceasing to apply is not something to discover from a student's broken link.
+grep -qE '^\s+N8N_WEBHOOK_URL:' <<<"$n8n_block"
+check "n8n gets the current webhook-URL name" $? ""
+grep -qE '^\s+WEBHOOK_URL:' <<<"$n8n_block"
+check "the deprecated spelling is not passed as well" $(( $? == 0 ? 1 : 0 )) \
+      "both set means one of them is doing nothing"
+
+# N8N_DEFAULT_HTTP_TIMEOUT is read nowhere: absent from all 471 @Env
+# declarations in @n8n/config, absent from the (near-empty) legacy convict
+# schema, and the request helpers that build every outbound call contain no
+# process.env read at all. A setting that looks like it configures a timeout
+# and does not is worse than no setting — someone will tune it.
+grep -qE '^\s+N8N_DEFAULT_HTTP_TIMEOUT:' <<<"$n8n_block"
+check "no inert HTTP-timeout setting" $(( $? == 0 ? 1 : 0 )) "n8n never reads it"
+
 if (( ${#FAILURES[@]} > 0 )); then
     echo "FAILURES:"; printf '  - %s\n' "${FAILURES[@]}"; exit 1
 fi

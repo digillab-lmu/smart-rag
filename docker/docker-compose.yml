@@ -587,14 +587,13 @@ services:
       # 1 in both deployment modes: nginx in domain mode, `tailscale serve`
       # in tailscale mode. Exactly one hop either way.
       N8N_PROXY_HOPS: "1"
-      WEBHOOK_URL: "${N8N_WEBHOOK_URL}"
+      # n8n calls WEBHOOK_URL deprecated in its own config: "Successor to
+      # the deprecated `WEBHOOK_URL`" on @Env('N8N_WEBHOOK_URL'). The old
+      # spelling is still honoured today and will not be forever, and a
+      # webhook base URL is not something to discover has stopped applying.
+      N8N_WEBHOOK_URL: "${N8N_WEBHOOK_URL}"
       N8N_PATH: "/"
       N8N_PAYLOAD_SIZE_MAX: "256"
-      # UNVERIFIED: no @Env('N8N_DEFAULT_HTTP_TIMEOUT') exists in
-      # @n8n/config (the nearest is N8N_HTTP_RESPONSE_BODY_READ_TIMEOUT).
-      # That package is not the only place n8n reads settings, so this is
-      # left in place and flagged rather than removed on incomplete evidence.
-      N8N_DEFAULT_HTTP_TIMEOUT: "600000"
       N8N_AI_TIMEOUT_MAX: "3600000"
       EXECUTIONS_TIMEOUT: "14400"
       EXECUTIONS_TIMEOUT_MAX: "14400"
