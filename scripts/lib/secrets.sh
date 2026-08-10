@@ -80,6 +80,15 @@ generate_all_secrets() {
     SECRET_LTI_SESSION_SECRET="$(gen_hex 32)"
     SECRET_CONTENT_ADMIN_SESSION_SECRET="$(gen_hex 32)"
 
+    # Langfuse project keys. Langfuse initialises its organisation, project,
+    # user and API keys from LANGFUSE_INIT_* on first start — so these have to
+    # exist before it comes up, and they are what Flowise later authenticates
+    # with when reporting traces. The pk-lf-/sk-lf- prefixes are Langfuse's own
+    # convention; nothing enforces them, but a key that looks like a Langfuse
+    # key is recognisable in a log or a credential list.
+    SECRET_LANGFUSE_PUBLIC_KEY="pk-lf-$(gen_hex 16)"
+    SECRET_LANGFUSE_SECRET_KEY="sk-lf-$(gen_hex 16)"
+
     # Admin-facing passwords — alphanumeric, more memorable
     SECRET_ADMIN_PASSWORD="$(gen_alnum 24)"
     SECRET_FLOWISE_PASSWORD="$SECRET_ADMIN_PASSWORD"   # same admin pw across services

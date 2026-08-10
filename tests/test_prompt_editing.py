@@ -179,7 +179,7 @@ class FakeFlowise:
     def get_or_create_variable(self, *a, **kw):
         return "var-id"
 
-    def upsert_chatflow(self, name, flow_data):
+    def upsert_chatflow(self, name, flow_data, analytic=None):
         captured["flow"] = flow_data
         return "chatflow-id", True
 

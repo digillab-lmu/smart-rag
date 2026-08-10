@@ -70,7 +70,9 @@ class FlowiseClient:
                 return cf
         return None
 
-    def create_chatflow(self, name: str, flow_data: str, deployed: bool = True) -> dict:
+    def create_chatflow(
+        self, name: str, flow_data: str, deployed: bool = True, analytic: str | None = None
+    ) -> dict:
         payload = {
             "name": name,
             "flowData": flow_data,
@@ -78,10 +80,19 @@ class FlowiseClient:
             "isPublic": False,
             "type": "AGENTFLOW",
         }
+        if analytic is not None:
+            payload["analytic"] = analytic
         return self._request("POST", "/chatflows", json=payload)
 
-    def update_chatflow(self, chatflow_id: str, name: str, flow_data: str) -> dict:
+    def update_chatflow(
+        self, chatflow_id: str, name: str, flow_data: str, analytic: str | None = None
+    ) -> dict:
         payload = {"name": name, "flowData": flow_data}
+        # Only sent when given: updateChatflow merges the body into the stored
+        # entity, so omitting it preserves whatever tracing is configured
+        # rather than clearing it.
+        if analytic is not None:
+            payload["analytic"] = analytic
         return self._request("PUT", f"/chatflows/{chatflow_id}", json=payload)
 
     def get_chatflow(self, chatflow_id: str) -> dict | None:
@@ -108,17 +119,40 @@ class FlowiseClient:
         """
         self._request("PUT", f"/chatflows/{chatflow_id}", json={"isPublic": is_public})
 
-    def upsert_chatflow(self, name: str, flow_data: str) -> tuple[str, bool]:
+    def upsert_chatflow(
+        self, name: str, flow_data: str, analytic: str | None = None
+    ) -> tuple[str, bool]:
         """Returns (chatflow_id, created). Re-importing an edited agent updates
         the existing flow in place rather than creating a second one with the
         same name — otherwise the CHATFLOW_AGENT0X id in .env would point at a
-        stale copy."""
+        stale copy.
+
+        `analytic` is Flowise's per-chatflow tracing configuration, a JSON
+        string. Tracing cannot be switched on globally for Langfuse: Flowise's
+        env-based tracing (packages/components/src/tracingEnv.ts) covers only
+        LangSmith, so every chatflow carries its own setting. Left unset, the
+        agent runs and reports nothing — which is how an installation ends up
+        with Langfuse and ClickHouse running and an empty dashboard.
+        """
+        payload_extra = {"analytic": analytic} if analytic is not None else {}
         existing = self.find_chatflow_by_name(name)
         if existing:
-            self.update_chatflow(existing["id"], name, flow_data)
+            self.update_chatflow(existing["id"], name, flow_data, **payload_extra)
             return existing["id"], False
-        created = self.create_chatflow(name, flow_data)
+        created = self.create_chatflow(name, flow_data, **payload_extra)
         return created["id"], True
+
+    @staticmethod
+    def langfuse_analytic(credential_id: str) -> str:
+        """The shape Flowise's handler reads: analytic[provider].status and
+        .credentialId (packages/components/src/handler.ts). The provider key
+        is "langFuse", capital F — spelled otherwise the block is simply
+        skipped, with no error anywhere."""
+        import json as _json
+
+        return _json.dumps(
+            {"langFuse": {"credentialId": credential_id, "status": True}}
+        )
 
     # ─── credentials ────────────────────────────────────────────────────────
     def list_credentials(self) -> list[dict]:

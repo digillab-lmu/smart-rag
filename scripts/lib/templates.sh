@@ -81,6 +81,16 @@ write_env_file() {
     # "your document is ready" mail goes out with a literal ${DOMAIN} in the
     # sender address. Python's read_env() does not expand it either.
     REPL[SMTP_SENDER_EMAIL]="noreply@$CFG_DOMAIN"
+    # Written resolved for the same reason: Langfuse reads these through
+    # env_file, which does not interpolate. Left as ${COURSE_NAME} they would
+    # reach it literally, and it would create a project named "${COURSE_NAME}"
+    # with a user whose address is "${ADMIN_EMAIL}" — accepted, and wrong in a
+    # way only visible in the dashboard.
+    REPL[LANGFUSE_INIT_PROJECT_NAME]="$CFG_COURSE_NAME"
+    REPL[LANGFUSE_INIT_USER_EMAIL]="$CFG_ADMIN_EMAIL"
+    REPL[LANGFUSE_INIT_USER_PASSWORD]="$SECRET_ADMIN_PASSWORD"
+    REPL[LANGFUSE_INIT_PROJECT_PUBLIC_KEY]="$SECRET_LANGFUSE_PUBLIC_KEY"
+    REPL[LANGFUSE_INIT_PROJECT_SECRET_KEY]="$SECRET_LANGFUSE_SECRET_KEY"
     REPL[COMPOSE_PROFILES]="$CFG_COMPOSE_PROFILES"
 
     # LLM
