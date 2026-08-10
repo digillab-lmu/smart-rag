@@ -35,11 +35,43 @@ dl="$(svc_block smartrag-docling | grep -oE 'mem_limit: *[0-9]+[gm]' | grep -oE 
 check "docling's limit is generous, not tight" $? "got '$dl' — a large scan needs room"
 
 # ─── Neo4j: the page cache is configuration, not a property of the host ──────
-grep -q 'NEO4J_server_memory_pagecache__size' "$COMPOSE"
-check "neo4j's page cache is capped" $? \
-      "uncapped, Neo4j sizes it from whatever RAM it detects"
-grep -q 'NEO4J_server_memory_heap_max__size' "$COMPOSE"
-check "neo4j's heap is still capped" $? ""
+# The variable NAME is the whole risk here, not its presence. Neo4j maps
+# NEO4J_<name> by turning "_" into "." and "__" into a literal underscore, so
+# the underscore count encodes which setting is meant — and Neo4j refuses to
+# start on a name it does not recognise rather than ignoring it.
+#
+# Written with two underscores first, this produced server.memory.pagecache_
+# size, which does not exist, and the next install crash-looped. The previous
+# version of this test asserted the setting was present and passed against
+# exactly that. So: assert the spellings, and assert the wrong one is absent.
+declare -A NEO4J_EXPECTED=(
+    # real setting                    → expected variable
+    ["server.memory.heap.initial_size"]="NEO4J_server_memory_heap_initial__size"
+    ["server.memory.heap.max_size"]="NEO4J_server_memory_heap_max__size"
+    ["server.memory.pagecache.size"]="NEO4J_server_memory_pagecache_size"
+)
+for setting in "${!NEO4J_EXPECTED[@]}"; do
+    var="${NEO4J_EXPECTED[$setting]}"
+    grep -qE "^\s+$var:" "$COMPOSE"
+    check "$setting is set as $var" $? "Neo4j will not start on an unknown setting name"
+done
+# The spelling that broke it must not come back.
+grep -qE '^\s+NEO4J_server_memory_pagecache__size:' "$COMPOSE"
+check "the two-underscore pagecache spelling is gone" $(( $? == 0 ? 1 : 0 )) \
+      "that maps to server.memory.pagecache_size, which does not exist"
+
+# Every NEO4J_ variable must be one this test knows about — a new one added
+# without checking its underscore count is the same mistake again.
+while read -r var; do
+    known=0
+    for setting in "${!NEO4J_EXPECTED[@]}"; do
+        [[ "${NEO4J_EXPECTED[$setting]}" == "$var" ]] && known=1
+    done
+    # AUTH is not a setting mapping, it is the image's own bootstrap variable.
+    [[ "$var" == "NEO4J_AUTH" ]] && known=1
+    (( known ))
+    check "$var is a verified spelling" $? "add it to NEO4J_EXPECTED after checking the real setting name"
+done < <(grep -oE '^\s+NEO4J_[A-Za-z_]+' "$COMPOSE" | tr -d ' ' | sort -u)
 
 # ─── Deliberately unlimited: memory grows with the data ──────────────────────
 # Postgres, Weaviate and MinIO grow with what the course contains. A limit

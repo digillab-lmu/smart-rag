@@ -288,7 +288,19 @@ services:
       # from the memory it detects, so on a bigger host it quietly claims
       # more. Capping it makes the service's footprint a property of the
       # configuration rather than of the machine it happens to run on.
-      NEO4J_server_memory_pagecache__size: "512m"
+      #
+      # ONE underscore before "size", unlike the heap settings above. Neo4j
+      # maps NEO4J_<name> by turning "_" into "." and "__" into a literal
+      # underscore, so the number of underscores encodes the real setting:
+      #
+      #   server.memory.heap.max_size   → NEO4J_server_memory_heap_max__size
+      #   server.memory.pagecache.size  → NEO4J_server_memory_pagecache_size
+      #
+      # Written with two here first, which produced "server.memory.pagecache_
+      # _size" — no such setting, and Neo4j refuses to start on an unknown
+      # one rather than ignoring it. That strictness is why this was a
+      # crash-loop on the next install and not a silently uncapped cache.
+      NEO4J_server_memory_pagecache_size: "512m"
       TZ: "${TZ}"
     volumes:
       - ${BASE_DATA_PATH}/neo4j/data:/data
