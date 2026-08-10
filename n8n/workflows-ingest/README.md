@@ -1,12 +1,12 @@
 # Ingest Workflows
 
 Document ingest pipeline for a course's RAG documents: upload → Docling
-conversion (+ AI image/diagram description) → MinIO archival → chunking →
+conversion (+ AI image/diagram description) → object storage → chunking →
 embedding → Weaviate write.
 
 | File | Purpose |
 |------|---------|
-| `ingest-document.json`          | Entry point. Webhook-triggered (`POST /webhook/document-ingest`), converts an uploaded file via Docling, describes any embedded images/diagrams using the course's configured `LLM_PROVIDER`, archives the result to MinIO, then calls the chunk+embed sub-workflow. |
+| `ingest-document.json`          | Entry point. Webhook-triggered (`POST /webhook/document-ingest`), converts an uploaded file via Docling, describes any embedded images/diagrams using the course's configured `LLM_PROVIDER`, archives the result to object storage, then calls the chunk+embed sub-workflow. |
 | `ingest-chunk-and-embed.json`   | Sub-workflow (`Execute Workflow Trigger`, not directly reachable via HTTP). Chunks the converted markdown, embeds each chunk via the course's configured `EMBEDDING_PROVIDER`, writes to Weaviate. |
 
 Audio/video transcription (WhisperX) used to live here as a third
@@ -36,7 +36,7 @@ Both workflows only depend on services already part of this repo's own
 (self-hosted, CPU-only Docling), `smartrag-markdowncleaner` (self-hosted
 wrapper around the `markdowncleaner` PyPI package, see `markdowncleaner/`
 at the repo root — strips references/footnotes/copyright-notice sections
-and fixes PDF-conversion artifacts before chunking), `smartrag-minio`,
+and fixes PDF-conversion artifacts before chunking), `smartrag-garage`,
 `smartrag-weaviate`, and whichever `LLM_PROVIDER`/`EMBEDDING_PROVIDER` is
 configured in `.env` (no self-hosted LLM/embedding service required — see
 the batch's commit history for why the earlier VHB-derived versions of
@@ -46,7 +46,7 @@ why that dependency was removed).
 ## Import
 
 Automated — `scripts/deploy-n8n-workflows.sh` (Phase 10) imports both
-workflows *and* the MinIO/SMTP credentials they need, activates the
+workflows *and* the S3/SMTP credentials they need, activates the
 webhook workflow, and restarts n8n so the activation takes effect. It runs
 as part of `bootstrap.sh`, and is also available from `scripts/admin.sh`
 (→ *Ingest — (re-)import n8n credentials + workflows*) for re-running

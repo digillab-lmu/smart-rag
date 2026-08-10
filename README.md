@@ -52,7 +52,7 @@ n8n — background pipelines
     └──► Langfuse userId patch (Postgres → Langfuse)
 
 PostgreSQL — Flowise + n8n + Langfuse state
-MinIO      — document store + Langfuse blob backend
+Garage     — S3 object storage: uploaded documents + Langfuse blobs
 ```
 
 Document **ingestion** (upload → Docling conversion → cleanup → chunking →
@@ -120,14 +120,14 @@ When `--continue` finishes, your stack is running — in **domain mode** at:
 - `https://smart-rag.your-domain.example` — Flowise (chat interface)
 - `https://content.your-domain.example` — Content Admin GUI
 - `https://n8n.your-domain.example` — n8n (automation)
-- `https://minio.your-domain.example` — MinIO console
 - `https://langfuse.your-domain.example` — Langfuse (if observability profile)
 - `https://lti.your-domain.example` — LTI middleware (if lti profile)
 
 In **Tailscale mode** everything sits on one MagicDNS name, separated by port,
 because a Tailscale certificate covers exactly one name and has no wildcards:
 `https://<machine>.<tailnet>.ts.net` for the chat (public), `:8443` Content
-Admin, `:8444` n8n, `:8445` Langfuse, `:8446` MinIO — all four tailnet-only.
+Admin, `:8444` n8n, `:8445` Langfuse, `:8447` the S3 endpoint — all
+tailnet-only. There is no storage console: Garage has none.
 
 If another service already occupies a port or subdomain on the host, the
 wizard resolves the conflict itself and the real URLs end up in `.env`; the
@@ -362,7 +362,8 @@ The most useful contributions right now:
 - Built on top of the excellent open-source work of the
   [Flowise](https://flowiseai.com/), [n8n](https://n8n.io/),
   [Weaviate](https://weaviate.io/), [Neo4j](https://neo4j.com/),
-  [Langfuse](https://langfuse.com/), and [MinIO](https://min.io/) teams.
+  [Langfuse](https://langfuse.com/), and
+  [Garage](https://garagehq.deuxfleurs.fr/) teams.
 - Developed by [Benjamin Götzinger](https://www.psy.lmu.de/edu/persons/ag-fischer/goetzinger_benjamin/index.html)
   at the [DigiLLab of LMU München](https://www.lmu.de/digillab/de/) —
   [Chair of Empirical Education and Educational Psychology](https://www.psy.lmu.de/ffp/)

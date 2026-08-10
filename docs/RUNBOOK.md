@@ -106,41 +106,81 @@ carry the course as well.
 
 ---
 
-## MinIO's console will not log in
+## Objects are not being stored, and nothing says so
 
-**Symptom.** 401 at `https://minio.<domain>`, with the credentials from
-`credentials.txt`.
+**Symptom.** Uploads appear to succeed, Langfuse's dashboard stays empty, or
+a bucket reports zero objects — while `smartrag-garage` is healthy and
+answering.
 
-**Cause — usually not the credentials.** Check whether they work at all:
-MinIO's own startup runs `mc` with the same values to create the buckets,
-so its log answers this (`docker logs smartrag-minio`, look for
-`Added 'smartrag' successfully` and the `Bucket created successfully`
-lines). If that worked, the credentials are fine.
+**Cause — almost always the layout.** Garage stores nothing until capacity has
+been assigned to a node. Without it the service starts, passes its
+healthcheck, accepts connections and refuses every write. It is the one
+failure mode with no MinIO equivalent, and it looks like anything but itself.
 
-Then, in order:
+```bash
+docker exec smartrag-garage /garage layout show
+docker exec smartrag-garage /garage status
+```
 
-1. `MINIO_SERVER_URL` must be reachable **from inside the container** — that
-   is where the console sends the login:
-   ```bash
-   docker exec smartrag-minio curl -sS -o /dev/null -w '%{http_code}\n' \
-     "$(grep -oP '^MINIO_SERVER_URL="\K[^"]+' /srv/smart-rag/.env)/minio/health/live"
-   ```
-   A timeout points at hairpin NAT — the container cannot reach its own
-   public hostname.
-2. If `.env` predates the prefix fix, `MINIO_SERVER_URL` may point at a
-   hostname that does not exist at all. `sudo smartrag` → *Upgrade* repairs
-   it.
+An empty or pending layout is the answer. Applying it is idempotent:
 
-**Worth knowing.** MinIO removed most of the Community Edition console's
-management features in 2025. Limited functionality there is expected;
-nothing in SMART RAG needs it. Use `mc` to browse buckets.
+```bash
+sudo bash /srv/smart-rag/scripts/deploy-garage.sh --lang de
+```
+
+That also (re)creates the buckets and re-imports the keys, and says which of
+them already existed rather than failing on them.
+
+**If the layout is applied**, check that the key exists and may write where it
+is being used — Garage has no root user, so a key with no grant on a bucket is
+refused even though it is a valid key:
+
+```bash
+docker exec smartrag-garage /garage bucket info langfuse-events
+docker exec smartrag-garage /garage key list
+```
+
+`bucket info` lists the keys permitted on it, with `RWO` for read/write/owner.
+A bucket with no key listed is a bucket nothing can write to.
+
+**There is no web console.** Garage has none. Everything above is the
+interface, and the installer does the routine parts.
+
+---
+
+## A service authenticates with a variable name
+
+**Symptom.** An authentication failure against a service that is running, with
+credentials that look right in `.env`.
+
+**Cause.** A value in `.env` that still contains `${SOMETHING}`. Values reach
+most containers through `env_file`, and **`env_file` does not interpolate** —
+`${GARAGE_LANGFUSE_SECRET_KEY}` arrives as those 29 characters. Compose does
+expand `${...}` inside an `environment:` block, which is why some services are
+fine and others are not, in the same file.
+
+```bash
+grep -nE '^[A-Z_]+="[^"]*\$\{' /srv/smart-rag/.env
+```
+
+Anything listed is being passed literally to whatever reads it. `sudo smartrag`
+→ *Upgrade* reports and repairs these, and also reports any value still holding
+the `generate-with-bootstrap` placeholder — which is a published string, not a
+secret.
+
+**A change made from the admin tool has to reach the container.** Values from
+`env_file` are read when the container is created, not per request:
+
+```bash
+cd /srv/smart-rag && bash scripts/compose.sh up -d --force-recreate <service>
+```
 
 ---
 
 ## Everything is slow, and services fail in unrelated ways
 
-**Symptom.** Any combination of: MinIO logging `taking drive /data offline:
-unable to write+read for 31.322s`, n8n taking minutes to restart, containers
+**Symptom.** Any combination of: the object store logging that it is taking
+its drive offline, n8n taking minutes to restart, containers
 disappearing, `load average` far above the core count while CPU sits idle.
 
 **Cause.** Memory. Check first — this looks like a dozen different bugs and

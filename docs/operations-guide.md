@@ -82,7 +82,7 @@ is meant to be reachable from the menu without touching the command line.
 (`sudo bash scripts/deploy-n8n-workflows.sh` does the same thing directly,
 if you prefer.)
 
-Either way, that imports the MinIO/SMTP credentials and both ingest workflows,
+Either way, that imports the S3/SMTP credentials and both ingest workflows,
 activates the document-ingest workflow, restarts n8n, and then **verifies
 that the webhook is actually registered** before reporting success. It is
 re-runnable at any time — imports are keyed by fixed ids, so a re-run
@@ -95,46 +95,41 @@ The GUI's **System status** page checks this — along with the API keys,
 the Flowise connection, your agents, and the Docling/markdowncleaner/
 Weaviate services — and tells you which step is missing, at any time.
 
-### MinIO console — `https://minio.your-domain.example`
+### Object storage (Garage) — no console
 
-`MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` from `credentials.txt` are the
-real credentials — MinIO reads them from its container environment on
-every start, and everything that talks to MinIO over the S3 and admin
-APIs (the bucket setup, n8n, Langfuse) authenticates with them.
+There is no web interface, and this is not a gap to be worked around: Garage
+does not have one. Buckets and access keys are created by the installer
+(`scripts/deploy-garage.sh`), so there is nothing routine to click.
 
-**What the console can do is limited**, and that is expected: in 2025
-MinIO stripped the Community Edition console down to an object browser,
-moving user, policy and configuration management to the paid edition. You
-can still log in — the login itself was not removed — but most
-administration has to happen through `mc`.
+The credentials in `credentials.txt` are two S3 access keys, each granted only
+where it belongs — one for the ingest's document bucket, one for Langfuse's
+three. Garage has no root user and no bucket policies, so a key with no grant
+on a bucket is refused there even though it is perfectly valid.
 
-If the console *login* fails with a 401 while `mc` works with the same
-credentials, the credentials are not the problem. Two things worth
-checking, in this order:
-
-- `MINIO_SERVER_URL` (set to `https://s3.<domain>` here) has to be
-  reachable **from inside the MinIO container**, because that is where the
-  console sends the login. On a host without hairpin NAT, or with
-  split-horizon DNS, the container may not be able to reach its own public
-  hostname:
-  ```bash
-  docker exec smartrag-minio curl -sS -o /dev/null -w '%{http_code}\n' https://s3.your-domain.example/minio/health/live
-  ```
-- The `minio.<domain>` vhost must pass through the console's requests
-  unchanged, including its cookies.
-
-Nothing in SMART RAG needs that console — the pipeline talks to the S3 and
-admin APIs. To look at what is actually in the buckets, use `mc`, which is
-available as a container image:
+To see what is stored:
 
 ```bash
-docker run --rm --network smart-rag-network -it minio/mc:latest sh -c \
-  'mc alias set s3 http://smartrag-minio:9000 "$USER" "$PASS" && mc ls --recursive s3/'
+docker exec smartrag-garage /garage bucket list
+docker exec smartrag-garage /garage bucket info <bucket>
 ```
 
-(substituting your own values for `$USER` / `$PASS`, or exporting them
-first). `mc ls`, `mc cp` and `mc du` cover browsing, downloading and size
-checks.
+`bucket info` shows the object count, the size, and which keys may use it
+(`RWO` = read, write, owner). To browse or download objects, any S3 client
+works against the endpoint; `mc` needs no installation because the image is
+small:
+
+```bash
+docker run --rm --network smart-rag-network \
+  -e MC_HOST_s3="http://$GARAGE_ACCESS_KEY:$GARAGE_SECRET_KEY@smartrag-garage:3900" \
+  --entrypoint mc minio/minio:RELEASE.2025-09-07T16-13-09Z ls --recursive s3/
+```
+
+**One failure mode is worth knowing before you meet it.** Garage stores
+nothing until a layout has assigned capacity to a node. Without one it starts,
+reports healthy, accepts connections and refuses every write — so "uploads
+succeed but nothing is stored" is a layout problem, not a credential problem.
+`docker exec smartrag-garage /garage layout show` answers it, and re-running
+`deploy-garage.sh` fixes it; the script is idempotent.
 
 ### Langfuse (if `observability` profile enabled) — `https://langfuse.your-domain.example`
 
@@ -195,7 +190,7 @@ Concretely excluded, on purpose:
   credential once imported — editing `.env` afterward wouldn't update it).
   Changing `EMBEDDING_MODEL` after documents have been ingested breaks
   vector compatibility regardless of how it's changed.
-- **Course ID** — baked into live MinIO bucket names and the Weaviate
+- **Course ID** — baked into live bucket names and the Weaviate
   collection name. Changing it doesn't migrate anything; it orphans the
   existing bucket/collection and starts empty new ones.
 - **Domain, base data path, port overrides, enabled profiles
