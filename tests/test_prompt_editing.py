@@ -173,7 +173,7 @@ captured = {}
 
 
 class FakeFlowise:
-    def get_or_create_credential(self, *a, **kw):
+    def upsert_credential(self, *a, **kw):
         return "cred-id"
 
     def get_or_create_variable(self, *a, **kw):

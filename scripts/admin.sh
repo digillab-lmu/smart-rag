@@ -546,6 +546,42 @@ _cfg_simple() {
 # Args: $1=ENV_KEY  $2=message-key for the question  $3=optional message-key
 #       for an extra note printed above the prompt (menu labels must stay
 #       short — whiptail doesn't wrap them — so caveats go here instead)
+# Like _cfg_secret, but for the two keys Flowise also holds a copy of.
+# Writing .env is only half the job — see _push_keys_to_flowise.
+_cfg_provider_key() {
+    local env_key="$1" msg_key="$2" note_key="${3:-}"
+    clear
+    header "$(t admin_config_title)"
+    [[ -n "$note_key" ]] && info "$(t "$note_key")"
+    local provider=""
+    case "$env_key" in
+        LLM_API_KEY)       provider="${LLM_PROVIDER:-}" ;;
+        EMBEDDING_API_KEY) provider="${EMBEDDING_PROVIDER:-}" ;;
+    esac
+    [[ -n "$provider" ]] && info "$(t admin_cfg_key_provider "$provider")"
+    [[ -n "${!env_key:-}" ]] && info "$(t admin_cfg_secret_already_set)"
+
+    local new
+    new="$(prompt_password "$msg_key" "")" || { press_enter; return 0; }
+    if [[ -z "$new" ]]; then
+        info "$(t admin_cfg_secret_unchanged)"
+        press_enter
+        return 0
+    fi
+
+    set_env_var "$REPO_ROOT/.env" "$env_key" "$new"
+    ok "$(t admin_cfg_key_written)"
+    # Reload so the push reads the new value rather than the one this shell
+    # sourced at startup.
+    set -a; source "$REPO_ROOT/.env"; set +a
+
+    if ! _push_keys_to_flowise; then
+        echo
+        warn "$(t admin_cfg_push_manual)"
+    fi
+    _apply_config_change
+}
+
 _cfg_secret() {
     local env_key="$1" msg_key="$2" note_key="${3:-}"
     clear
@@ -608,8 +644,39 @@ _cfg_mail() {
     _apply_config_change
 }
 
+# Pushes the keys in .env into Flowise, which keeps its own copy.
+#
+# Without this, changing a key here changes nothing an agent uses: Flowise
+# stores the value in a credential created at import time, and the agents
+# reference it by id. Re-importing does not help either — the credential is
+# found by name and reused. So a rotated key would leave every agent
+# authenticating with the old one, and nothing would report a problem.
+#
+# The work happens inside the content-admin container rather than here,
+# because the mapping from a provider to Flowise's credential type already
+# exists there. Two copies of that mapping would be one copy too many.
+_push_keys_to_flowise() {
+    echo
+    info "$(t admin_cfg_push_intro)"
+    if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qx smartrag-content-admin; then
+        warn "$(t admin_cfg_push_no_container)"
+        return 1
+    fi
+    local out rc=0
+    out="$(docker exec smartrag-content-admin python -m sync_secrets 2>&1)" || rc=$?
+    printf '%s\n' "$out" | sed 's/^/    /'
+    case "$rc" in
+        0) ok   "$(t admin_cfg_push_ok)" ;;
+        2) warn "$(t admin_cfg_push_partial)" ;;
+        *) err  "$(t admin_cfg_push_failed)" ;;
+    esac
+    return "$rc"
+}
+
 action_config() {
     local items=(mail "$(t admin_cfg_mail)")
+    items+=(llm_key "$(t admin_cfg_llm_key)")
+    items+=(embed_key "$(t admin_cfg_embed_key)")
     items+=(reranker "$(t admin_cfg_reranker)")
     [[ "${COMPOSE_PROFILES:-core}" == *lti* ]] && items+=(lms "$(t admin_cfg_lms)")
     items+=(admin_email "$(t admin_cfg_admin_email)")
@@ -623,6 +690,8 @@ action_config() {
 
     case "$choice" in
         mail)        _cfg_mail ;;
+        llm_key)     _cfg_provider_key LLM_API_KEY cfg_llm_api_key admin_cfg_llm_key_note ;;
+        embed_key)   _cfg_provider_key EMBEDDING_API_KEY cfg_embed_api_key admin_cfg_embed_key_note ;;
         reranker)    _cfg_secret RERANKER_API_KEY cfg_reranker_api_key admin_cfg_reranker_note ;;
         lms)         _cfg_simple LMS_URL cfg_lms_url validate_url ;;
         admin_email) _cfg_simple ADMIN_EMAIL cfg_admin_email validate_email ;;
