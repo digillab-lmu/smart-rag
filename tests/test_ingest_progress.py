@@ -227,10 +227,20 @@ for name, node in reports.items():
           any(h.get("name") == "X-Ingest-Token" and "INGEST_STATUS_TOKEN" in h.get("value", "")
               for h in p.get("headerParameters", {}).get("parameters", [])),
           p.get("headerParameters"))
-    # The port comes from the environment; a hard-coded one is wrong on any
-    # installation that moved it.
-    check(f"{name} reads the port from the environment",
-          "$env.CONTENT_ADMIN_PORT" in p.get("url", ""), p.get("url"))
+    # 5000, literally, and not CONTENT_ADMIN_PORT. That variable is the port
+    # on the HOST — compose maps "127.0.0.1:${CONTENT_ADMIN_PORT}:5000" — and
+    # inside the Docker network the container always listens on 5000, which
+    # is a property of the image (Dockerfile: gunicorn --bind 0.0.0.0:5000).
+    # The first version of this test demanded the variable, on the reasoning
+    # that a hard-coded port breaks an installation that moved it. It is the
+    # other way round here, and the test enshrined the bug: every report
+    # would have gone to a port nothing listens on inside the network. The
+    # workflow's other internal calls use literal ports for the same reason
+    # (smartrag-docling:5001).
+    check(f"{name} posts to the container's own port",
+          "smartrag-content-admin:5000" in p.get("url", ""), p.get("url"))
+    check(f"{name} does not use the host-side port variable",
+          "CONTENT_ADMIN_PORT" not in p.get("url", ""), p.get("url"))
     check(f"{name} carries the job id from the webhook",
           "$('Upload Webhook')" in p.get("jsonBody", ""), p.get("jsonBody"))
     # The one property that protects the ingest itself.

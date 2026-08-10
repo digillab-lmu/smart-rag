@@ -46,6 +46,11 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **n8n's settings file is no longer world-readable inside the container.**
+  `/home/node/.n8n/config` holds the encryption key that every stored
+  credential — S3, SMTP, the LLM keys — is encrypted with, and n8n creates it
+  0644. `N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true` makes n8n enforce 0600
+  itself, which it will do by default in a future version anyway.
 - **Langfuse against Garage is now proven, not assumed.** One trace through the
   ingestion API, with the bucket's object count taken before and after: 0
   objects, HTTP 207, then one object of 227 bytes, and the trace readable back

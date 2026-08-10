@@ -156,6 +156,15 @@ grep -q 'N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"' "$COMPOSE"
 check "env access from nodes is pinned on" $? \
       "an image bump would silently break every \$env reference"
 
+# The settings file carries the encryption key that every stored credential
+# is encrypted with, and n8n creates it 0644 — readable by every user in the
+# container. n8n itself warns about this and will enforce 0600 in a future
+# version; asking for it now means the permissions are right from the first
+# start rather than whenever the image is next bumped.
+grep -q 'N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"' "$COMPOSE"
+check "n8n's settings file permissions are enforced" $? \
+      "the credential encryption key stays world-readable inside the container"
+
 # Nothing should be allowlisted that is neither installed nor used: it only
 # produces a warning at every start, which trains people to ignore warnings.
 if grep -q 'NODE_FUNCTION_ALLOW_EXTERNAL' "$COMPOSE"; then
