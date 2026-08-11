@@ -228,6 +228,23 @@ out="$(run "$CREDS_OK" "$REGISTERED" down; echo "RC=$RC")"
 grep -qi "did not come back" <<<"$out"
 check "a genuinely absent n8n is reported as unreachable" $? "$(tail -4 <<<"$out")"
 
+# ─── A running ingest is not collateral ─────────────────────────────────────
+# This script restarts n8n, and a restart kills whatever it is running. It
+# did: an upload started at 20:12:43, the restart came eleven seconds later,
+# and the execution was recorded as crashed — with n8n's own hint blaming
+# memory, which sent the diagnosis after the wrong thing entirely.
+grep -q '_running_executions' "$REPO/scripts/deploy-n8n-workflows.sh"
+check "the deployer looks for runs in progress" $? \
+      "it restarts n8n regardless of what n8n is doing"
+grep -q "status IN ('running','new')" "$REPO/scripts/deploy-n8n-workflows.sh"
+check "…by asking n8n's own execution table" $? ""
+grep -q 'confirm n8n_restart_anyway "n"' "$REPO/scripts/deploy-n8n-workflows.sh"
+check "…and the default answer does not destroy work" $? \
+      "a stray Enter must not abandon a conversion that is minutes in"
+# The wait has to be bounded, or a stuck execution blocks every future import.
+grep -q 'N8N_DRAIN_WAIT:-300' "$REPO/scripts/deploy-n8n-workflows.sh"
+check "…and the wait is bounded" $? "an execution that never ends would block the import for ever"
+
 if (( ${#FAILURES[@]} > 0 )); then
     echo "FAILURES:"
     printf '  - %s\n' "${FAILURES[@]}"

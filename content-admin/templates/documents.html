@@ -36,6 +36,7 @@
       {% elif j.finished %}
         {{ t('docs_stage_done') }}
       {% else %}
+        <span class="spinner" aria-hidden="true"></span>
         {{ t('docs_stage_' ~ j.stage) }} ({{ j.step }}/{{ j.steps }})
         {# Silence is reported as silence. The pipeline reports on completing
            a stage, so one that dies between two stages sends nothing at all
@@ -54,7 +55,7 @@
 {# Reload while something is still moving, and stop once nothing is. Uses
    replace() rather than reload() because this page also handles the delete
    POST, and reload() would re-submit it. #}
-<script>setTimeout(function () { location.replace(location.pathname); }, 15000);</script>
+<script>setTimeout(function () { location.replace(location.pathname); }, 7000);</script>
 {% endif %}
 {% endif %}
 
