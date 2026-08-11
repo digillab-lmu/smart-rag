@@ -241,14 +241,34 @@ for path in ALL:
 cs = json.loads((CORE / "chathistory-sync.json").read_text())
 for name in ("Read lastTimestamp", "Update lastTimestamp"):
     node = [n for n in cs["nodes"] if n["name"] == name][0]
-    # Comments stripped: the first version of this check grepped the whole
+    # Comments stripped: an earlier version of this check grepped the whole
     # source for "404", and the comment explaining the 404 handling made it
-    # pass against a build with the handling deleted. Twice in one file is
-    # enough to make the rule explicit — assert on code, never on prose.
+    # pass against a build with the handling deleted. Assert on code, never
+    # on prose.
     code = "\n".join(l for l, _ in code_lines(node["parameters"]["jsCode"]))
-    check(f"{name} distinguishes a missing state object",
-          "'404'" in code or '"404"' in code, code[:200])
-    check(f"{name} rethrows anything else", "throw e" in code, "")
+
+    # The status must come from the response, not from a caught exception.
+    # Code nodes run in n8n's task runner, so an exception crosses a process
+    # boundary to reach the catch and its structured fields do not survive —
+    # a catch reading e.httpCode / e.statusCode / e.response.status found
+    # none of them, and a first run's 404 went through as a failure on the
+    # live system. ignoreHttpStatusErrors sets axios's validateStatus to
+    # () => true and returnFullResponse yields { body, headers, statusCode,
+    # statusMessage } (@n8n/backend-network/src/http/axios/request.ts).
+    check(f"{name} asks the helper not to throw",
+          "ignoreHttpStatusErrors: true" in code, code[:200])
+    check(f"{name} reads the full response",
+          "returnFullResponse: true" in code, code[:200])
+    check(f"{name} branches on the response's status",
+          "statusCode === 404" in code, code[:200])
+    check(f"{name} does not depend on an exception's shape",
+          "e?.httpCode" not in code and "e.response?.status" not in code, "")
+    # Everything that is neither success nor "not there yet" must still fail.
+    # Treating any non-200 as a first run would re-read and re-embed the
+    # entire message history every five minutes.
+    check(f"{name} still fails on any other status",
+          "throw new Error(" in code, code[:200])
+
 check("the cursor is created when it does not exist yet",
       "method: 'POST'" in [n for n in cs["nodes"]
                            if n["name"] == "Update lastTimestamp"][0]["parameters"]["jsCode"],

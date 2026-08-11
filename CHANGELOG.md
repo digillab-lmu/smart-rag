@@ -68,7 +68,12 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
   expressions inside a Code node, so Weaviate received those 29 characters as
   the token. Behind it were three more that would each have failed the next
   run: the cursor object does not exist on a fresh installation, so the read
-  was a 404 that threw and the write was a 404 that could never create it; and
+  was a 404 that threw and the write was a 404 that could never create it —
+  and the first attempt to catch that 404 did not work either, because a Code
+  node runs in n8n's task runner and an exception loses its structured fields
+  crossing that boundary. The status is now read from the response
+  (`ignoreHttpStatusErrors` plus `returnFullResponse`) rather than from a
+  thrown error; and
   the deduplication query pasted a hash into GraphQL unquoted. Weaviate's port
   was also hard-coded in three workflows although it follows
   `WEAVIATE_HTTP_PORT` — unlike Docling, markdowncleaner and the Content
