@@ -28,8 +28,8 @@ Established by reading the tree on 2026-08-11, not from memory:
 Two of these decide the shape of the work. The last one means a new database
 cannot appear on an existing installation without manual work — consistent
 with 6c's no-migration decision, and the reason our own test machine has to be
-reinstalled. And `n8n/workflows/` is not deployed at all (the deployer reads
-`workflows-ingest/` only), which is why its course stamping is out of scope.
+reinstalled. `n8n/workflows/` was not deployed at all when this was written;
+that is Phase 0 below, and it is done.
 
 ---
 
@@ -172,7 +172,9 @@ instead of a loss; it cannot turn it into a migration.
 *Phase 4 is irreversible* in practice. Everything before it can be reverted by
 deploying the previous version.
 
-*The dormant coupling* in `n8n/workflows/` stays dormant. If those workflows
-are ever deployed, their course stamping must be built first — they would
-otherwise file every learner's history under whichever course `.env` happens
-to name.
+*The course stamping in `n8n/workflows/` is now live rather than dormant.*
+Those workflows run on a schedule and take the course from `$env.COURSE_ID`,
+which is correct while there is one course and silently wrong the moment there
+are two. Phase 4/5 must convert them, and until then no second course may
+exist on a deployment that runs them — which is exactly the ordering this plan
+already imposes.
