@@ -105,13 +105,19 @@ def _known_cause(exc: Exception) -> str | None:
     to do. Everything else keeps psycopg's own words, which are usually
     better than a paraphrase."""
     text = str(exc)
-    if 'database "contentadmin" does not exist' in text:
+    # Any database name, not just ours: a test run points at its own, and the
+    # first version recognised only "contentadmin", so a missing test database
+    # produced seven lines of connection-pool retries and no sentence saying
+    # what was wrong.
+    missing = re.search(r'database "([^"]+)" does not exist', text)
+    if missing:
+        name = missing.group(1)
         return (
-            'The database "contentadmin" does not exist. It is created when '
+            f'The database "{name}" does not exist. Databases are created when '
             "Postgres initialises its data directory, so an installation that "
-            "predates this feature does not have it. Create it once:\n"
+            "predates a database does not have it. Create it once:\n"
             '  docker exec smartrag-postgres psql -U "$POSTGRES_USER" '
-            '-d "$POSTGRES_DB" -c "CREATE DATABASE contentadmin;"'
+            f'-d "$POSTGRES_DB" -c "CREATE DATABASE {name};"'
         )
     if "Connection refused" in text or "could not translate host name" in text:
         return (
