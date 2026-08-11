@@ -21,10 +21,15 @@ NOT_REGISTERED='{"code":404,"message":"The requested webhook \"GET document-inge
 
 setup() { # $1 = docker-exec behaviour, $2 = webhook body, $3 = healthz (ok|down)
     SANDBOX="$(mktemp -d)"
-    mkdir -p "$SANDBOX/scripts/lib" "$SANDBOX/n8n/workflows-ingest" "$SANDBOX/bin" \
+    # Both workflow directories: the deployer imports the ingest pipeline and
+    # the memory/observability workflows, and a missing directory is a hard
+    # abort — correctly, but it made this fixture look like a product failure.
+    mkdir -p "$SANDBOX/scripts/lib" "$SANDBOX/n8n/workflows-ingest" \
+             "$SANDBOX/n8n/workflows" "$SANDBOX/bin" \
              "$SANDBOX/data/n8n/data"
     cp "$REPO"/scripts/lib/*.sh "$SANDBOX/scripts/lib/"
     cp "$REPO"/n8n/workflows-ingest/*.json "$SANDBOX/n8n/workflows-ingest/"
+    cp "$REPO"/n8n/workflows/*.json "$SANDBOX/n8n/workflows/"
 
     # Only the root gate is removed; the rest of the script is verbatim.
     sed 's|^if \[\[ "\${EUID:-\$(id -u)}" -ne 0 \]\]; then|if false; then|' \
@@ -35,6 +40,9 @@ BASE_DATA_PATH="$SANDBOX/data"
 GARAGE_REGION="us-east-1"
 GARAGE_ACCESS_KEY="GKtestaccesskey"
 GARAGE_SECRET_KEY="test-secret-key"
+POSTGRES_USER="smartrag"
+POSTGRES_PASSWORD="test-postgres-password"
+COMPOSE_PROFILES="core"
 SMTP_HOST="mail.example.com"
 SMTP_PORT=25
 SMTP_USER="smtp-test-user"

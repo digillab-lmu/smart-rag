@@ -33,6 +33,32 @@ reinstalled. And `n8n/workflows/` is not deployed at all (the deployer reads
 
 ---
 
+## Phase 0 · The core workflows, done first (completed 2026-08-11)
+
+`chathistory-sync`, `usermemory-summary` and `langfuse-userid-patch` are now
+deployed by `deploy-n8n-workflows.sh` rather than being present and dead. They
+had to be finished before the course work, because converting workflows that
+have never run means guessing at what conversion breaks.
+
+What finishing them required, none of it visible from the outside: fixed
+workflow ids (without one, every import leaves another copy, and a duplicate
+five-minute schedule runs twice); a Postgres credential and a Langfuse basic-
+auth credential the deployer never created; replacing an Anthropic node with a
+hard-coded model by the provider-agnostic call the rest of the project uses;
+removing a `{{COURSE_NAME}}` from a prompt, which n8n does not substitute;
+taking Langfuse's port from the environment; and parameterising a SQL query
+that pasted a value from Langfuse into its own text.
+
+The remaining work for these is Phase 4/5: they take the course from the
+chatflow instead of `$env.COURSE_ID`.
+
+**Personal data.** `langfuse-userid-patch` parses the LTI session id and
+writes the learner's name into Langfuse. It ships only with the
+`observability` profile and does nothing without the LTI middleware, but where
+LTI is in use the legal basis for identifying learners has to be settled
+first. That is recorded in the workflow README and is not a technical
+question.
+
 ## Phase 1 · The data layer
 
 Database `smartrag` in `postgres-init`, `psycopg[binary]` in the Content

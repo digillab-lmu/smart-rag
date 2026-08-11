@@ -68,6 +68,15 @@ source "$REPO_ROOT/.env"
 set +a
 
 require_command jq
+
+# The values the credentials are built from. Under `set -u` a missing one
+# aborts with a bare "unbound variable" from the middle of a jq invocation,
+# which says nothing about what to fix — and it happened, in this script's
+# own test sandbox, the moment the Postgres credential was added. Named
+# checks instead, so the message points at the .env key.
+for _required in POSTGRES_USER POSTGRES_PASSWORD GARAGE_ACCESS_KEY GARAGE_SECRET_KEY; do
+    [[ -n "${!_required:-}" ]] || die "$(t n8n_env_missing "$_required")"
+done
 require_command docker
 # Used by the final verification step. Declared here so a missing curl says
 # so plainly instead of surfacing later as "n8n could not be reached".
@@ -83,17 +92,41 @@ _container_ready smartrag-n8n || die "$(t schema_container_not_healthy "smartrag
 WORKFLOW_DIR="$REPO_ROOT/n8n/workflows-ingest"
 [[ -d "$WORKFLOW_DIR" ]] || die "$(t n8n_workflow_dir_missing "$WORKFLOW_DIR")"
 
-# The two ingest workflows. This list is the whole set — a third
-# (WhisperX audio transcription) was removed from the repo rather than
-# generalized; see that directory's README.
+CORE_DIR="$REPO_ROOT/n8n/workflows"
+[[ -d "$CORE_DIR" ]] || die "$(t n8n_workflow_dir_missing "$CORE_DIR")"
+
+# Every workflow this installation runs, as directory:file. Both directories
+# are deployed — n8n/workflows/ used to be imported by nothing at all while
+# its README claimed bootstrap did it, so the memory and observability
+# pipelines were documented, present, and never running.
+#
+# A third ingest workflow (WhisperX audio transcription) was removed from the
+# repo rather than generalized; see that directory's README.
 WORKFLOWS=(
-    "ingest-chunk-and-embed.json"
-    "ingest-document.json"
+    "$WORKFLOW_DIR/ingest-chunk-and-embed.json"
+    "$WORKFLOW_DIR/ingest-document.json"
+    "$CORE_DIR/chathistory-sync.json"
+    "$CORE_DIR/usermemory-summary.json"
 )
 # Only workflows with a real trigger need activating. The chunk+embed
 # sub-workflow is reached via an Execute Workflow node, which doesn't
 # require it to be active.
-ACTIVATE_IDS=("smartrag-ingest-document")
+ACTIVATE_IDS=(
+    "smartrag-ingest-document"
+    "smartrag-chathistory-sync"
+    "smartrag-usermemory-summary"
+)
+
+# The Langfuse trace patcher only makes sense where Langfuse runs. Deployed
+# and activated with the observability profile, left out otherwise — an
+# always-failing scheduled workflow every 30 minutes is noise that teaches
+# people to ignore the execution list.
+LANGFUSE_ENABLED=0
+if [[ ",${COMPOSE_PROFILES:-}," == *",observability,"* ]]; then
+    LANGFUSE_ENABLED=1
+    WORKFLOWS+=("$CORE_DIR/langfuse-userid-patch.json")
+    ACTIVATE_IDS+=("smartrag-langfuse-userid-patch")
+fi
 
 # ─── Staging dir (inside the container's bind-mounted volume) ────────────────
 STAGING_HOST="${BASE_DATA_PATH}/n8n/data/staging"
@@ -126,6 +159,10 @@ jq -n \
     --arg region "${GARAGE_REGION}" \
     --arg access "${GARAGE_ACCESS_KEY}" \
     --arg secret "${GARAGE_SECRET_KEY}" \
+    --arg pg_user "${POSTGRES_USER}" \
+    --arg pg_pass "${POSTGRES_PASSWORD}" \
+    --arg lf_public "${LANGFUSE_INIT_PROJECT_PUBLIC_KEY:-}" \
+    --arg lf_secret "${LANGFUSE_INIT_PROJECT_SECRET_KEY:-}" \
     --arg smtp_host "${SMTP_HOST:-}" \
     --arg smtp_user "${SMTP_USER:-}" \
     --arg smtp_pass "${SMTP_PASSWORD:-}" \
@@ -146,6 +183,20 @@ jq -n \
         }
       },
       {
+        "id": "smartrag-postgres-credential",
+        "name": "smartrag-postgres",
+        "type": "postgres",
+        "data": {
+          "host": "smartrag-postgres",
+          "port": 5432,
+          "database": "flowise",
+          "user": $pg_user,
+          "password": $pg_pass,
+          "ssl": "disable",
+          "allowUnauthorizedCerts": false
+        }
+      },
+      {
         "id": "smartrag-smtp-credential",
         "name": "smartrag-smtp",
         "type": "smtp",
@@ -159,6 +210,22 @@ jq -n \
         }
       }
     ]' > "$CREDS_FILE"
+
+if (( LANGFUSE_ENABLED )); then
+    # Langfuse's public API authenticates with the project key pair as HTTP
+    # basic auth — public key as the user, secret key as the password. Those
+    # are the LANGFUSE_INIT_PROJECT_* values, not the Garage ones next to
+    # them in .env, and not a variable called LANGFUSE_PUBLIC_KEY, which does
+    # not exist.
+    jq --arg lf_public "${LANGFUSE_INIT_PROJECT_PUBLIC_KEY:-}" \
+       --arg lf_secret "${LANGFUSE_INIT_PROJECT_SECRET_KEY:-}" \
+       '. + [{
+          "id": "smartrag-langfuse-credential",
+          "name": "smartrag-langfuse",
+          "type": "httpBasicAuth",
+          "data": { "user": $lf_public, "password": $lf_secret }
+        }]' "$CREDS_FILE" > "$CREDS_FILE.tmp" && mv "$CREDS_FILE.tmp" "$CREDS_FILE"
+fi
 
 chmod 600 "$CREDS_FILE"
 chown 1000:1000 "$CREDS_FILE"
@@ -203,10 +270,15 @@ if [[ -z "${SMTP_HOST:-}" ]]; then
 fi
 
 # ─── 2. Workflows ────────────────────────────────────────────────────────────
-for wf in "${WORKFLOWS[@]}"; do
-    src="$WORKFLOW_DIR/$wf"
+for src in "${WORKFLOWS[@]}"; do
+    wf="$(basename "$src")"
     [[ -f "$src" ]] || die "$(t n8n_workflow_missing "$src")"
     jq empty "$src" 2>/dev/null || die "$(t n8n_workflow_invalid_json "$src")"
+    # A workflow with no id imports as a new object every time, so a re-run
+    # would leave duplicates behind — and a duplicate of a scheduled workflow
+    # runs twice. All three core workflows shipped without one.
+    [[ "$(jq -r '.id // empty' "$src")" != "" ]] \
+        || die "$(t n8n_workflow_no_id "$src")"
 
     cp "$src" "$STAGING_HOST/$wf"
     chown 1000:1000 "$STAGING_HOST/$wf"

@@ -1,14 +1,20 @@
 # n8n Workflows — Core
 
 These workflows are the runtime memory/observability pipelines that keep the
-multi-agent system stateful and traceable. They are imported automatically
-by `scripts/bootstrap.sh` via the n8n REST API.
+multi-agent system stateful and traceable. They are imported and activated by
+`scripts/deploy-n8n-workflows.sh`, which bootstrap runs as phase 10 and the
+admin tool can re-run at any time.
+
+Until 2026-08-11 this file claimed bootstrap imported them "automatically via
+the n8n REST API". Nothing did — the deployer read `workflows-ingest/` only.
+They were documented, present and dead, which is worse than absent: absent
+invites building, documented-and-dead invites relying.
 
 | File | Trigger | Purpose |
 |------|---------|---------|
 | `chathistory-sync.json`     | Schedule (every 5 min) | Polls Postgres for new Flowise messages, generates embeddings + metadata, writes to Weaviate `ChatHistory` for cross-agent semantic recall. |
-| `usermemory-summary.json`   | Schedule              | Periodically condenses each user's recent sessions into the Weaviate `UserMemory` record. Uses the configured LLM. |
-| `langfuse-userid-patch.json`| Schedule (every 30 min) | Looks up `userId` from Flowise's Postgres for Langfuse traces that came in without one, then patches the trace. |
+| `usermemory-summary.json`   | Schedule              | Periodically condenses each user's recent sessions into the Weaviate `UserMemory` record. Calls `$env.LLM_BASE_URL` with `$env.LLM_MODEL_FAST`, like every other LLM call here — it used to be an Anthropic node with a hard-coded model, which could not run on an installation configured for any other provider. |
+| `langfuse-userid-patch.json`| Schedule (every 30 min) | Looks up `userId` from Flowise's Postgres for Langfuse traces that came in without one, then patches the trace. Deployed only with the `observability` profile. **Handles personal data:** it parses the LTI session id (`userId|givenName|agentId|ts|fullName`) and writes the learner's name into Langfuse. It therefore does nothing without the LTI middleware, and where LTI is in use the legal basis for identifying learners has to be settled first. |
 
 ## Required environment variables
 
