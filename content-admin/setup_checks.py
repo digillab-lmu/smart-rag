@@ -63,6 +63,13 @@ class Check:
     command: str = ""
     link: str = ""
     link_key: str = ""
+    # The service's own web address, for opening it in a new tab. Distinct
+    # from `link`, which names a route inside this GUI: this one leaves it.
+    # Shown in every state, not only on failure — "open Flowise" is a normal
+    # thing to want, and having to hunt for the address in an email from the
+    # installation day is how people end up asking an administrator for a
+    # URL that is written in .env.
+    external_url: str = ""
     # Blocks the steps after it: no point telling someone to import agents
     # while Flowise is unreachable.
     blocking: bool = False
@@ -100,15 +107,16 @@ def check_llm_keys(env: dict) -> Check:
 def check_flowise(env: dict, client) -> Check:
     """Reachable *and* the stored key is accepted. Those are different
     failures with different fixes, so they get different messages."""
+    url = env.get("FLOWISE_PUBLIC_URL", "").strip()
     if client is None:
         return Check("flowise", State.FAIL, "", link_key="flowise_link",
-                     link="flowise_setup", blocking=True)
+                     link="flowise_setup", external_url=url, blocking=True)
     try:
         client.check_connection()
     except Exception as exc:  # noqa: BLE001 — FlowiseError or a transport error
         return Check("flowise", State.FAIL, str(exc), link_key="flowise_link",
-                     link="flowise_setup", blocking=True)
-    return Check("flowise", State.OK)
+                     link="flowise_setup", external_url=url, blocking=True)
+    return Check("flowise", State.OK, external_url=url)
 
 
 def check_agents(slots: dict, client) -> Check:
@@ -144,7 +152,7 @@ def check_agents(slots: dict, client) -> Check:
                  extra=extra)
 
 
-def check_n8n_webhook(base_url: str, deploy_command: str) -> Check:
+def check_n8n_webhook(base_url: str, deploy_command: str, env: dict | None = None) -> Check:
     """Is the ingest workflow imported AND active?
 
     Probed with a GET on the production webhook path, which has no side
@@ -162,22 +170,27 @@ def check_n8n_webhook(base_url: str, deploy_command: str) -> Check:
     POST route exists. Treating any 404 as failure would report a working
     system as broken.
     """
+    # The address a person opens is not the one this check probes: the probe
+    # goes to the container over the Docker network, the link has to work in
+    # a browser.
+    public = (env or {}).get("N8N_WEBHOOK_URL", "").strip()
     url = f"{base_url.rstrip('/')}/webhook/document-ingest"
     try:
         resp = requests.get(url, timeout=TIMEOUT)
     except requests.RequestException as exc:
-        return Check("n8n", State.FAIL, str(exc), command=deploy_command, blocking=True)
+        return Check("n8n", State.FAIL, str(exc), command=deploy_command,
+                     external_url=public, blocking=True)
 
     body = resp.text or ""
     if "not registered for GET requests" in body:
-        return Check("n8n", State.OK)
+        return Check("n8n", State.OK, external_url=public)
     if "is not registered" in body:
         return Check("n8n", State.FAIL, body[:200], command=deploy_command,
-                     blocking=True)
+                     external_url=public, blocking=True)
     # n8n answered something else entirely. Say what, rather than
     # inventing an interpretation.
     return Check("n8n", State.UNKNOWN, f"HTTP {resp.status_code}: {body[:200]}",
-                 command=deploy_command)
+                 command=deploy_command, external_url=public)
 
 
 def check_ingest_services(env: dict) -> Check:
@@ -213,6 +226,6 @@ def run_all(env: dict, slots: dict, flowise_client, n8n_base_url: str,
         check_llm_keys(env),
         check_flowise(env, flowise_client),
         check_agents(slots, flowise_client),
-        check_n8n_webhook(n8n_base_url, deploy_command),
+        check_n8n_webhook(n8n_base_url, deploy_command, env),
         check_ingest_services(env),
     ]

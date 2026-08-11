@@ -228,6 +228,49 @@ and merely move the problem.
 
 ---
 
+## 6c · What was decided when the build was planned (2026-08-11)
+
+**Status.** Agreed 2026-08-11, before any of 6a/6b was built. Four questions
+were open in the design above; these are the answers, with what each one
+costs.
+
+**Maintainers belong to n courses.** Two roles: an installation administrator
+who creates courses and accounts, and a course maintainer who may be assigned
+to several courses and switches between them. The alternative — one course per
+account — is simpler and was rejected because the same person routinely looks
+after a lecture and its seminar, and two logins for one person is how shared
+passwords start.
+
+**Deleting a course asks what to do with the learner data.** Content
+(collection, bucket, slots) always goes. `ChatHistory`, `UserMemory` and
+`TestResults` are the subject of an explicit question at deletion time, with
+no pre-selected answer: keeping them can be legitimate for research and needs
+a legal basis, and deciding that silently on the operator's behalf — in either
+direction — is the wrong default. Whatever is chosen, the inventory is counted
+and shown first.
+
+**No migration path from 1.0.** The course values leave `.env`, and rather
+than a migration this is a new installation. That is a deliberate trade: it is
+only defensible because 1.0 has essentially no installed base beyond our own
+test machine. What it must never mean is silent damage, so bootstrap and the
+upgrade path detect a `COURSE_ID` in `.env` and refuse to run, naming the
+reason. A refusal is recoverable; a half-migrated installation is not.
+
+**Postgres, not JSON files.** `slots.json` was right for ten slots. The target
+is 50+ courses at ten slots each, with several maintainers writing at once,
+and a JSON file with hundreds of entries and concurrent writers is a data-loss
+bug waiting for a coincidence. Courses, users, assignments and slots move into
+the Postgres that already runs, behind a versioned schema.
+
+**Out of scope, and why.** `n8n/workflows/` — `chathistory-sync`,
+`usermemory-summary`, `langfuse-userid-patch` — is not installed by the
+deployer, which reads only `workflows-ingest/`. The course-stamping coupling
+6b describes in those workflows is therefore real but dormant. They stay out:
+they cannot be tested live here, and shipping untested course routing for
+learner data is exactly the kind of claim this project does not make.
+
+---
+
 ## 7 · Flowise's code sandbox has no `process`
 
 **Decision.** Custom-function nodes in the agent templates read secrets as

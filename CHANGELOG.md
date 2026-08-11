@@ -13,6 +13,12 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Added
 
+- **The system status page links to Flowise and n8n.** Their addresses were
+  otherwise only in `.env` or in an email from the day the system was
+  installed. The link rides on each service's check and shows in every state,
+  including a passing one — opening Flowise is an ordinary thing to want, not
+  a repair step. It is the public address, not the container address the check
+  itself probes.
 - **The document list shows what is still being processed.** It is built from
   Weaviate, so an upload used to show nothing at all until its chunks existed
   — twenty minutes of an unchanged page for a scanned PDF with figures, with
