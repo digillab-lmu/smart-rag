@@ -15,8 +15,14 @@ advisory locks, ON CONFLICT and partial unique indexes, which are exactly the
 things being relied on. Without a database this suite exits 10, which the
 runner reports as "could not run" rather than as a pass.
 
-Point it at one with:
-    SMARTRAG_TEST_DSN=postgresql://user:pass@host:5432/dbname
+Two ways to give it one. Postgres publishes no host port in this deployment,
+so either reach the container's own address from the host, or run this file
+inside the Content Admin container, where psycopg and the network are already
+in place:
+
+    docker cp tests/test_db.py smartrag-content-admin:/tmp/test_db.py
+    docker exec -e SMARTRAG_TEST_DSN="postgresql://USER:PASS@smartrag-postgres:5432/contentadmin_test" \
+        smartrag-content-admin python3 /tmp/test_db.py
 """
 
 import os
@@ -26,8 +32,14 @@ import threading
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-APP_DIR = str(REPO / "content-admin")
-sys.path.insert(0, APP_DIR)
+# /app when this file has been copied into the Content Admin container, which
+# is one of the two ways to reach a real Postgres: the database publishes no
+# host port, so either the host talks to the container's own address or the
+# suite runs where the network already works.
+APP_DIR = REPO / "content-admin"
+if not APP_DIR.is_dir() and Path("/app/db.py").exists():
+    APP_DIR = Path("/app")
+sys.path.insert(0, str(APP_DIR))
 
 tmpdir = tempfile.mkdtemp()
 env_path = Path(tmpdir) / ".env"
@@ -123,9 +135,15 @@ os.environ.pop("SMARTRAG_DB_NAME", None)
 built = db.dsn()
 check("the Content Admin gets its own database, not Langfuse's",
       built.endswith("/contentadmin"), built.rsplit("@", 1)[-1])
-check("the init SQL creates it",
-      "CREATE DATABASE contentadmin;" in
-      (REPO / "docker" / "postgres-init" / "01-create-databases.sql").read_text())
+init_sql = REPO / "docker" / "postgres-init" / "01-create-databases.sql"
+if init_sql.exists():
+    check("the init SQL creates it",
+          "CREATE DATABASE contentadmin;" in init_sql.read_text())
+else:
+    # Running from inside the container, where the repo is not mounted. Said
+    # out loud rather than passing quietly: a check that vanishes with its
+    # input is a check nobody notices losing.
+    print("  note: postgres-init not visible from here, that one check did not run")
 
 
 # ─── 2. With a database ──────────────────────────────────────────────────────
@@ -134,10 +152,15 @@ if not TEST_DSN:
     done()   # report the naming failures if any, before bowing out
     print("No SMARTRAG_TEST_DSN set, so the half of this suite that needs a "
           "real Postgres did not run. The migration mechanism, the four "
-          "tables, their constraints and two concurrent writers are all "
+          "tables, their constraints and concurrent writers are all "
           "unverified.\n"
-          "  SMARTRAG_TEST_DSN=postgresql://user:pass@host:5432/dbname "
-          "tests/run-tests.sh test_db")
+          "  Postgres publishes no host port, so use the container's own "
+          "address:\n"
+          "    PGHOST=$(docker inspect -f "
+          "'{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "
+          "smartrag-postgres)\n"
+          "    SMARTRAG_TEST_DSN=\"postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD"
+          "@$PGHOST:5432/contentadmin_test\" bash tests/run-tests.sh test_db")
     sys.exit(10)
 
 os.environ["SMARTRAG_DB_DSN"] = TEST_DSN

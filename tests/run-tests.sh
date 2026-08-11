@@ -41,7 +41,11 @@ case "${1:-}" in
     *) FILTER="$1" ;;
 esac
 
-mapfile -t SUITES < <(find "$TESTS_DIR" -maxdepth 1 -name 'test_*.py' -o -maxdepth 1 -name 'test_*.sh' | sort)
+# -maxdepth is a global option and has to precede the tests, otherwise find
+# warns that it applies to everything anyway — which it does, so the second
+# copy was both noise and misleading about how find works.
+mapfile -t SUITES < <(find "$TESTS_DIR" -maxdepth 1 \
+                        \( -name 'test_*.py' -o -name 'test_*.sh' \) | sort)
 
 if (( LIST_ONLY )); then
     printf '%s\n' "${SUITES[@]#$TESTS_DIR/}"
