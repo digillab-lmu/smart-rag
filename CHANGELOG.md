@@ -141,7 +141,9 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
   time while labelling it `Z`, so a conversation at 08:20:52 UTC still
   arrived as `10:20:52Z` once ClickHouse was correct. Both Flowise services
   are pinned to UTC as well; the cost is that Flowise's own UI shows UTC,
-  which is the smaller price.
+  which is the smaller price. Verified to the second afterwards: a request
+  made at 09:01:17 UTC produced a trace stamped `09:01:17.869Z`. This half is
+  written into the value, so traces from before it stay two hours high.
 - **n8n's settings file is no longer world-readable inside the container.**
   `/home/node/.n8n/config` holds the encryption key that every stored
   credential — S3, SMTP, the LLM keys — is encrypted with, and n8n creates it
