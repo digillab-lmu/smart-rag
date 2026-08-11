@@ -440,5 +440,6 @@
   "meta": {
     "templateCredsSetupCompleted": true
   },
-  "tags": []
+  "tags": [],
+  "id": "smartrag-chathistory-sync"
 }

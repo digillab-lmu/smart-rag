@@ -23,7 +23,7 @@
     },
     {
       "parameters": {
-        "url": "http://smartrag-langfuse-web:3001/api/public/traces",
+        "url": "=http://smartrag-langfuse-web:{{ $env.LANGFUSE_PORT || 3001 }}/api/public/traces",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpBasicAuth",
         "sendQuery": true,
@@ -51,7 +51,7 @@
       "typeVersion": 4.2,
       "credentials": {
         "httpBasicAuth": {
-          "name": "smartrag-httpBasicAuth"
+          "name": "smartrag-langfuse"
         }
       }
     },
@@ -71,8 +71,10 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT DISTINCT ON (\"chatId\") \"chatId\", \"sessionId\" FROM chat_message WHERE \"chatId\" = '{{ $json.langfuseSessionId }}' AND \"sessionId\" LIKE '%|%' ORDER BY \"chatId\", \"createdDate\" DESC",
-        "options": {}
+        "query": "SELECT DISTINCT ON (\"chatId\") \"chatId\", \"sessionId\" FROM chat_message WHERE \"chatId\" = $1 AND \"sessionId\" LIKE '%|%' ORDER BY \"chatId\", \"createdDate\" DESC",
+        "options": {
+          "queryReplacement": "={{ [$json.langfuseSessionId] }}"
+        }
       },
       "id": "8d5a6cdc-81fe-49a4-b301-5b7b04b3159a",
       "name": "Flowise DB: lookup sessionId",
@@ -137,7 +139,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://smartrag-langfuse-web:3001/api/public/ingestion",
+        "url": "=http://smartrag-langfuse-web:{{ $env.LANGFUSE_PORT || 3001 }}/api/public/ingestion",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpBasicAuth",
         "sendBody": true,
@@ -155,7 +157,7 @@
       "typeVersion": 4.2,
       "credentials": {
         "httpBasicAuth": {
-          "name": "smartrag-httpBasicAuth"
+          "name": "smartrag-langfuse"
         }
       }
     },
@@ -252,7 +254,7 @@
       ]
     }
   },
-  "active": true,
+  "active": false,
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate"
@@ -260,5 +262,6 @@
   "meta": {
     "templateCredsSetupCompleted": true
   },
-  "tags": []
+  "tags": [],
+  "id": "smartrag-langfuse-userid-patch"
 }

@@ -52,6 +52,19 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **The memory and observability workflows were never installed.** The
+  deployer read `workflows-ingest/` only, while `n8n/workflows/README.md`
+  stated that bootstrap imported them automatically — so cross-agent chat
+  recall, the learner memory summary and the Langfuse trace patcher were
+  documented, present and dead. All three are now deployed and activated, and
+  finishing them turned up six further defects: no workflow ids (every import
+  would have left another copy, and a duplicate five-minute schedule runs
+  twice), two credentials the deployer never created, an Anthropic node with a
+  hard-coded model in a provider-agnostic project, a literal `{{COURSE_NAME}}`
+  in a prompt, a hard-coded Langfuse port, and a SQL query built by pasting a
+  value from Langfuse into it. `langfuse-userid-patch` ships only with the
+  `observability` profile and, because it writes learner names into Langfuse,
+  carries that warning in its README.
 - **Every document was archived over the previous one.** The ingest built its
   object key from the uploaded file's name, read out of the binary in hand —
   but by that point the binary is Docling's response, not the upload, so the
