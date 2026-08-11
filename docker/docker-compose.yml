@@ -451,6 +451,17 @@ services:
     profiles: [core]
     container_name: smartrag-flowise
     environment:
+      # UTC, and for a reason that is not the one above. Flowise supplies the
+      # timestamp on every Langfuse trace it emits, and it formats local time
+      # while labelling it "Z": measured here, a conversation at 08:20:52 UTC
+      # arrived as 10:20:52Z. Fixing ClickHouse removed a second, separate
+      # two-hour shift on top of this one; this is the remaining half, and it
+      # can only be fixed at the producer.
+      #
+      # The cost is that Flowise's own UI shows UTC. That is the smaller
+      # price: a timestamp read once in Flowise's chat list against every
+      # trace, cost figure and time filter in Langfuse being wrong.
+      TZ: "UTC"
       <<: *flowise-env
     ports:
       - "127.0.0.1:${FLOWISE_PORT}:3000"
@@ -477,6 +488,9 @@ services:
     entrypoint: ["flowise", "worker"]
     expose: ["5566"]
     environment:
+      # UTC for the same reason as smartrag-flowise: it is the producer
+      # of the timestamps on Langfuse traces.
+      TZ: "UTC"
       <<: *flowise-env
     depends_on:
       smartrag-flowise:

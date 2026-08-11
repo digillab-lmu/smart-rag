@@ -135,6 +135,13 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
   inheritance is how Flowise ran in Europe/Berlin without a line naming it.
   Everything an operator reads logs from keeps the local timezone. Traces
   already written keep their wrong timestamps.
+
+  Fixing the stores exposed a second, independent shift of the same kind:
+  Flowise supplies the timestamp on every trace it emits and formats local
+  time while labelling it `Z`, so a conversation at 08:20:52 UTC still
+  arrived as `10:20:52Z` once ClickHouse was correct. Both Flowise services
+  are pinned to UTC as well; the cost is that Flowise's own UI shows UTC,
+  which is the smaller price.
 - **n8n's settings file is no longer world-readable inside the container.**
   `/home/node/.n8n/config` holds the encryption key that every stored
   credential — S3, SMTP, the LLM keys — is encrypted with, and n8n creates it
