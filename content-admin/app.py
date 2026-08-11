@@ -1187,10 +1187,13 @@ def documents():
     — repurposing an agent slot hands the new agent the old one's documents,
     because the chunks still carry that agent_id.
     """
-    env = read_env()
-    course_id = env.get("COURSE_ID", "").strip()
-    collection = env.get("WEAVIATE_COLLECTION_NAME", "").strip()
-    slots = storage.all_slots(g.course["id"])
+    # From the selected course, not from .env. Those two variables are the
+    # single-course era's, and reading them here made this page show one
+    # fixed collection whichever course was selected — the list looked
+    # authoritative and belonged to somebody else.
+    course_id = g.course["id"]
+    collection = g.course["collection"]
+    slots = storage.all_slots(course_id)
     error = None
     success = None
 
