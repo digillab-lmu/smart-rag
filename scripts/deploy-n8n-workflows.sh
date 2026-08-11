@@ -344,18 +344,43 @@ N8N_LOCAL_URL="http://127.0.0.1:${N8N_PORT:-5678}"
 # need longer, and the test suite must not sit here for three minutes.
 VERIFY_TIMEOUT="${N8N_VERIFY_TIMEOUT:-180}"
 
-# The restart above means n8n is still booting; wait for its own healthz
-# before drawing any conclusion from the webhook's answer.
+# Two separate waits, because they are two separate questions.
+#
+# The first is "is n8n back at all", answered by its own healthz. The second
+# is "is the webhook registered", and the answer right after a restart is
+# routinely "not yet" for a few seconds — n8n serves healthz before it has
+# finished registering webhooks.
+#
+# Conflating them produced a warning that was simply untrue: the loop broke
+# the moment healthz answered, took whatever the webhook said, and if that
+# was anything unexpected reported "n8n did not come back within 180s" — a
+# timeout that had not elapsed and a service that was up. An operator who
+# checks and finds n8n running then has to decide whether to believe the
+# installer, which is the worst position to put them in.
+WEBHOOK_SETTLE="${N8N_WEBHOOK_SETTLE:-30}"
+
 verify_state="unreachable"
+n8n_back=0
 verify_waited=0
 while (( verify_waited < VERIFY_TIMEOUT )); do
     if curl -sf --max-time 3 "$N8N_LOCAL_URL/healthz" >/dev/null 2>&1; then
-        verify_state="$(n8n_webhook_state "$N8N_LOCAL_URL")"
+        n8n_back=1
         break
     fi
     sleep 3
     verify_waited=$(( verify_waited + 3 ))
 done
+
+if (( n8n_back )); then
+    settle_waited=0
+    while true; do
+        verify_state="$(n8n_webhook_state "$N8N_LOCAL_URL")"
+        [[ "$verify_state" != "unreachable" ]] && break
+        (( settle_waited >= WEBHOOK_SETTLE )) && break
+        sleep 3
+        settle_waited=$(( settle_waited + 3 ))
+    done
+fi
 
 case "$verify_state" in
     registered)
@@ -371,16 +396,19 @@ case "$verify_state" in
         # exactly the claim this verification exists to avoid. Report what
         # is actually known and where to see the real answer, and exit
         # non-zero so a caller can't treat this as a finished job.
-        warn "$(t n8n_verify_unreachable "$N8N_LOCAL_URL" "$VERIFY_TIMEOUT")"
-        # "Unreachable" alone does not say which of two very different
-        # things happened, and this warning has now fired twice on an
-        # installation whose webhook answered correctly a minute later.
-        # Docker's own view of the container separates them: a container
-        # still "starting" was merely slow, one reported "healthy" while
-        # HTTP stayed silent is a real problem and a different hunt. Say
-        # which, so the next occurrence is diagnosable without an
-        # experiment that costs another restart.
-        warn "$(t n8n_verify_container "$(container_health smartrag-n8n)")"
+        # Which of the two failures this is decides what the operator does
+        # next, so it decides what they are told.
+        if (( n8n_back )); then
+            # n8n is up. The webhook answered something this installer does
+            # not recognise, and the raw answer is the only useful thing to
+            # show — paraphrasing it is what produced a message claiming a
+            # timeout that never happened.
+            warn "$(t n8n_verify_odd_reply "$WEBHOOK_SETTLE" \
+                    "$(curl -s --max-time 5 "$N8N_LOCAL_URL/webhook/document-ingest" | head -c 200)")"
+        else
+            warn "$(t n8n_verify_unreachable "$N8N_LOCAL_URL" "$VERIFY_TIMEOUT")"
+            warn "$(t n8n_verify_container "$(container_health smartrag-n8n)")"
+        fi
         warn "$(t n8n_verify_recheck)"
         # Not exit 1: nothing observably broke, and aborting a whole
         # install because n8n was still restarting would be wrong. But not

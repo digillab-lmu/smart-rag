@@ -52,6 +52,16 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **The installer reported a 180-second timeout that had not elapsed.** After
+  the restart it waited for n8n's `healthz`, then took whatever the ingest
+  webhook said at that instant — and any unrecognised answer was reported as
+  "n8n did not come back within 180s", on an installation where n8n was up and
+  answering. Two separate questions were being told as one. They are now
+  separate: whether n8n is back, and whether the webhook is registered, which
+  legitimately takes a few more seconds because n8n serves `healthz` before it
+  finishes registering webhooks. The webhook is now polled for up to 30 more
+  seconds (`N8N_WEBHOOK_SETTLE`), and if it still answers something unknown
+  the message says n8n is up and quotes the reply verbatim.
 - **ChatHistory sync could never have worked.** Its first live run failed with
   a 401 from Weaviate, and the cause was in the source all along: the Code
   node sent `Bearer ={{ $env.WEAVIATE_API_KEY }}` — n8n does not evaluate

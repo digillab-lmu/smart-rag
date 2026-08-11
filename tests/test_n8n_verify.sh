@@ -20,6 +20,7 @@ REGISTERED='{"code":404,"message":"This webhook is not registered for GET reques
 NOT_REGISTERED='{"code":404,"message":"The requested webhook \"GET document-ingest\" is not registered.","hint":"The workflow must be active"}'
 
 setup() { # $1 = docker-exec behaviour, $2 = webhook body, $3 = healthz (ok|down)
+         #   $4 = number of probes answered with silence first (default 0)
     SANDBOX="$(mktemp -d)"
     # Both workflow directories: the deployer imports the ingest pipeline and
     # the memory/observability workflows, and a missing directory is a hard
@@ -82,15 +83,24 @@ STUB
 url="\${!#}"
 case "\$url" in
   *healthz*) [[ "$3" == "ok" ]] && exit 0 || exit 7 ;;
-  *webhook/document-ingest*) printf '%s' '$2'; exit 0 ;;
+  *webhook/document-ingest*)
+      # A webhook that only registers on the Nth probe, so the settle window
+      # is exercised rather than assumed. n8n serves healthz before it has
+      # finished registering webhooks, so the first probe after a restart
+      # legitimately answers nothing at all.
+      n=0
+      [[ -f "$SANDBOX/webhook-probes" ]] && n=\$(cat "$SANDBOX/webhook-probes")
+      n=\$(( n + 1 )); echo "\$n" > "$SANDBOX/webhook-probes"
+      if (( n <= ${4:-0} )); then printf ''; else printf '%s' '$2'; fi
+      exit 0 ;;
 esac
 exit 0
 STUB
     chmod +x "$SANDBOX/bin/curl"
 }
 
-run() { # $1 docker-exec-creds behaviour, $2 webhook body, $3 healthz
-    setup "$1" "$2" "$3"
+run() { # $1 docker-exec-creds behaviour, $2 webhook body, $3 healthz, $4 silent probes
+    setup "$1" "$2" "$3" "${4:-0}"
     # Short timeout: the wait loop's duration isn't what's under test, and
     # the default 180s would make this suite unusable.
     ( cd "$SANDBOX" && PATH="$SANDBOX/bin:$PATH" N8N_VERIFY_TIMEOUT=6 \
@@ -166,6 +176,38 @@ done
 run "$CREDS_NO_OWNER" "$REGISTERED" ok >/dev/null 2>&1
 [[ -e "$SANDBOX/data/n8n/data/staging" ]] && leftovers=1
 check "no plaintext staging dir left behind on any path" $leftovers "staging survived"
+
+# ─── The two failures must not be told as one ───────────────────────────────
+# Reported once on a live install: "n8n did not come back within 180s" while
+# n8n was up and answering. The loop broke the moment healthz replied, took
+# whatever the webhook said, and any unrecognised answer became a timeout
+# that had not elapsed. An operator who then finds n8n running has to decide
+# whether to believe the installer, which is the worst place to leave them.
+ODD='{"something":"n8n has never said this"}'
+out="$(N8N_WEBHOOK_SETTLE=3 run "$CREDS_OK" "$ODD" ok; echo "RC=$RC")"
+grep -qE "180s|nicht innerhalb" <<<"$out"
+check "an odd webhook reply does not claim a timeout" $(( $? == 0 ? 1 : 0 )) \
+      "$(grep -iE '180s|innerhalb' <<<"$out" | head -2)"
+grep -qi "n8n is up" <<<"$out"
+check "…it says n8n is up" $? "$(tail -4 <<<"$out")"
+grep -q "n8n has never said this" <<<"$out"
+check "…and quotes what the webhook actually answered" $? "$(tail -4 <<<"$out")"
+grep -q "RC=0" <<<"$out"
+check "…and still refuses to report success" $(( $? == 0 ? 1 : 0 )) "$(tail -2 <<<"$out")"
+
+# A webhook that needs a moment must be waited for, not written off. n8n
+# serves healthz before its webhooks are registered, so the probe right after
+# a restart legitimately answers nothing — and taking that first answer as
+# final is what turned a working install into a warning.
+out="$(N8N_WEBHOOK_SETTLE=30 run "$CREDS_OK" "$REGISTERED" ok 2; echo "RC=$RC")"
+grep -q "RC=0" <<<"$out"
+check "a webhook that registers a moment later is waited for" $? \
+      "$(tail -4 <<<"$out")"
+
+# When n8n really is absent, the timeout message is the right one.
+out="$(run "$CREDS_OK" "$REGISTERED" down; echo "RC=$RC")"
+grep -qi "did not come back" <<<"$out"
+check "a genuinely absent n8n is reported as unreachable" $? "$(tail -4 <<<"$out")"
 
 if (( ${#FAILURES[@]} > 0 )); then
     echo "FAILURES:"
