@@ -316,6 +316,81 @@ for lang in ("en", "de"):
           json.dumps(i18n.t("publish_copy", lang=lang)) in body)
 client.get("/language/en")
 
+# ─── The services' own addresses ─────────────────────────────────────────────
+# Opening Flowise or n8n is an ordinary thing to want, and the address is
+# otherwise only in .env or in an email from the day the system was installed.
+# So it rides on the check, in every state — including OK, where a
+# failure-only link would be missing exactly when the system works.
+env_urls = {
+    "FLOWISE_PUBLIC_URL": "https://smart-rag.example.com",
+    "N8N_WEBHOOK_URL": "https://n8n.example.com",
+    "LLM_PROVIDER": "openai",
+    "LLM_API_KEY": "sk-test",
+    "EMBEDDING_API_KEY": "sk-test",
+}
+
+class _OkFlowise:
+    def check_connection(self):
+        return True
+
+c = sc.check_flowise(env_urls, _OkFlowise())
+check("a working Flowise still offers its address",
+      c.state == State.OK
+      and c.external_url == "https://smart-rag.example.com", c)
+c = sc.check_flowise(env_urls, None)
+check("…and so does an unreachable one",
+      c.external_url == "https://smart-rag.example.com", c)
+
+# The probe goes to the container over the Docker network; the link has to
+# work in a browser. Confusing the two would hand the operator an address
+# that only resolves inside Docker.
+class _Resp:
+    def __init__(self, body, code=404):
+        self.text = body
+        self.status_code = code
+
+
+_saved = sc.requests.get
+try:
+    sc.requests.get = lambda *a, **k: _Resp(
+        "This webhook is not registered for GET requests.")
+    c = sc.check_n8n_webhook("http://smartrag-n8n:5678", "cmd", env_urls)
+    check("a working n8n offers its public address",
+          c.state == State.OK
+          and c.external_url == "https://n8n.example.com", c)
+    check("…and not the internal one",
+          "smartrag-n8n" not in (c.external_url or ""), c.external_url)
+
+    sc.requests.get = lambda *a, **k: _Resp(
+        'The requested webhook "GET document-ingest" is not registered.')
+    c = sc.check_n8n_webhook("http://smartrag-n8n:5678", "cmd", env_urls)
+    check("a broken n8n still offers its address", c.external_url == "https://n8n.example.com", c)
+finally:
+    sc.requests.get = _saved
+
+# An installation with no public URL configured must show no link at all
+# rather than an empty one, which renders as a link to the current page.
+c = sc.check_flowise({}, _OkFlowise())
+check("no address configured means no link", c.external_url == "", c)
+
+# run_all must pass the environment down — without it the n8n link is silently
+# empty on every installation.
+import inspect as _inspect  # noqa: E402
+src = _inspect.getsource(sc.run_all)
+check("run_all hands the environment to the n8n check",
+      "check_n8n_webhook(n8n_base_url, deploy_command, env)" in src, src)
+
+for key in ["guide_flowise_open", "guide_n8n_open", "guide_open_note"]:
+    i18n_src = (REPO / "content-admin" / "i18n.py").read_text()
+    check(f"{key} exists in both languages", i18n_src.count(f'"{key}":') == 2,
+          i18n_src.count(f'"{key}":'))
+
+tpl = (REPO / "content-admin" / "templates" / "getting_started.html").read_text()
+check("the link is not hidden behind a failing state",
+      "c.external_url %}" in tpl and "external_url and c.state" not in tpl, "")
+check("the link opens safely in a new tab",
+      'rel="noopener noreferrer"' in tpl, "")
+
 if failures:
     print("FAILURES:")
     for f in failures:

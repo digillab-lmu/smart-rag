@@ -3,6 +3,13 @@
 {% block content %}
 <h1>{{ t('guide_heading') }}</h1>
 <p class="note">{{ t('guide_intro') }}</p>
+{# Said once, not beside every link. No Tailscale caveat here on purpose:
+   anyone reading this page has already reached the Content Admin, which in
+   Tailscale mode means they are in the tailnet, so the services will open
+   for them too. #}
+{% if checks | selectattr('external_url') | list %}
+<p class="note">{{ t('guide_open_note') }}</p>
+{% endif %}
 
 {% if ready %}
 <div class="success">{{ t('guide_ready') }}</div>
@@ -91,6 +98,14 @@
 
     {% if c.link and c.state != State.OK %}
     <p><a href="{{ url_for(c.link) }}">{{ t('guide_' ~ c.key ~ '_link') }} →</a></p>
+    {% endif %}
+
+    {# The service itself, in a new tab. Shown in every state: opening
+       Flowise or n8n is an ordinary thing to want, not a repair step, and
+       the address is otherwise only in .env or in an email from the day the
+       system was installed. #}
+    {% if c.external_url %}
+    <p><a href="{{ c.external_url }}" target="_blank" rel="noopener noreferrer">{{ t('guide_' ~ c.key ~ '_open') }} ↗</a></p>
     {% endif %}
   </li>
   {% endfor %}

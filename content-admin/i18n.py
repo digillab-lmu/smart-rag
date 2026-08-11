@@ -193,6 +193,9 @@ the link is used, and the link only works from this message.
     "guide_n8n_title": "Document processing (n8n)",
     "guide_n8n_help": "n8n receives every uploaded document and runs it through conversion, cleanup, chunking and indexing. Its workflows have to be imported and switched on once.",
     "guide_n8n_ok": "The ingest workflow is active and accepting documents.",
+    "guide_flowise_open": "Open Flowise",
+    "guide_n8n_open": "Open n8n",
+    "guide_open_note": "Opens in a new tab. Both are separate applications with their own login — you rarely need them: the Content Admin does the work through them for you.",
     "guide_n8n_fail": "The ingest workflow is not registered — it is either not imported or not active.",
 
     "guide_ingest_services_title": "Conversion and search services",
@@ -517,6 +520,9 @@ dieser Nachricht.
     "guide_n8n_title": "Dokumentverarbeitung (n8n)",
     "guide_n8n_help": "n8n nimmt jedes hochgeladene Dokument entgegen und schickt es durch Umwandlung, Bereinigung, Zerlegung und Indexierung. Seine Workflows müssen einmal importiert und eingeschaltet werden.",
     "guide_n8n_ok": "Der Ingest-Workflow ist aktiv und nimmt Dokumente an.",
+    "guide_flowise_open": "Flowise öffnen",
+    "guide_n8n_open": "n8n öffnen",
+    "guide_open_note": "Öffnet sich in einem neuen Tab. Beides sind eigenständige Anwendungen mit eigener Anmeldung — gebraucht werden sie selten: Der Content-Admin erledigt die Arbeit dort für dich.",
     "guide_n8n_fail": "Der Ingest-Workflow ist nicht registriert — er ist entweder nicht importiert oder nicht aktiv.",
 
     "guide_ingest_services_title": "Umwandlungs- und Suchdienste",
