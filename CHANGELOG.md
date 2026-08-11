@@ -13,6 +13,17 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Added
 
+- **A database for courses, accounts and agent slots.** First step of the
+  multi-course work: Postgres gains a `contentadmin` database (not
+  `POSTGRES_DB`, which is called "smartrag" and is already Langfuse's), the
+  Content Admin gains a connection pool and a versioned migration runner, and
+  migration 001 creates `courses`, `users`, `user_courses` and `agent_slots`.
+  Nothing reads them yet and no behaviour changes; applying and inspecting is
+  `docker exec smartrag-content-admin python3 /app/db.py migrate|status`.
+  The rules live in the schema rather than only in Python — a course id's
+  shape, ten slots per course, one chatflow per slot, one agent name per
+  course case-insensitively — because a route can forget a check and a
+  constraint cannot.
 - **The system status page links to Flowise and n8n.** Their addresses were
   otherwise only in `.env` or in an email from the day the system was
   installed. The link rides on each service's check and shows in every state,

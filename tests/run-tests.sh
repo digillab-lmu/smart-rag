@@ -59,18 +59,28 @@ done
 
 PYTHON="python3"
 if (( have_python_suite )); then
+    REQ="$REPO_ROOT/content-admin/requirements.txt"
+    STAMP="$VENV/.requirements-stamp"
     if [[ ! -x "$VENV/bin/python" ]]; then
         echo "${DIM}Creating $VENV …${RESET}"
         python3 -m venv "$VENV" || { echo "${RED}Could not create a virtualenv.${RESET}"; exit 1; }
         "$VENV/bin/pip" install --quiet --upgrade pip
-        "$VENV/bin/pip" install --quiet -r "$REPO_ROOT/content-admin/requirements.txt" \
+    fi
+    # Reinstall when requirements change. The virtualenv used to be built
+    # once and never revisited, so a dependency added to requirements.txt
+    # never reached it — the suite that needed it failed on an import, which
+    # reads as a broken test rather than a stale environment.
+    if [[ ! -f "$STAMP" || "$REQ" -nt "$STAMP" ]]; then
+        echo "${DIM}Installing test dependencies …${RESET}"
+        "$VENV/bin/pip" install --quiet -r "$REQ" \
             || { echo "${RED}Could not install test dependencies.${RESET}"; exit 1; }
+        touch "$STAMP"
     fi
     PYTHON="$VENV/bin/python"
 fi
 
 # ─── Run ─────────────────────────────────────────────────────────────────────
-passed=0; failed=0; skipped=0
+passed=0; failed=0; skipped=0; unrunnable=0
 FAILED_NAMES=()
 started=$SECONDS
 
@@ -92,6 +102,18 @@ for suite in "${SUITES[@]}"; do
         output="$(PYTHONDONTWRITEBYTECODE=1 "$PYTHON" "$suite" 2>&1)"; rc=$?
     else
         output="$(bash "$suite" 2>&1)"; rc=$?
+    fi
+
+    # Exit code 10 means the suite could not run — a precondition it does not
+    # control is missing, typically a database. Reported as its own outcome:
+    # counting it as a pass would let a whole area go untested behind a green
+    # summary, and counting it as a failure would make a normal laptop look
+    # broken.
+    if (( rc == 10 )); then
+        printf '%sskipped%s\n' "$YELLOW" "$RESET"
+        printf '      %s\n' "$(head -3 <<<"$output" | sed 's/^/  /')"
+        unrunnable=$((unrunnable + 1))
+        continue
     fi
 
     if (( rc == 0 )); then
@@ -119,6 +141,7 @@ else
     printf '%s%s%d passed, %d FAILED%s' "$BOLD" "$RED" "$passed" "$failed" "$RESET"
 fi
 (( skipped > 0 )) && printf ' %s(%d skipped by filter)%s' "$YELLOW" "$skipped" "$RESET"
+(( unrunnable > 0 )) && printf ' %s(%d could not run)%s' "$YELLOW" "$unrunnable" "$RESET"
 printf ' %sin %ds%s\n' "$DIM" "$elapsed" "$RESET"
 
 if (( failed > 0 )); then
