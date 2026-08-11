@@ -123,6 +123,18 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
   are read by a person looking through `garage bucket list-objects`. **Upgrade
   required:** re-import the n8n workflows and rebuild the Content Admin;
   re-upload anything whose archived copy matters.
+- **Langfuse ran on a ClickHouse it does not support.** `TZ="Europe/Berlin"`
+  reached postgres, clickhouse and both Langfuse services, and Langfuse
+  requires UTC for its stores — its documentation warns that queries otherwise
+  return "incorrect or empty results". Measured here: a conversation at
+  08:20:52 UTC produced a trace whose `timestamp` read `12:20:52Z` and whose
+  `updatedAt` read `10:21:08Z`, the same record wrong by four hours and by
+  two. The clocks were correct throughout; local time was being labelled `Z`.
+  Those four services now pin `TZ: "UTC"` in `environment:`, which overrides
+  the value every service inherits from `.env` through `env_file` — that
+  inheritance is how Flowise ran in Europe/Berlin without a line naming it.
+  Everything an operator reads logs from keeps the local timezone. Traces
+  already written keep their wrong timestamps.
 - **n8n's settings file is no longer world-readable inside the container.**
   `/home/node/.n8n/config` holds the encryption key that every stored
   credential — S3, SMTP, the LLM keys — is encrypted with, and n8n creates it

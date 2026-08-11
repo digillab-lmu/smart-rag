@@ -165,6 +165,28 @@ grep -q 'N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"' "$COMPOSE"
 check "n8n's settings file permissions are enforced" $? \
       "the credential encryption key stays world-readable inside the container"
 
+# ─── UTC where Langfuse requires it, local time everywhere else ─────────────
+# Langfuse does not support a non-UTC ClickHouse or Postgres — its own
+# documentation says queries then return "incorrect or empty results", and
+# this installation showed trace timestamps two hours ahead of the server
+# clock while running TZ=Europe/Berlin on both. The pin is not cosmetic and
+# must not be quietly reverted to ${TZ} for consistency's sake.
+for svc in smartrag-postgres smartrag-clickhouse smartrag-langfuse-web smartrag-langfuse-worker; do
+    block="$(awk -v s="  $svc:" '$0==s{f=1;next} f&&/^  [a-z]/{f=0} f' "$COMPOSE")"
+    grep -q 'TZ: "UTC"' <<<"$block"
+    check "$svc runs in UTC" $? "$(grep -E '^\s+TZ:' <<<"$block")"
+    grep -q 'TZ: "\${TZ}"' <<<"$block"
+    check "$svc does not take the installation timezone" $(( $? == 0 ? 1 : 0 )) ""
+done
+
+# And the reverse: the services an operator reads logs from keep local time,
+# because a UTC timestamp in a log is a small tax on every incident.
+for svc in smartrag-n8n smartrag-content-admin; do
+    block="$(awk -v s="  $svc:" '$0==s{f=1;next} f&&/^  [a-z]/{f=0} f' "$COMPOSE")"
+    grep -q 'TZ: "\${TZ}"' <<<"$block"
+    check "$svc keeps the installation timezone" $? "$(grep -E '^\s+TZ:' <<<"$block")"
+done
+
 # Nothing should be allowlisted that is neither installed nor used: it only
 # produces a warning at every start, which trains people to ignore warnings.
 if grep -q 'NODE_FUNCTION_ALLOW_EXTERNAL' "$COMPOSE"; then
