@@ -113,7 +113,9 @@ agent — a wrong-course match that looks like a successful import.
 
 **Proven by** two courses with an identically named agent, both imported: two
 distinct chatflows, each carrying its own collection and filtering on its own
-course id, and neither carrying the other's.
+course id, and neither carrying the other's. Confirmed live on 2026-08-11 —
+`SMART RAG — mathe-1 — Tutor` and `SMART RAG — chemie-1 — Tutor`, different
+chatflow ids, each holding only its own collection.
 
 **What it cost.** Nine test suites exercise slots through app.py and now need
 a database, so a local Postgres 17 — the same major version the deployment
