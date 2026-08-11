@@ -30,7 +30,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "Bearer ={{ $env.WEAVIATE_API_KEY }}"
+              "value": "=Bearer {{ $env.WEAVIATE_API_KEY }}"
             }
           ]
         },
@@ -71,7 +71,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "Bearer ={{ $env.WEAVIATE_API_KEY }}"
+              "value": "=Bearer {{ $env.WEAVIATE_API_KEY }}"
             }
           ]
         },
@@ -113,7 +113,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "Bearer ={{ $env.WEAVIATE_API_KEY }}"
+              "value": "=Bearer {{ $env.WEAVIATE_API_KEY }}"
             }
           ]
         },
@@ -235,7 +235,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "Bearer ={{ $env.WEAVIATE_API_KEY }}"
+              "value": "=Bearer {{ $env.WEAVIATE_API_KEY }}"
             }
           ]
         },
@@ -343,7 +343,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "Bearer ={{ $env.WEAVIATE_API_KEY }}"
+              "value": "=Bearer {{ $env.WEAVIATE_API_KEY }}"
             }
           ]
         },
