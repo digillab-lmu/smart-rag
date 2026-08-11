@@ -209,6 +209,11 @@ the link is used, and the link only works from this message.
     "guide_next_graph": "Set up the knowledge graph (optional)",
     # --- documents list / deletion ---------------------------------------
     "nav_doclist": "Indexed",
+    "course_none_active": "no course selected",
+    "course_switch_label": "Switch course",
+    "courses_pick_first": "That page works inside one course, and this installation has several. Pick the one to work in — the choice is remembered until you change it.",
+    "courses_state_active": "in use",
+    "courses_use": "Work in this course",
     "courses_title": "Courses",
     "courses_heading": "Courses",
     "courses_intro": "Each course has its own chunk collection and its own bucket, so one course's material can never be retrieved by another course's agents.",
@@ -561,6 +566,11 @@ dieser Nachricht.
     "guide_next_graph": "Wissensgraph einrichten (optional)",
     # --- documents list / deletion ---------------------------------------
     "nav_doclist": "Indexiert",
+    "course_none_active": "kein Kurs gewählt",
+    "course_switch_label": "Kurs wechseln",
+    "courses_pick_first": "Diese Seite arbeitet in genau einem Kurs, und hier gibt es mehrere. Wähle den Kurs, in dem du arbeiten willst — die Wahl bleibt bestehen, bis du sie änderst.",
+    "courses_state_active": "in Bearbeitung",
+    "courses_use": "In diesem Kurs arbeiten",
     "courses_title": "Kurse",
     "courses_heading": "Kurse",
     "courses_intro": "Jeder Kurs hat eine eigene Chunk-Collection und einen eigenen Bucket. Damit können die Agenten eines Kurses das Material eines anderen Kurses nicht finden.",

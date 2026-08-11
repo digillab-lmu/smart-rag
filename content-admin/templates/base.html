@@ -82,6 +82,8 @@
 
     nav { display: flex; flex-wrap: wrap; gap: 1.25rem; align-items: center; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
     nav a { text-decoration: none; font-weight: 500; }
+    .course-switch { display: inline-flex; gap: .5rem; align-items: center; font-size: .95rem; }
+    .course-switch select { padding: .15rem .3rem; font-size: .9rem; }
     h1, h2, h3 { font-weight: 700; }
     h1 { font-size: 1.4rem; color: var(--accent); }
     .error { background: #c0392b1a; border: 1px solid #c0392b; padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem; }
@@ -247,6 +249,28 @@
     <a href="{{ url_for('graph_guidance') }}">{{ t('nav_graph') }}</a>
     <a href="{{ url_for('flowise_setup') }}">{{ t('nav_flowise') }}</a>
     <span style="flex:1"></span>
+    {# Which course everything on this page applies to, and how to change it.
+       Without this the pages that need a course simply bounced to the course
+       list — the switcher existed in the view layer and was never rendered,
+       so there was no way to make the choice the redirect was waiting for. #}
+    {% if available_courses %}
+    <span class="course-switch">
+      {% if active_course %}
+        <strong>{{ active_course.name }}</strong>
+      {% else %}
+        <strong>{{ t('course_none_active') }}</strong>
+      {% endif %}
+      {% if available_courses | length > 1 %}
+      <select onchange="if(this.value) location.href=this.value" aria-label="{{ t('course_switch_label') }}">
+        <option value="">{{ t('course_switch_label') }}…</option>
+        {% for c in available_courses %}
+        <option value="{{ url_for('use_course', course_id=c.id) }}"
+                {% if active_course and c.id == active_course.id %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+      {% endif %}
+    </span>
+    {% endif %}
     <a href="{{ url_for('logout') }}">{{ t('nav_logout') }}</a>
   </nav>
   {% endif %}
