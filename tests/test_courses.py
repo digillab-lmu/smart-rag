@@ -38,6 +38,13 @@ env_path.write_text(
     'GARAGE_ADMIN_TOKEN="admin-token-not-real"\n'
     'GARAGE_ACCESS_KEY="GKtestingestkey"\n'
     'WEAVIATE_API_KEY="weaviate-key"\nWEAVIATE_HTTP_PORT="8080"\n'
+    # The import path resolves a provider from .env before it substitutes
+    # anything, so the agent half of this suite needs one.
+    'LLM_PROVIDER="openai"\nLLM_MODEL_STRONG="gpt-4o"\nLLM_MODEL_FAST="gpt-4o-mini"\n'
+    'LLM_API_KEY="sk-test"\n'
+    'EMBEDDING_PROVIDER="openai"\nEMBEDDING_MODEL="text-embedding-3-small"\n'
+    'EMBEDDING_API_KEY="sk-embed-test"\n'
+    'CONTENT_ADMIN_SESSION_SECRET="test-secret-not-real"\n'
 )
 os.environ["SMARTRAG_ENV_PATH"] = str(env_path)
 
@@ -342,6 +349,82 @@ check("…and says what is wrong",
 check("the page requires a login",
       flask_app.app.test_client().get("/courses").status_code in (302, 401),
       "anyone could list every course")
+
+# ─── Two courses, one agent name ─────────────────────────────────────────────
+# The failure this whole phase is about. Flowise's chatflow names are global
+# and upsert_chatflow finds an existing flow by name, so two courses with an
+# agent called "Tutor" would be one chatflow — each import overwriting the
+# other, and reporting success both times.
+import storage  # noqa: E402
+import agent_templates  # noqa: E402
+
+reset()
+wf, gf = FakeWeaviate(), FakeGarage()
+a = courses.create_course("kurs-a", "Kurs A", weaviate=wf, garage=gf)
+b = courses.create_course("kurs-b", "Kurs B", weaviate=wf, garage=gf)
+
+ARCH = "agent-11-expert-feedback.json"
+CONTENT = {"EXPERT_DOMAIN": "d", "EXPERT_KNOWLEDGE_DESCRIPTION": "d",
+           "CONCEPT_LIST": "c", "RESPONSE_LANGUAGE_RULE": "r",
+           "STUDENT_ROLE": "s"}
+for cid in ("kurs-a", "kurs-b"):
+    storage.save_slot(cid, 1, ARCH, CONTENT, "Tutor", None)
+
+
+class RecordingFlowise:
+    def __init__(self):
+        self.flows: dict[str, str] = {}
+
+    def upsert_credential(self, *a, **kw):
+        return "cred-id"
+
+    def get_or_create_variable(self, *a, **kw):
+        return "var-id"
+
+    def upsert_chatflow(self, name, flow_data, analytic=None):
+        self.flows[name] = flow_data
+        return f"cf-{len(self.flows)}", True
+
+
+fl = RecordingFlowise()
+# A request context because the import path formats its messages with t(),
+# which reads the language from the request.
+with flask_app.app.test_request_context("/"):
+    for course in (a, b):
+        err = flask_app._do_import(course, 1, ARCH, fl)
+        check(f"importing into {course['id']} succeeds", err is None, str(err))
+
+check("two courses produce two chatflows", len(fl.flows) == 2, list(fl.flows))
+check("…and each name carries its course",
+      all(cid in n for cid, n in zip(("kurs-a", "kurs-b"), sorted(fl.flows))),
+      sorted(fl.flows))
+
+# The point of separate collections: each agent must search its own.
+for course in (a, b):
+    name = next(n for n in fl.flows if course["id"] in n)
+    body = fl.flows[name]
+    check(f"{course['id']}'s agent searches its own collection",
+          course["collection"] in body, course["collection"])
+    other = b if course is a else a
+    check(f"…and not {other['id']}'s",
+          other["collection"] not in body, other["collection"])
+    # The retrieval filter is JSON inside a JSON string, so the quotes around
+    # the value arrive escaped. Normalising is the difference between
+    # checking the value and checking the escaping.
+    flat = body.replace("\\", "")
+    check(f"{course['id']}'s agent filters on its own course id",
+          f'"property": "course_id"' in flat and f'"value": "{course["id"]}"' in flat,
+          [x for x in flat.split(",") if "course_id" in x][:1])
+    check(f"…and not on {other['id']}'s",
+          f'"value": "{other["id"]}"' not in flat, other["id"])
+
+# And the slots did not bleed into each other.
+check("each course keeps its own chatflow id",
+      storage.get_slot("kurs-a", 1)["chatflow_id"]
+      != storage.get_slot("kurs-b", 1)["chatflow_id"],
+      storage.get_slot("kurs-a", 1)["chatflow_id"])
+check("the chatflow can be traced back to its course",
+      storage.course_of_chatflow(storage.get_slot("kurs-b", 1)["chatflow_id"]) == "kurs-b")
 
 reset()
 db.close_pool()

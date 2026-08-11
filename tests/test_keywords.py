@@ -29,6 +29,16 @@ os.environ["SMARTRAG_SLOTS_PATH"] = str(Path(tmpdir) / "slots.json")
 os.environ["SMARTRAG_TEMPLATES_DIR"] = str(Path(APP_DIR).parent / "flowise" / "agents")
 os.environ["CONTENT_ADMIN_SESSION_SECRET"] = "test-secret-not-real"
 
+# ─── A database, because agent slots live in one now ─────────────────────────
+# Slots moved out of slots.json into Postgres, so this suite needs a database
+# and a course for the slots to belong to. dbfixture arranges both, or exits
+# 10 — "could not run" rather than a pass that covered nothing.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import dbfixture  # noqa: E402
+_db, COURSE = dbfixture.require_database()
+dbfixture.clear_slots(_db)
+COURSE_ID = COURSE["id"]
+
 import app as flask_app_module  # noqa: E402
 import llm_client  # noqa: E402
 import storage  # noqa: E402
@@ -192,7 +202,7 @@ check("stashed scan text is reused",
       m.call_args[0][2] == "Front matter from the scanned PDF.", m.call_args)
 
 # The stash must actually be filled by a real scan, and capped.
-storage.save_slot(1, "agent-11-expert-feedback.json", {"EXPERT_DOMAIN": "x"}, "A", None)
+storage.save_slot(COURSE_ID, 1, "agent-11-expert-feedback.json", {"EXPERT_DOMAIN": "x"}, "A", None)
 with client.session_transaction() as sess:
     sess.pop("last_scan_text", None)
 with mock.patch.object(flask_app_module.citation, "scan_pdf",

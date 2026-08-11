@@ -47,6 +47,16 @@ os.environ["SMARTRAG_INGEST_STATUS_PATH"] = str(Path(tmpdir) / "ingest-status.js
 os.environ["SMARTRAG_TEMPLATES_DIR"] = str(Path(APP_DIR).parent / "flowise" / "agents")
 os.environ["CONTENT_ADMIN_SESSION_SECRET"] = "test-secret-not-real"
 
+# ─── A database, because agent slots live in one now ─────────────────────────
+# Slots moved out of slots.json into Postgres, so this suite needs a database
+# and a course for the slots to belong to. dbfixture arranges both, or exits
+# 10 — "could not run" rather than a pass that covered nothing.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import dbfixture  # noqa: E402
+_db, COURSE = dbfixture.require_database()
+dbfixture.clear_slots(_db)
+COURSE_ID = COURSE["id"]
+
 import app as flask_app_module  # noqa: E402
 import ingest_status  # noqa: E402
 

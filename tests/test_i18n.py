@@ -29,6 +29,15 @@ os.environ["SMARTRAG_TEMPLATES_DIR"] = str(Path(APP_DIR).parent / "flowise" / "a
 os.environ["CONTENT_ADMIN_SESSION_SECRET"] = "test-secret-not-real"
 
 import agent_templates  # noqa: E402
+# ─── A database, because the slot pages need a course ────────────────────────
+# /slot/<n> resolves an active course now and redirects to the course list
+# when there is none, so this suite needs one to reach the page it checks.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import dbfixture  # noqa: E402
+_db, COURSE = dbfixture.require_database()
+dbfixture.clear_slots(_db)
+COURSE_ID = COURSE["id"]
+
 import app as flask_app_module  # noqa: E402
 import i18n  # noqa: E402
 
