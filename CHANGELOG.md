@@ -61,7 +61,13 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
   legitimately takes a few more seconds because n8n serves `healthz` before it
   finishes registering webhooks. The webhook is now polled for up to 30 more
   seconds (`N8N_WEBHOOK_SETTLE`), and if it still answers something unknown
-  the message says n8n is up and quotes the reply verbatim.
+  the message says n8n is up and quotes the reply verbatim. That wait now
+  covers n8n's own "is not registered" too — the same transient in n8n's
+  words, which the first version took as final and aborted an install whose
+  webhook answered correctly moments later. It says once that it is waiting,
+  because a silent half-minute after "n8n restarted" reads as a hang, and the
+  next move is Ctrl-C in the middle of the step that decides whether uploads
+  work.
 - **ChatHistory sync could never have worked.** Its first live run failed with
   a 401 from Weaviate, and the cause was in the source all along: the Code
   node sent `Bearer ={{ $env.WEAVIATE_API_KEY }}` — n8n does not evaluate
