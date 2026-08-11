@@ -233,6 +233,49 @@ installation predating that check got no warning at all.
 
 ---
 
+## Langfuse timestamps are hours off, or a time range shows nothing
+
+**Symptom.** A trace's time does not match when the conversation happened;
+filtering by "last hour" returns nothing, or two fields of the same trace
+disagree. Measured on this project: the event happened at 08:20:52 UTC, the
+trace's `timestamp` read `12:20:52Z` and its `updatedAt` `10:21:08Z` — the
+same record wrong by four hours and by two.
+
+**Cause.** ClickHouse or Postgres running in a non-UTC timezone. Langfuse
+does not support that and says so: queries return "incorrect or empty
+results"
+([docs](https://langfuse.com/faq/all/self-hosting-timezone-errors)). The
+clock is not wrong — local time is being labelled `Z`.
+
+```bash
+docker exec smartrag-clickhouse clickhouse-client --user "$CLICKHOUSE_USER" \
+  --password "$CLICKHOUSE_PASSWORD" --query "SELECT timezone()"
+```
+
+Anything but `UTC` is the answer.
+
+**Fix.** Current versions pin `TZ: "UTC"` on postgres, clickhouse and both
+Langfuse services. Pull and recreate them:
+
+```bash
+cd /srv/smart-rag && git pull
+bash scripts/compose.sh up -d --force-recreate smartrag-clickhouse \
+     smartrag-langfuse-web smartrag-langfuse-worker
+```
+
+Two caveats. Traces already written keep their wrong timestamps — the fix
+stops new ones being wrong, it does not correct history. And Postgres reads
+its timezone once, when its data directory is created, so an existing
+installation keeps the old setting there until it is reinstalled; Langfuse
+keeps only metadata in Postgres, so the visible symptom goes away with
+ClickHouse.
+
+**Why not set the whole stack to UTC.** n8n, the Content Admin and the rest
+keep the installation's timezone on purpose: a local timestamp in a log is
+what somebody reading it at 2am wants.
+
+---
+
 ## The GUI shows "SyntaxError: JSON.parse: unexpected character"
 
 **Symptom.** A browser error where a result was expected.

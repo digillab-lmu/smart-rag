@@ -175,7 +175,9 @@ services:
       POSTGRES_USER: "${POSTGRES_USER}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
       POSTGRES_DB: "${POSTGRES_DB}"
-      TZ: "${TZ}"
+      # UTC for the same reason as smartrag-clickhouse: Langfuse does
+      # not support a non-UTC store.
+      TZ: "UTC"
     volumes:
       - ${BASE_DATA_PATH}/postgres/data:/var/lib/postgresql/data
       # Creates the "flowise" and "n8n" databases on first init — the image
@@ -683,7 +685,22 @@ services:
     environment:
       CLICKHOUSE_USER: "${CLICKHOUSE_USER}"
       CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD}"
-      TZ: "${TZ}"
+      # UTC, not the installation's timezone. Langfuse does not support a
+      # non-UTC ClickHouse or Postgres: its own documentation says queries
+      # then return "incorrect or empty results"
+      # (langfuse.com/self-hosting/deployment/infrastructure/clickhouse,
+      # langfuse.com/faq/all/self-hosting-timezone-errors). Observed here as
+      # trace timestamps two hours ahead of the server clock.
+      #
+      # Note this has to be set in `environment:`, not left to env_file:
+      # every service using env_file inherits TZ from .env, which is how
+      # Flowise ended up in Europe/Berlin without a line naming it. An
+      # `environment:` entry wins over env_file, so this pin holds.
+      #
+      # Only the stores and the Langfuse services are pinned. n8n, the
+      # Content Admin and the rest keep ${TZ}, where a local timestamp in a
+      # log is what an operator wants.
+      TZ: "UTC"
     volumes:
       - ${BASE_DATA_PATH}/clickhouse/data:/var/lib/clickhouse
     networks: [smart-rag-network]
@@ -719,7 +736,9 @@ services:
       CLICKHOUSE_USER: "${CLICKHOUSE_USER}"
       CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD}"
       CLICKHOUSE_CLUSTER_ENABLED: "${CLICKHOUSE_CLUSTER_ENABLED}"
-      TZ: "${TZ}"
+      # UTC for the same reason as smartrag-clickhouse: Langfuse does
+      # not support a non-UTC store.
+      TZ: "UTC"
     volumes:
       - ${BASE_DATA_PATH}/langfuse/web:/app/data
     ports:
@@ -763,7 +782,9 @@ services:
       CLICKHOUSE_USER: "${CLICKHOUSE_USER}"
       CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD}"
       CLICKHOUSE_CLUSTER_ENABLED: "${CLICKHOUSE_CLUSTER_ENABLED}"
-      TZ: "${TZ}"
+      # UTC for the same reason as smartrag-clickhouse: Langfuse does
+      # not support a non-UTC store.
+      TZ: "UTC"
     volumes:
       - ${BASE_DATA_PATH}/langfuse/worker:/app/data
     networks: [smart-rag-network]
