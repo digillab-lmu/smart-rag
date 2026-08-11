@@ -52,6 +52,18 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **ChatHistory sync could never have worked.** Its first live run failed with
+  a 401 from Weaviate, and the cause was in the source all along: the Code
+  node sent `Bearer ={{ $env.WEAVIATE_API_KEY }}` — n8n does not evaluate
+  expressions inside a Code node, so Weaviate received those 29 characters as
+  the token. Behind it were three more that would each have failed the next
+  run: the cursor object does not exist on a fresh installation, so the read
+  was a 404 that threw and the write was a 404 that could never create it; and
+  the deduplication query pasted a hash into GraphQL unquoted. Weaviate's port
+  was also hard-coded in three workflows although it follows
+  `WEAVIATE_HTTP_PORT` — unlike Docling, markdowncleaner and the Content
+  Admin, whose ports have no compose mapping and are properties of their
+  images.
 - **The memory and observability workflows were never installed.** The
   deployer read `workflows-ingest/` only, while `n8n/workflows/README.md`
   stated that bootstrap imported them automatically — so cross-agent chat
