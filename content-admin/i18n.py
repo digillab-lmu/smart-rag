@@ -210,6 +210,7 @@ the link is used, and the link only works from this message.
     "guide_next_graph": "Set up the knowledge graph (optional)",
     # --- documents list / deletion ---------------------------------------
     "nav_doclist": "Vector DB",
+    "course_selected": "Selected course",
     "course_none_active": "no course selected",
     "course_switch_label": "Switch course",
     "courses_pick_first": "That page works inside one course, and this installation has several. Pick the one to work in — the choice is remembered until you change it.",
@@ -568,6 +569,7 @@ dieser Nachricht.
     "guide_next_graph": "Wissensgraph einrichten (optional)",
     # --- documents list / deletion ---------------------------------------
     "nav_doclist": "Vektor-DB",
+    "course_selected": "Ausgewählter Kurs",
     "course_none_active": "kein Kurs gewählt",
     "course_switch_label": "Kurs wechseln",
     "courses_pick_first": "Diese Seite arbeitet in genau einem Kurs, und hier gibt es mehrere. Wähle den Kurs, in dem du arbeiten willst — die Wahl bleibt bestehen, bis du sie änderst.",
