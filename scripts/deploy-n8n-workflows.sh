@@ -372,11 +372,28 @@ while (( verify_waited < VERIFY_TIMEOUT )); do
 done
 
 if (( n8n_back )); then
+    # Only "registered" ends the wait. The other two answers are both
+    # legitimate transients right after a restart: n8n serves healthz before
+    # it has registered any webhook, and until it has, the probe gets either
+    # nothing at all or n8n's own "is not registered" — which is also what a
+    # genuinely inactive workflow returns. The two cannot be told apart in a
+    # single reading, only by waiting: this aborted an install whose webhook
+    # answered correctly moments later, because the first version of this
+    # loop treated "unregistered" as final.
     settle_waited=0
+    settle_announced=0
     while true; do
         verify_state="$(n8n_webhook_state "$N8N_LOCAL_URL")"
-        [[ "$verify_state" != "unreachable" ]] && break
+        [[ "$verify_state" == "registered" ]] && break
         (( settle_waited >= WEBHOOK_SETTLE )) && break
+        # Said once, when it turns out there is something to wait for. A
+        # silent pause of half a minute after "n8n restarted" reads as a
+        # hang, and the operator's next move is Ctrl-C — in the middle of
+        # the one step that decides whether uploads work.
+        if (( ! settle_announced )); then
+            info "$(t n8n_verify_settling "$WEBHOOK_SETTLE")"
+            settle_announced=1
+        fi
         sleep 3
         settle_waited=$(( settle_waited + 3 ))
     done

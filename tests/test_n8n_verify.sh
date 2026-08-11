@@ -20,7 +20,8 @@ REGISTERED='{"code":404,"message":"This webhook is not registered for GET reques
 NOT_REGISTERED='{"code":404,"message":"The requested webhook \"GET document-ingest\" is not registered.","hint":"The workflow must be active"}'
 
 setup() { # $1 = docker-exec behaviour, $2 = webhook body, $3 = healthz (ok|down)
-         #   $4 = number of probes answered with silence first (default 0)
+         #   $4 = probes answered with $5 before $2 (default 0)
+         #   $5 = what those early probes answer (default: nothing)
     SANDBOX="$(mktemp -d)"
     # Both workflow directories: the deployer imports the ingest pipeline and
     # the memory/observability workflows, and a missing directory is a hard
@@ -84,6 +85,9 @@ url="\${!#}"
 case "\$url" in
   *healthz*) [[ "$3" == "ok" ]] && exit 0 || exit 7 ;;
   *webhook/document-ingest*)
+      # \$5 chooses what the silent probes answer: '' (nothing at all) or
+      # n8n's own "is not registered", which is what it really says between
+      # serving healthz and finishing activation.
       # A webhook that only registers on the Nth probe, so the settle window
       # is exercised rather than assumed. n8n serves healthz before it has
       # finished registering webhooks, so the first probe after a restart
@@ -91,7 +95,7 @@ case "\$url" in
       n=0
       [[ -f "$SANDBOX/webhook-probes" ]] && n=\$(cat "$SANDBOX/webhook-probes")
       n=\$(( n + 1 )); echo "\$n" > "$SANDBOX/webhook-probes"
-      if (( n <= ${4:-0} )); then printf ''; else printf '%s' '$2'; fi
+      if (( n <= ${4:-0} )); then printf '%s' '${5:-}'; else printf '%s' '$2'; fi
       exit 0 ;;
 esac
 exit 0
@@ -99,8 +103,8 @@ STUB
     chmod +x "$SANDBOX/bin/curl"
 }
 
-run() { # $1 docker-exec-creds behaviour, $2 webhook body, $3 healthz, $4 silent probes
-    setup "$1" "$2" "$3" "${4:-0}"
+run() { # $1 creds behaviour, $2 webhook body, $3 healthz, $4 early probes, $5 early body
+    setup "$1" "$2" "$3" "${4:-0}" "${5:-}"
     # Short timeout: the wait loop's duration isn't what's under test, and
     # the default 180s would make this suite unusable.
     ( cd "$SANDBOX" && PATH="$SANDBOX/bin:$PATH" N8N_VERIFY_TIMEOUT=6 \
@@ -203,6 +207,21 @@ out="$(N8N_WEBHOOK_SETTLE=30 run "$CREDS_OK" "$REGISTERED" ok 2; echo "RC=$RC")"
 grep -q "RC=0" <<<"$out"
 check "a webhook that registers a moment later is waited for" $? \
       "$(tail -4 <<<"$out")"
+
+# "not registered" right after a restart is the same transient wearing n8n's
+# own words, and treating it as final aborted an install whose webhook was
+# fine moments later.
+out="$(N8N_WEBHOOK_SETTLE=30 run "$CREDS_OK" "$REGISTERED" ok 2 "$NOT_REGISTERED"; echo "RC=$RC")"
+grep -q "RC=0" <<<"$out"
+check "a webhook that says 'not registered' at first is waited for" $? \
+      "$(tail -4 <<<"$out")"
+
+# But a workflow that really is inactive must still be reported, not waited
+# into a success.
+out="$(N8N_WEBHOOK_SETTLE=3 run "$CREDS_OK" "$NOT_REGISTERED" ok; echo "RC=$RC")"
+grep -q "RC=0" <<<"$out"
+check "a genuinely inactive workflow is still a failure" $(( $? == 0 ? 1 : 0 )) \
+      "$(tail -3 <<<"$out")"
 
 # When n8n really is absent, the timeout message is the right one.
 out="$(run "$CREDS_OK" "$REGISTERED" down; echo "RC=$RC")"
