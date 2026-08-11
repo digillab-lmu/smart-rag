@@ -59,7 +59,7 @@ LTI is in use the legal basis for identifying learners has to be settled
 first. That is recorded in the workflow README and is not a technical
 question.
 
-## Phase 1 · The data layer
+## Phase 1 · The data layer (completed 2026-08-11)
 
 Database `smartrag` in `postgres-init`, `psycopg[binary]` in the Content
 Admin, a `db.py` with a connection pool, and a small versioned migration
@@ -70,12 +70,15 @@ the same software.
 
 Tables: `courses`, `users`, `user_courses`, `agent_slots`.
 
-**Proven by** tests against a real Postgres rather than a mock, including two
-writers at once — concurrency is the reason for leaving JSON, so a test suite
-that never runs two writers has not tested the decision. The system behaves
-exactly as before at the end of this phase; nothing reads the new tables yet.
+**Proven** against the installation's own Postgres: migrating twice applies
+nothing the second time, three simultaneous migrations record each step
+exactly once, every schema constraint refuses what it should, and four
+concurrent writers all keep their values — the case JSON loses silently.
 
-## Phase 2 · A course becomes an object
+The database is called `contentadmin`, not `smartrag` as this plan first
+said: that name is `POSTGRES_DB` and already belongs to Langfuse.
+
+## Phase 2 · A course becomes an object (completed 2026-08-11)
 
 Create and list courses. Creating one has real side effects: a Weaviate
 collection from the `__COLLECTION_NAME__` template, a Garage bucket with a
@@ -86,9 +89,20 @@ effects first, then the record, and on failure a message naming what already
 exists. A half-created course that looks whole is worse than a failed
 creation.
 
-**Proven by** creating two courses and checking both collections and both
-buckets on the live system; then creating one with Garage stopped, and
-checking that nothing is left behind that the next attempt will trip over.
+**Proven** twice over. The four failure paths — bucket fails after the
+collection, grant fails, grant reports success and does nothing, second
+attempt on a half-made course — against stubs that can fail on demand. Then
+live: two courses created from the GUI produced `Chunks_mathe_1` and
+`Chunks_chemie_1` in Weaviate, `mathe-1-rag` and `chemie-1-rag` in Garage,
+and `RWO` for the ingest key on both. That last run was the first real
+exercise of Garage's admin API, which until then had only been derived from
+its OpenAPI document.
+
+**Decided against the plan.** This section said side effects first, then the
+record. The record goes first, with `provisioned_at` NULL until the rest is
+done: written last, a crash between the collection and the bucket leaves a
+collection nobody has a record of, and the next attempt either collides with
+it or adopts it silently.
 
 ## Phase 3 · Slots and agents per course
 
