@@ -68,6 +68,9 @@ class N8nClient:
         force_ocr: bool = False,
         notify_email: str = "",
         job_id: str = "",
+        course_id: str = "",
+        collection: str = "",
+        bucket: str = "",
     ) -> None:
         """
         Forwards one uploaded file plus its metadata to the ingest webhook.
@@ -103,5 +106,15 @@ class N8nClient:
         # would otherwise share a row.
         if job_id:
             data["job_id"] = job_id
+        # Where this document belongs. Sent with the upload rather than read
+        # from n8n's environment: the environment holds one course for the
+        # whole installation, which is exactly what made every upload land in
+        # the first course no matter which one was selected.
+        if course_id:
+            data["course_id"] = course_id
+        if collection:
+            data["collection"] = collection
+        if bucket:
+            data["bucket"] = bucket
 
         self._request("POST", "/webhook/document-ingest", files=files, data=data)

@@ -251,6 +251,64 @@ schemas = (REPO / "scripts" / "deploy-schemas.sh").read_text()
 check("deploy-schemas.sh still leaves existing classes alone",
       "exists" in schemas.lower(), "if this changed, re-check the migration's premise")
 
+# ─── The ingest takes the course from the request, not the environment ──────
+# Until this held, every upload landed in whichever course .env named — the
+# selected course affected only what was displayed. It was found the way such
+# things are found: a document uploaded into a new course arrived in the old
+# one, and the new course's list correctly showed nothing.
+import json as _json  # noqa: E402
+
+doc = _json.load(open(REPO / "n8n" / "workflows-ingest" / "ingest-document.json"))
+sub = _json.load(open(REPO / "n8n" / "workflows-ingest" / "ingest-chunk-and-embed.json"))
+by_doc = {n["name"]: n for n in doc["nodes"]}
+by_sub = {n["name"]: n for n in sub["nodes"]}
+
+bucket_param = by_doc["Upload to object storage"]["parameters"]["bucketName"]
+check("the bucket comes from the upload",
+      "body.bucket" in bucket_param, bucket_param)
+
+frontmatter = by_doc["Build Frontmatter"]["parameters"]["jsCode"]
+for field in ("course_id", "collection", "bucket"):
+    line = [l for l in frontmatter.split("\n")
+            if l.strip().startswith(f"{field}:")]
+    check(f"the metadata's {field} comes from the upload",
+          line and "trigger." in line[0], line[:1])
+
+chunking = by_sub["Chunking"]["parameters"]["jsCode"]
+check("a chunk's course comes from the document's metadata",
+      "meta.course_id" in chunking, "")
+
+embed = by_sub["Embed + Write to Weaviate"]["parameters"]["jsCode"]
+check("the collection written to comes from the document's metadata",
+      "_meta.collection" in embed, "")
+# The metadata is not on the item by then — Chunking emits chunk properties —
+# so it has to be read from the trigger. Getting this wrong is silent: the
+# fallback is the environment, which writes into another course's collection
+# and reports success.
+check("…and is read from the trigger, where it still exists",
+      "$('When Called by Document Ingest')" in embed, embed[:200])
+
+# Every one of these keeps an environment fallback so a single-course
+# installation is unaffected — but the fallback must be second, not first.
+for name, code in (("Build Frontmatter", frontmatter),
+                   ("Chunking", chunking),
+                   ("Embed + Write to Weaviate", embed)):
+    for line in code.split("\n"):
+        if "$env.COURSE_ID" in line or "$env.WEAVIATE_COLLECTION_NAME" in line:
+            check(f"{name}: the environment is only a fallback",
+                  "||" in line and line.index("$env") > line.index("||"),
+                  line.strip()[:90])
+
+# And the Content Admin has to send them at all.
+client_src = (REPO / "content-admin" / "n8n_client.py").read_text()
+for field in ("course_id", "collection", "bucket"):
+    check(f"the upload sends {field}", f'data["{field}"]' in client_src, "")
+app_src = (REPO / "content-admin" / "app.py").read_text()
+check("the upload route sends the selected course",
+      'course_id=g.course["id"]' in app_src
+      and 'collection=g.course["collection"]' in app_src
+      and 'bucket=g.course["bucket"]' in app_src, "")
+
 if failures:
     print("FAILURES:")
     for f in failures:

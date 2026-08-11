@@ -13,6 +13,15 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Added
 
+- **Uploads went to whichever course `.env` named.** The selected course
+  governed what was displayed and nothing else: the ingest workflow read the
+  collection, the course id and the bucket from n8n's environment, which
+  holds one course for the whole installation. A document uploaded into a new
+  course therefore arrived in the original one — with the upload reporting
+  success and the new course's list correctly showing nothing. All three now
+  travel with the upload. An installation with a single course is unaffected:
+  the environment remains as a fallback, second in each expression rather
+  than first. **Upgrade required:** re-import the n8n workflows.
 - **The progress table showed another course's uploads, and kept finished
   ones.** Progress rows carried no course, so a document being processed in
   one course appeared while a different course was selected — next to a

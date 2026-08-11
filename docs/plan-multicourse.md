@@ -125,7 +125,7 @@ fake: a stubbed Flowise that returned one chatflow id for every slot, which
 the unique index refuses, and rightly — two slots on one chatflow means each
 import silently overwrites the other.
 
-## Phase 4 · Ingest per course
+## Phase 4 · Ingest per course (built 2026-08-11, live proof pending)
 
 The upload carries the course; the workflow takes `course_id`, the collection
 and the bucket **from the request** instead of `$env`. Progress rows carry the
