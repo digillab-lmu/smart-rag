@@ -284,3 +284,9 @@ if __name__ == "__main__":
     except DatabaseError as exc:
         print(str(exc))
         sys.exit(1)
+    finally:
+        # Without this the process exits with the pool's worker threads still
+        # running, and psycopg prints four "couldn't stop thread" hints after
+        # the result — which makes a migration that worked look like one that
+        # did not.
+        close_pool()
