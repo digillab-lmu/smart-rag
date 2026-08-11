@@ -24,7 +24,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://smartrag-weaviate:8080/v1/graphql",
+        "url": "=http://smartrag-weaviate:{{ $env.WEAVIATE_HTTP_PORT || 8080 }}/v1/graphql",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -51,7 +51,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const groups = $input.first().json?.data?.Aggregate?.ChatHistory || [];\nif (!groups || groups.length === 0) return [];\nreturn groups\n  .filter(g => g.groupedBy?.value)\n  .map(g => {\n    const user_id = g.groupedBy.value;\n    return {\n      json: {\n        user_id,\n        um_query_body: {\n          query: `{ Get { UserMemory( where: { path: [\"user_id\"] operator: Equal valueText: \"${user_id}\" } limit: 1 ) { _additional { id } user_id concepts_mastered concepts_struggling open_questions learning_patterns summary last_updated chapter } } }`\n        }\n      }\n    };\n  });"
+        "jsCode": "const groups = $input.first().json?.data?.Aggregate?.ChatHistory || [];\nif (!groups || groups.length === 0) return [];\nreturn groups\n  .filter(g => g.groupedBy?.value)\n  .map(g => {\n    const user_id = g.groupedBy.value;\n    return {\n      json: {\n        user_id,\n        um_query_body: {\n          query: `{ Get { UserMemory( where: { path: [\"user_id\"] operator: Equal valueText: ${JSON.stringify(String(user_id ?? ''))} } limit: 1 ) { _additional { id } user_id concepts_mastered concepts_struggling open_questions learning_patterns summary last_updated chapter } } }`\n        }\n      }\n    };\n  });"
       },
       "id": "7fcc23b8-fc19-46db-af83-7ae786fd4563",
       "name": "Extract user_ids",
@@ -65,7 +65,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://smartrag-weaviate:8080/v1/graphql",
+        "url": "=http://smartrag-weaviate:{{ $env.WEAVIATE_HTTP_PORT || 8080 }}/v1/graphql",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -93,7 +93,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const response = $input.item.json;\nconst user_id = $('Extract user_ids').item.json.user_id;\nconst memData = response?.data?.Get?.UserMemory || [];\n\nlet memory_id = null;\nlet last_updated = '1970-01-01T00:00:00.000Z';\nlet existing = {\n  concepts_mastered: [],\n  concepts_struggling: [],\n  open_questions: [],\n  learning_patterns: '',\n  summary: ''\n};\n\nif (memData.length > 0) {\n  const mem = memData[0];\n  memory_id = mem._additional?.id || null;\n  last_updated = mem.last_updated || '1970-01-01T00:00:00.000Z';\n  existing = {\n    concepts_mastered: mem.concepts_mastered || [],\n    concepts_struggling: mem.concepts_struggling || [],\n    open_questions: mem.open_questions || [],\n    learning_patterns: mem.learning_patterns || '',\n    summary: mem.summary || ''\n  };\n}\n\nconst ch_query_body = {\n  query: `{ Get { ChatHistory( where: { operator: And operands: [ { path: [\"user_id\"] operator: Equal valueText: \"${user_id}\" } { path: [\"timestamp\"] operator: GreaterThan valueText: \"${last_updated}\" } ] } sort: [{ path: [\"timestamp\"] order: asc }] limit: 500 ) { user_id role text timestamp chapter concepts_mentioned } } }`\n};\n\nreturn {\n  json: {\n    user_id,\n    memory_id,\n    last_updated,\n    existing,\n    ch_query_body\n  }\n};"
+        "jsCode": "const response = $input.item.json;\nconst user_id = $('Extract user_ids').item.json.user_id;\nconst memData = response?.data?.Get?.UserMemory || [];\n\nlet memory_id = null;\nlet last_updated = '1970-01-01T00:00:00.000Z';\nlet existing = {\n  concepts_mastered: [],\n  concepts_struggling: [],\n  open_questions: [],\n  learning_patterns: '',\n  summary: ''\n};\n\nif (memData.length > 0) {\n  const mem = memData[0];\n  memory_id = mem._additional?.id || null;\n  last_updated = mem.last_updated || '1970-01-01T00:00:00.000Z';\n  existing = {\n    concepts_mastered: mem.concepts_mastered || [],\n    concepts_struggling: mem.concepts_struggling || [],\n    open_questions: mem.open_questions || [],\n    learning_patterns: mem.learning_patterns || '',\n    summary: mem.summary || ''\n  };\n}\n\nconst ch_query_body = {\n  query: `{ Get { ChatHistory( where: { operator: And operands: [ { path: [\"user_id\"] operator: Equal valueText: ${JSON.stringify(String(user_id ?? ''))} } { path: [\"timestamp\"] operator: GreaterThan valueText: ${JSON.stringify(String(last_updated ?? ''))} } ] } sort: [{ path: [\"timestamp\"] order: asc }] limit: 500 ) { user_id role text timestamp chapter concepts_mentioned } } }`\n};\n\nreturn {\n  json: {\n    user_id,\n    memory_id,\n    last_updated,\n    existing,\n    ch_query_body\n  }\n};"
       },
       "id": "baef8b11-952b-46cc-acb0-79ecbebaccfe",
       "name": "Process Memory",
@@ -107,7 +107,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://smartrag-weaviate:8080/v1/graphql",
+        "url": "=http://smartrag-weaviate:{{ $env.WEAVIATE_HTTP_PORT || 8080 }}/v1/graphql",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -229,7 +229,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://smartrag-weaviate:8080/v1/objects",
+        "url": "=http://smartrag-weaviate:{{ $env.WEAVIATE_HTTP_PORT || 8080 }}/v1/objects",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -337,7 +337,7 @@
     {
       "parameters": {
         "method": "DELETE",
-        "url": "={{ 'http://smartrag-weaviate:8080/v1/objects/UserMemory/' + $json.old_memory_id }}",
+        "url": "={{ 'http://smartrag-weaviate:{{ $env.WEAVIATE_HTTP_PORT || 8080 }}/v1/objects/UserMemory/' + $json.old_memory_id }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [

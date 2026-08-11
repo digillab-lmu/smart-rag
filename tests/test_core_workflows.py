@@ -147,6 +147,113 @@ if "langfuse-userid-patch.json" in loaded:
           "LANGFUSE_ENABLED" in DEPLOYER
           and "observability" in DEPLOYER, "")
 
+# ─── Rules that hold for every workflow, not just these ─────────────────────
+ALL = sorted(Path(REPO / "n8n").glob("workflows*/*.json"))
+
+
+def code_lines(src: str):
+    """The lines that are actually code, and whether each sits inside a
+    template literal.
+
+    Comments have to come out first: this file's own explanations quote the
+    broken syntax they describe, and a check that cannot tell a warning from
+    an occurrence flags the warning. And `${...}` is only wrong outside a
+    template literal, which spans lines — so backticks are counted, not
+    looked for on the line itself."""
+    in_template = False
+    in_block_comment = False
+    for raw in src.split("\n"):
+        line = raw
+        if in_block_comment:
+            if "*/" in line:
+                line = line.split("*/", 1)[1]
+                in_block_comment = False
+            else:
+                continue
+        if "/*" in line and not in_template:
+            before = line.split("/*", 1)[0]
+            in_block_comment = "*/" not in line
+            line = before
+        stripped = line.strip()
+        if not in_template and stripped.startswith("//"):
+            continue
+        # Deliberately no trailing-comment stripping. The first version cut
+        # every line at its first "//" — which in `http://smartrag-weaviate`
+        # is the scheme separator, not a comment. That removed a backtick,
+        # inverted the template-literal parity for the whole rest of the
+        # node, and reported a correct line as broken. A false positive in a
+        # rule about correctness is worse than no rule: it gets the rule
+        # deleted.
+        was_in_template = in_template
+        yield line, was_in_template
+        in_template ^= (line.count("`") % 2 == 1)
+
+
+for path in ALL:
+    d = json.loads(path.read_text())
+    fname = path.name
+    for n in d["nodes"]:
+        p = n.get("parameters", {})
+
+        if n["type"].endswith(".code"):
+            src = p.get("jsCode", "")
+            # n8n expressions are not evaluated inside a Code node. ={{ ... }}
+            # there is not a value, it is those characters — which is how
+            # "Bearer ={{ $env.WEAVIATE_API_KEY }}" reached Weaviate and came
+            # back 401, in a workflow nobody had ever run.
+            bad = [l.strip()[:70] for l, _ in code_lines(src) if "={{" in l]
+            check(f"{fname}/{n['name']} uses no expression syntax in JavaScript",
+                  not bad, bad[:2])
+
+            # Interpolation in JS needs a template literal. A single-quoted
+            # string with ${...} in it ships those characters verbatim — the
+            # same failure wearing different clothes.
+            for line, inside in code_lines(src):
+                if "${" in line and not inside and "`" not in line:
+                    check(f"{fname}/{n['name']} interpolates inside a template literal",
+                          False, line.strip()[:80])
+
+            # A value pasted into a GraphQL filter is a parse error at best
+            # and a rewritten query at worst.
+            if "valueText:" in src:
+                for line, _ in code_lines(src):
+                    if "valueText:" in line and "${" in line:
+                        check(f"{fname}/{n['name']} quotes its GraphQL value",
+                              "JSON.stringify" in line, line.strip()[:80])
+
+        # Weaviate's container port follows WEAVIATE_HTTP_PORT — compose maps
+        # "${WEAVIATE_HTTP_PORT}:${WEAVIATE_HTTP_PORT}". Docling (5001),
+        # markdowncleaner (8000) and the Content Admin (5000) have no ports
+        # section at all, so theirs are properties of the image and correctly
+        # literal. The distinction is the whole rule.
+        blob = json.dumps(p, ensure_ascii=False)
+        code_only = "\n".join(l for l, _ in code_lines(p.get("jsCode", ""))) \
+            if n["type"].endswith(".code") else blob
+        check(f"{fname}/{n['name']} does not hard-code Weaviate's port",
+              "smartrag-weaviate:8080" not in code_only, "")
+        if "smartrag-weaviate" in blob:
+            check(f"{fname}/{n['name']} reads Weaviate's port from the environment",
+                  "WEAVIATE_HTTP_PORT" in blob, blob[:120])
+
+# The cursor nodes must treat "not there yet" as the first run and everything
+# else as a failure. Swallowing all errors would silently re-read the entire
+# message history on every run; swallowing none makes the first run impossible.
+cs = json.loads((CORE / "chathistory-sync.json").read_text())
+for name in ("Read lastTimestamp", "Update lastTimestamp"):
+    node = [n for n in cs["nodes"] if n["name"] == name][0]
+    # Comments stripped: the first version of this check grepped the whole
+    # source for "404", and the comment explaining the 404 handling made it
+    # pass against a build with the handling deleted. Twice in one file is
+    # enough to make the rule explicit — assert on code, never on prose.
+    code = "\n".join(l for l, _ in code_lines(node["parameters"]["jsCode"]))
+    check(f"{name} distinguishes a missing state object",
+          "'404'" in code or '"404"' in code, code[:200])
+    check(f"{name} rethrows anything else", "throw e" in code, "")
+check("the cursor is created when it does not exist yet",
+      "method: 'POST'" in [n for n in cs["nodes"]
+                           if n["name"] == "Update lastTimestamp"][0]["parameters"]["jsCode"],
+      "PATCH on a missing object is a 404, so the first run could never store one")
+
 # ─── Credentials the deployer must create ───────────────────────────────────
 # Every credential referenced by a workflow has to be one the deployer
 # creates, or the workflow imports and fails at run time with a message about

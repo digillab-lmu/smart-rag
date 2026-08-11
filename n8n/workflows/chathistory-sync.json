@@ -22,7 +22,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Liest lastTimestamp aus Weaviate WorkflowState\nconst raw = await this.helpers.httpRequest({\n  method: 'GET',\n  url: 'http://smartrag-weaviate:8080/v1/objects/WorkflowState/3fa2478e-a528-4ca4-84e4-50bc76948667',\n  headers: { 'Authorization': 'Bearer ={{ $env.WEAVIATE_API_KEY }}' },\n  json: true\n});\nconst lastTimestamp = raw?.properties?.value || '2026-03-16T00:00:00.000Z';\nreturn [{ json: { lastTimestamp } }];"
+        "jsCode": "// Reads lastTimestamp from Weaviate's WorkflowState.\n//\n// Two things here were wrong for as long as this workflow existed, and both\n// only show up when it actually runs — which it never did until 2026-08-11.\n//\n// 1. The header was 'Bearer ={{ $env.WEAVIATE_API_KEY }}'. A Code node does\n//    not evaluate n8n expressions: ={{ }} is parameter syntax. Weaviate got\n//    those 29 characters as the token and answered 401.\n// 2. The state object does not exist on a fresh installation, so the GET is a\n//    404 and httpRequest throws. That is not an error — it is the first run,\n//    and it has to mean \"start from the beginning of time\".\nconst url = `http://smartrag-weaviate:${$env.WEAVIATE_HTTP_PORT || 8080}`\n          + `/v1/objects/WorkflowState/3fa2478e-a528-4ca4-84e4-50bc76948667`;\n\nlet lastTimestamp = '1970-01-01T00:00:00.000Z';\ntry {\n  const raw = await this.helpers.httpRequest({\n    method: 'GET',\n    url,\n    headers: { 'Authorization': `Bearer ${$env.WEAVIATE_API_KEY}` },\n    json: true\n  });\n  lastTimestamp = raw?.properties?.value || lastTimestamp;\n} catch (e) {\n  // Only \"not there yet\" is normal. Anything else — a wrong key, Weaviate\n  // down — must still fail loudly, or the workflow would silently re-read\n  // the entire message history on every run.\n  const status = e?.httpCode || e?.statusCode || e?.response?.status;\n  if (String(status) !== '404') {\n    throw e;\n  }\n}\n\nreturn [{ json: { lastTimestamp } }];"
       },
       "id": "a93ee638-2541-45b7-bbfb-f4a9ba38ef10",
       "name": "Read lastTimestamp",
@@ -104,7 +104,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const WEAVIATE_URL = 'http://smartrag-weaviate:8080';\nconst WEAVIATE_KEY = $env.WEAVIATE_API_KEY || '';\nconst results = [];\n\nfor (const item of $input.all()) {\n  const hash = item.json.message_hash;\n  const query = `{\n    Get {\n      ChatHistory(where: {\n        path: [message_hash],\n        operator: Equal,\n        valueText: ${hash}\n      }) { message_hash }\n    }\n  }`;\n\n  const raw = await this.helpers.httpRequest({\n    method: 'POST',\n    url: `${WEAVIATE_URL}/v1/graphql`,\n    headers: {\n      'Authorization': `Bearer ${WEAVIATE_KEY}`,\n      'Content-Type': 'application/json'\n    },\n    body: { query },\n    json: true\n  });\n\n  const response = typeof raw === 'string' ? JSON.parse(raw) : raw;\n  results.push({ json: {\n    ...item.json,\n    ChatHistory: response?.data?.Get?.ChatHistory ?? []\n  }});\n}\n\nreturn results;"
+        "jsCode": "const WEAVIATE_URL = `http://smartrag-weaviate:${$env.WEAVIATE_HTTP_PORT || 8080}`;\nconst WEAVIATE_KEY = $env.WEAVIATE_API_KEY || '';\nconst results = [];\n\nfor (const item of $input.all()) {\n  const hash = item.json.message_hash;\n  // JSON.stringify, not \"${hash}\": the value has to arrive as a quoted\n  // GraphQL string. Unquoted it is a parse error, and hand-added quotes\n  // would make any hash containing one a way to rewrite the query.\n  const query = `{\n    Get {\n      ChatHistory(where: {\n        path: [\"message_hash\"],\n        operator: Equal,\n        valueText: ${JSON.stringify(String(hash ?? ''))}\n      }) { message_hash }\n    }\n  }`;\n\n  const raw = await this.helpers.httpRequest({\n    method: 'POST',\n    url: `${WEAVIATE_URL}/v1/graphql`,\n    headers: {\n      'Authorization': `Bearer ${WEAVIATE_KEY}`,\n      'Content-Type': 'application/json'\n    },\n    body: { query },\n    json: true\n  });\n\n  const response = typeof raw === 'string' ? JSON.parse(raw) : raw;\n  results.push({ json: {\n    ...item.json,\n    ChatHistory: response?.data?.Get?.ChatHistory ?? []\n  }});\n}\n\nreturn results;"
       },
       "id": "77766c22-5e33-412d-aa48-77a57fc1e8a1",
       "name": "Deduplicate against Weaviate",
@@ -223,7 +223,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://smartrag-weaviate:8080/v1/objects",
+        "url": "=http://smartrag-weaviate:{{ $env.WEAVIATE_HTTP_PORT || 8080 }}/v1/objects",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -267,7 +267,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const newTimestamp = new Date().toISOString();\nawait this.helpers.httpRequest({\n  method: 'PATCH',\n  url: 'http://smartrag-weaviate:8080/v1/objects/WorkflowState/3fa2478e-a528-4ca4-84e4-50bc76948667',\n  headers: {\n    'Authorization': 'Bearer ={{ $env.WEAVIATE_API_KEY }}',\n    'Content-Type': 'application/json'\n  },\n  body: { properties: { key: 'lastTimestamp', value: newTimestamp } },\n  json: true\n});\nreturn [{ json: { updated: true, newTimestamp } }];"
+        "jsCode": "// Stores the cursor. Same two fixes as \"Read lastTimestamp\", plus one more:\n// PATCH on an object that does not exist is a 404, so the very first run\n// could never have written a cursor. Create it, then patch from then on.\nconst base = `http://smartrag-weaviate:${$env.WEAVIATE_HTTP_PORT || 8080}`;\nconst id = '3fa2478e-a528-4ca4-84e4-50bc76948667';\nconst headers = {\n  'Authorization': `Bearer ${$env.WEAVIATE_API_KEY}`,\n  'Content-Type': 'application/json'\n};\nconst newTimestamp = new Date().toISOString();\n\ntry {\n  await this.helpers.httpRequest({\n    method: 'PATCH',\n    url: `${base}/v1/objects/WorkflowState/${id}`,\n    headers,\n    body: { properties: { key: 'lastTimestamp', value: newTimestamp } },\n    json: true\n  });\n} catch (e) {\n  const status = e?.httpCode || e?.statusCode || e?.response?.status;\n  if (String(status) !== '404') {\n    throw e;\n  }\n  await this.helpers.httpRequest({\n    method: 'POST',\n    url: `${base}/v1/objects`,\n    headers,\n    body: {\n      class: 'WorkflowState',\n      id,\n      properties: { key: 'lastTimestamp', value: newTimestamp }\n    },\n    json: true\n  });\n}\n\nreturn [{ json: { updated: true, newTimestamp } }];"
       },
       "id": "cabc4bfe-b01d-4a7c-bca6-48944b6eefa7",
       "name": "Update lastTimestamp",
