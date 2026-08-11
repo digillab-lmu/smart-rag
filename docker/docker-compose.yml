@@ -520,10 +520,16 @@ services:
       - ../.env:/app/.env
       - ${BASE_DATA_PATH}/content-admin:/app/data
       - ../flowise/agents:/app/flowise/agents:ro
+      # The Weaviate schema, read when a course's chunk collection is created.
+      # Mounted rather than copied into the image, like the agent templates
+      # above: a change to the chunk properties then reaches new courses with
+      # a restart instead of a rebuild.
+      - ../weaviate:/app/weaviate:ro
     environment:
       SMARTRAG_ENV_PATH: "/app/.env"
       SMARTRAG_SLOTS_PATH: "/app/data/slots.json"
       SMARTRAG_TEMPLATES_DIR: "/app/flowise/agents"
+      SMARTRAG_SCHEMA_PATH: "/app/weaviate/schema.json"
       TZ: "${TZ}"
     ports:
       - "127.0.0.1:${CONTENT_ADMIN_PORT:-3002}:5000"

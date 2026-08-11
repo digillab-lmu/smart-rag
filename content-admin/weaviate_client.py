@@ -65,7 +65,7 @@ class WeaviateClient:
             headers["Authorization"] = f"Bearer {self.api_key}"
         return headers
 
-    def _request(self, method: str, path: str, **kwargs):
+    def _request(self, method: str, path: str, allow_404: bool = False, **kwargs):
         url = f"{self.base}{path}"
         try:
             resp = requests.request(
@@ -74,6 +74,11 @@ class WeaviateClient:
         except requests.RequestException as exc:
             raise WeaviateError(f"{method} {url} failed: {exc}") from exc
 
+        # "Not there" is an answer, not a failure, for the caller asking
+        # whether a collection exists — and only for that caller, which has
+        # to say so. Everywhere else a 404 stays an error.
+        if resp.status_code == 404 and allow_404:
+            return None
         if not resp.ok:
             raise WeaviateError(f"{method} {path} → HTTP {resp.status_code}: {resp.text[:500]}")
         if not resp.content:
@@ -98,6 +103,51 @@ class WeaviateClient:
     # ─── connectivity ───────────────────────────────────────────────────────
     def check_connection(self) -> None:
         self._request("GET", "/v1/.well-known/ready")
+
+    # ─── collections ────────────────────────────────────────────────────────
+    # One chunk collection per course (ARCHITECTURE 6a). The alternative was
+    # one shared collection filtered by course_id, and the failure modes are
+    # not symmetric: a missing filter answers from every course, plausibly,
+    # and nobody notices until a student sees another course's material.
+    # A wrong collection name finds nothing, and the first test shows it.
+    def collection_exists(self, name: str) -> bool:
+        return self._request("GET", f"/v1/schema/{name}", allow_404=True) is not None
+
+    def create_collection(self, name: str, template_path: str) -> bool:
+        """Create a course's chunk collection from the shipped template.
+
+        Returns True when it was created, False when it already existed —
+        the caller re-runs provisioning after a partial failure and needs to
+        know which half it just did.
+
+        The template is `weaviate/schema.json`'s __COLLECTION_NAME__ class,
+        read at call time rather than baked in, so a change to the properties
+        reaches new courses without rebuilding this image.
+        """
+        import json as _json
+        from pathlib import Path as _Path
+
+        if self.collection_exists(name):
+            return False
+
+        raw = _Path(template_path).read_text()
+        schema = _json.loads(raw)
+        template = next((c for c in schema.get("classes", [])
+                         if c.get("class") == "__COLLECTION_NAME__"), None)
+        if template is None:
+            raise WeaviateError(
+                f"{template_path} has no __COLLECTION_NAME__ class, so there "
+                "is no template to create a course collection from."
+            )
+        body = _json.loads(_json.dumps(template).replace("__COLLECTION_NAME__", name))
+        body["class"] = name
+        self._request("POST", "/v1/schema", json=body)
+        return True
+
+    def delete_collection(self, name: str) -> None:
+        """Used when provisioning fails after the collection was created, so a
+        retry does not trip over its own leftovers."""
+        self._request("DELETE", f"/v1/schema/{name}")
 
     # ─── listing ────────────────────────────────────────────────────────────
     def list_documents(self, collection: str, course_id: str, limit: int = 2000) -> list[dict]:
