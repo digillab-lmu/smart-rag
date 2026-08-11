@@ -274,12 +274,25 @@ Flowise's own UI then shows UTC. That is the smaller price: one timestamp
 read occasionally in its chat list, against every trace, cost figure and
 time filter in Langfuse being wrong.
 
-Two caveats. Traces already written keep their wrong timestamps — the fix
-stops new ones being wrong, it does not correct history. And Postgres reads
-its timezone once, when its data directory is created, so an existing
-installation keeps the old setting there until it is reinstalled; Langfuse
-keeps only metadata in Postgres, so the visible symptom goes away with
-ClickHouse.
+**What happens to traces already written.** The two halves behave
+differently, which is worth knowing before anyone tries to "repair" the data.
+ClickHouse's timezone affected how stored values are *rendered*, so fixing it
+corrects every existing trace retroactively — verified on a record inserted
+with a known UTC timestamp, which read two hours high before the change and
+correctly afterwards. Flowise's half was written into the value itself, so
+traces created before that fix stay two hours high for ever. In practice:
+older records are wrong by two hours, not four, and nothing needs migrating.
+
+Postgres also reads its timezone once, when its data directory is created, so
+an existing installation keeps the old setting there until it is reinstalled.
+Langfuse keeps only metadata in Postgres, so the visible symptom goes away
+with ClickHouse.
+
+**Verifying a fix.** Compare a fresh trace against `date -u`. Do not use
+`?limit=1`: the API sorts by timestamp, and traces written before the fix
+carry times in the future, so they stay at the top and a correct new trace
+sorts underneath them. Fetch a page and compare each timestamp with the real
+clock instead.
 
 **Why not set the whole stack to UTC.** n8n, the Content Admin and the rest
 keep the installation's timezone on purpose: a local timestamp in a log is
