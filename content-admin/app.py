@@ -22,7 +22,10 @@ import logging
 import os
 import secrets
 
-from flask import Flask, jsonify, redirect, render_template, request, session, url_for
+from functools import wraps
+
+from flask import (Flask, g, jsonify, redirect, render_template, request,
+                   session, url_for)
 
 import agent_templates
 import auth
@@ -367,12 +370,82 @@ def flowise_setup():
     )
 
 
+# ─── The active course ───────────────────────────────────────────────────────
+# Every page that touches agents, documents or uploads works inside exactly
+# one course. Which one is resolved here, in one place.
+#
+# This is where phase 5 will also assert that the logged-in account may work
+# on that course. Checked in fifteen routes is forgotten in one, and the
+# omission is invisible until somebody sees another course's material — so
+# the shape is a single decorator now, even though today it only resolves.
+def _resolve_course() -> dict | None:
+    """The course the operator is working in, or None if that is not settled.
+
+    A course chosen explicitly wins. With exactly one ready course and no
+    choice made, that one is used — asking someone to pick from a list of one
+    is a step that teaches people to click without reading. With several and
+    no choice made, nothing is guessed: the wrong course silently selected is
+    how one course's documents end up in another.
+    """
+    chosen = session.get("course_id")
+    if chosen:
+        course = courses_service.get_course(chosen)
+        if course and course["ready"]:
+            return course
+        # A course that was deleted, or whose provisioning never finished,
+        # must not stay selected — every page would then fail somewhere
+        # deeper, with a message about a missing collection.
+        session.pop("course_id", None)
+
+    ready = [c for c in courses_service.all_courses() if c["ready"]]
+    if len(ready) == 1:
+        return ready[0]
+    return None
+
+
+def with_course(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        try:
+            course = _resolve_course()
+        except db.DatabaseError:
+            course = None
+        if course is None:
+            return redirect(url_for("courses"))
+        g.course = course
+        return view(*args, **kwargs)
+    return wrapped
+
+
+@app.context_processor
+def _inject_course():
+    """So the layout can show which course is active without every view
+    passing it. A page that acts on a course while not naming it is how an
+    edit lands in the wrong one."""
+    try:
+        active = getattr(g, "course", None) or _resolve_course()
+        available = [c for c in courses_service.all_courses() if c["ready"]]
+    except db.DatabaseError:
+        active, available = None, []
+    return {"active_course": active, "available_courses": available}
+
+
+@app.route("/courses/<course_id>/use")
+@auth.login_required
+def use_course(course_id):
+    course = courses_service.get_course(course_id)
+    if course and course["ready"]:
+        session["course_id"] = course_id
+    return redirect(request.referrer or url_for("dashboard"))
+
+
 # ─── Dashboard ───────────────────────────────────────────────────────────────────
 @app.route("/")
 @auth.login_required
+@with_course
 def dashboard():
     env = read_env()
-    slots = storage.all_slots()
+    slots = storage.all_slots(g.course["id"])
 
     # One list call covers all ten slots — asking Flowise per slot would be
     # ten round trips for a table. Ids missing from the answer were deleted
@@ -422,11 +495,12 @@ def dashboard():
 # ─── Agent slot: choose archetype, fill content, import ────────────────────────
 @app.route("/slot/<int:slot>", methods=["GET", "POST"])
 @auth.login_required
+@with_course
 def slot_view(slot: int):
     if not (1 <= slot <= storage.MAX_SLOTS):
         return _t("slot_err_invalid"), 404
 
-    existing = storage.get_slot(slot)
+    existing = storage.get_slot(g.course["id"], slot)
     error = None
     success = None
 
@@ -494,7 +568,7 @@ def slot_view(slot: int):
 
                 if not name:
                     error = _t("slot_err_name_required")
-                elif storage.name_taken(name, exclude_slot=slot):
+                elif storage.name_taken(g.course["id"], name, exclude_slot=slot):
                     error = _t("slot_err_name_taken", name)
 
                 if error:
@@ -508,8 +582,9 @@ def slot_view(slot: int):
                         "chatflow_id": existing.get("chatflow_id"),
                     }
                 else:
-                    storage.save_slot(slot, archetype, content, name, system_prompt)
-                    existing = storage.get_slot(slot)
+                    storage.save_slot(g.course["id"], slot, archetype, content, name,
+                                      system_prompt)
+                    existing = storage.get_slot(g.course["id"], slot)
                     if action == "reset_prompt":
                         success = _t("slot_prompt_reset_ok")
 
@@ -519,10 +594,10 @@ def slot_view(slot: int):
                             error = _t("slot_err_not_connected")
                         else:
                             try:
-                                error = _do_import(slot, archetype, client)
+                                error = _do_import(g.course, slot, archetype, client)
                                 if not error:
                                     success = _t("slot_imported_ok")
-                                    existing = storage.get_slot(slot)
+                                    existing = storage.get_slot(g.course["id"], slot)
                             except FlowiseError as exc:
                                 error = _t("slot_err_import_failed", exc)
 
@@ -598,6 +673,7 @@ def slot_view(slot: int):
 # ─── "Optimize with AI" — one-shot, per-field content suggestion ────────────────
 @app.route("/slot/<int:slot>/optimize", methods=["POST"])
 @auth.login_required
+@with_course
 def slot_optimize(slot: int):
     if not (1 <= slot <= storage.MAX_SLOTS):
         return {"error": _t("slot_err_invalid")}, 404
@@ -627,10 +703,26 @@ def slot_optimize(slot: int):
     return result
 
 
-def _do_import(slot: int, archetype: str, client: FlowiseClient) -> str | None:
-    """Returns an error message, or None on success."""
+def _first_course_id() -> str | None:
+    """The oldest course. Used only to decide which course owns the
+    single-course-era CHATFLOW_AGENTnn variables in .env."""
+    all_of_them = courses_service.all_courses()
+    if not all_of_them:
+        return None
+    return min(all_of_them, key=lambda c: c["created_at"])["id"]
+
+
+def _do_import(course: dict, slot: int, archetype: str,
+               client: FlowiseClient) -> str | None:
+    """Returns an error message, or None on success.
+
+    The course is a parameter, not something read from the request context:
+    this function decides which collection an agent will search, and a
+    wrong-course import produces an agent that answers plausibly from
+    somebody else's material.
+    """
     env = read_env()
-    all_slots = storage.all_slots()
+    all_slots = storage.all_slots(course["id"])
     slot_data = all_slots[str(slot)]
     content = dict(slot_data.get("content") or {})
 
@@ -650,7 +742,7 @@ def _do_import(slot: int, archetype: str, client: FlowiseClient) -> str | None:
     custom_prompt = slot_data.get("system_prompt")
     if custom_prompt:
         agent_templates.set_prompt(flow, custom_prompt)
-    agent_templates.auto_fill_from_env(flow, env, slot=slot)
+    agent_templates.auto_fill_from_env(flow, env, slot=slot, course=course)
     missing = agent_templates.substitute_content(flow, content)
     if missing:
         return _t("slot_err_missing_content", ", ".join(missing))
@@ -729,21 +821,32 @@ def _do_import(slot: int, archetype: str, client: FlowiseClient) -> str | None:
             logger.error("Could not configure Langfuse tracing: %s", exc)
 
     agent_name = slot_data.get("name") or f"Agent {slot:02d}"
-    chatflow_name = f"SMART RAG — {agent_name}"
+    # The course is in the name because Flowise's names are global and
+    # upsert_chatflow finds an existing flow by name. Two courses with an
+    # agent called "Tutor" would otherwise be one chatflow, each import
+    # overwriting the other — and it would look like a successful import
+    # both times.
+    chatflow_name = f"SMART RAG — {course['id']} — {agent_name}"
     flow_data_json = __import__("json").dumps(flow)
     chatflow_id, _created = client.upsert_chatflow(
         chatflow_name, flow_data_json, analytic=analytic
     )
-    storage.set_chatflow_id(slot, chatflow_id)
-    set_env_var(f"CHATFLOW_AGENT{slot:02d}", chatflow_id)
+    storage.set_chatflow_id(course["id"], slot, chatflow_id)
+    # CHATFLOW_AGENTnn in .env is from the single-course era: one variable per
+    # slot, with no room for a course. Kept for the LTI middleware, which
+    # still reads it, and only written for the first course so it cannot be
+    # rewritten by whichever course was imported last.
+    if course["id"] == _first_course_id():
+        set_env_var(f"CHATFLOW_AGENT{slot:02d}", chatflow_id)
     return None
 
 
 # ─── Document upload (RAG ingest) ───────────────────────────────────────────────
 @app.route("/upload", methods=["GET", "POST"])
 @auth.login_required
+@with_course
 def upload():
-    slots = storage.all_slots()
+    slots = storage.all_slots(g.course["id"])
     # Only slots that actually have an agent configured — uploading to an
     # empty slot would tag chunks with an agent_id nothing retrieves.
     configured = {
@@ -964,7 +1067,7 @@ def upload_too_large(_exc):
             "upload.html",
             configured={
                 num: data
-                for num, data in storage.all_slots().items()
+                for num, data in storage.all_slots(g.course["id"]).items()
                 if data.get("archetype")
             },
             form={},
@@ -986,10 +1089,11 @@ DEPLOY_WORKFLOWS_COMMAND = "sudo bash scripts/deploy-n8n-workflows.sh"
 
 @app.route("/getting-started")
 @auth.login_required
+@with_course
 def getting_started():
     checks = setup_checks.run_all(
         env=read_env(),
-        slots=storage.all_slots(),
+        slots=storage.all_slots(g.course["id"]),
         flowise_client=_flowise_client(),
         n8n_base_url=N8N_INTERNAL_URL,
         deploy_command=DEPLOY_WORKFLOWS_COMMAND,
@@ -1065,6 +1169,7 @@ def courses():
 # ─── Documents: what is indexed, and removing it ─────────────────────────────────
 @app.route("/documents", methods=["GET", "POST"])
 @auth.login_required
+@with_course
 def documents():
     """
     Lists what is actually in the index for this course, and lets the
@@ -1079,7 +1184,7 @@ def documents():
     env = read_env()
     course_id = env.get("COURSE_ID", "").strip()
     collection = env.get("WEAVIATE_COLLECTION_NAME", "").strip()
-    slots = storage.all_slots()
+    slots = storage.all_slots(g.course["id"])
     error = None
     success = None
 

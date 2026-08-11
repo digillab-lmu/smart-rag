@@ -83,6 +83,27 @@ if (( have_python_suite )); then
     PYTHON="$VENV/bin/python"
 fi
 
+# ─── A database for the suites that need one ─────────────────────────────────
+# Agent slots and courses live in Postgres, so the suites covering them need
+# one. Rather than making every developer export a DSN by hand, a local
+# Postgres is looked for and used — and when there is none, those suites say
+# "could not run" instead of passing.
+#
+# 127.0.0.1 and not a socket: psycopg's DSN takes a host, and the socket path
+# differs between Homebrew, Debian and the container.
+if [[ -z "${SMARTRAG_TEST_DSN:-}" ]]; then
+    for pg_bin in /opt/homebrew/opt/postgresql@17/bin /usr/local/opt/postgresql@17/bin ""; do
+        [[ -n "$pg_bin" && ! -x "$pg_bin/pg_isready" ]] && continue
+        PATH_WITH_PG="${pg_bin:+$pg_bin:}$PATH"
+        if PATH="$PATH_WITH_PG" command -v pg_isready >/dev/null 2>&1 \
+           && PATH="$PATH_WITH_PG" pg_isready -q -h 127.0.0.1 -p 5432 2>/dev/null; then
+            export SMARTRAG_TEST_DSN="postgresql://$(id -un)@127.0.0.1:5432/smartrag_test"
+            echo "${DIM}Using the local Postgres for the database-backed suites.${RESET}"
+            break
+        fi
+    done
+fi
+
 # ─── Run ─────────────────────────────────────────────────────────────────────
 passed=0; failed=0; skipped=0; unrunnable=0
 FAILED_NAMES=()

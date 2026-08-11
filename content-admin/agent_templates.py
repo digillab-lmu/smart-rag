@@ -702,7 +702,8 @@ def substitute_content(flow_data: dict[str, Any], values: dict[str, str]) -> lis
 
 
 def auto_fill_from_env(
-    flow_data: dict[str, Any], env: dict[str, str], slot: int | None = None
+    flow_data: dict[str, Any], env: dict[str, str], slot: int | None = None,
+    course: dict | None = None,
 ) -> None:
     """
     Pass 1: fill in everything already known from the CLI wizard (or, for
@@ -715,9 +716,20 @@ def auto_fill_from_env(
     llm_provider, llm_map = resolve_llm_provider(env)
     embed_provider, embed_map = resolve_embedding_provider(env)
 
-    course_name = env.get("COURSE_NAME", "")
-    course_id = env.get("COURSE_ID", "")
-    weaviate_collection = env.get("WEAVIATE_COLLECTION_NAME", "")
+    # The course comes from the caller, not from .env. Those three variables
+    # were installation-wide, which is exactly what stopped there being more
+    # than one course: an agent's retrieval filter and its collection are
+    # properties of the course it belongs to. .env is still read as a
+    # fallback so a caller that has no course — the template preview — keeps
+    # working.
+    if course:
+        course_name = course.get("name", "")
+        course_id = course.get("id", "")
+        weaviate_collection = course.get("collection", "")
+    else:
+        course_name = env.get("COURSE_NAME", "")
+        course_id = env.get("COURSE_ID", "")
+        weaviate_collection = env.get("WEAVIATE_COLLECTION_NAME", "")
     embedding_model = env.get("EMBEDDING_MODEL", "")
     agent_number = str(slot) if slot is not None else ""
 

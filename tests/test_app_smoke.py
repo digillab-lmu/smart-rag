@@ -33,6 +33,16 @@ os.environ["SMARTRAG_INGEST_STATUS_PATH"] = str(Path(tmpdir) / "ingest-status.js
 os.environ["SMARTRAG_TEMPLATES_DIR"] = str(Path(APP_DIR).parent / "flowise" / "agents")
 os.environ["CONTENT_ADMIN_SESSION_SECRET"] = "test-secret-not-real"
 
+# ─── A database, because agent slots live in one now ─────────────────────────
+# Slots moved out of slots.json into Postgres, so this suite needs a database
+# and a course for the slots to belong to. dbfixture arranges both, or exits
+# 10 — "could not run" rather than a pass that covered nothing.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import dbfixture  # noqa: E402
+_db, COURSE = dbfixture.require_database()
+dbfixture.clear_slots(_db)
+COURSE_ID = COURSE["id"]
+
 import app as flask_app_module  # noqa: E402
 import storage  # noqa: E402
 
@@ -179,11 +189,11 @@ check("POST re-save slot 4 with its own unchanged name is not rejected", resp, 2
 ], not_contains=["already used by another agent"])
 
 # 14. storage.name_taken() direct checks
-if not storage.name_taken("Chapter 4 Tutor", exclude_slot=5):
+if not storage.name_taken(COURSE_ID, "Chapter 4 Tutor", exclude_slot=5):
     failures.append("name_taken() should report True for slot 5 checking slot 4's name")
-if storage.name_taken("Chapter 4 Tutor", exclude_slot=4):
+if storage.name_taken(COURSE_ID, "Chapter 4 Tutor", exclude_slot=4):
     failures.append("name_taken() should report False when excluding the slot that owns the name")
-if storage.name_taken("Some Totally Unused Name", exclude_slot=1):
+if storage.name_taken(COURSE_ID, "Some Totally Unused Name", exclude_slot=1):
     failures.append("name_taken() should report False for an unused name")
 
 # 15. Graph guidance page renders with the prompt template visible

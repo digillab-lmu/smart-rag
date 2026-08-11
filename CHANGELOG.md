@@ -13,6 +13,16 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Added
 
+- **Agents belong to a course.** Slots moved out of `slots.json` into the
+  database, with the course as a required argument everywhere — no
+  course-less variant is left for a later change to fall into. Every page
+  that touches agents, documents or uploads resolves an active course in one
+  place; with a single course it is chosen automatically, with several the
+  operator picks and nothing is guessed. Importing an agent substitutes *that
+  course's* collection and course id, and the chatflow's name in Flowise
+  carries the course: Flowise's names are global, so two courses with an
+  agent called "Tutor" would otherwise be one chatflow, each import
+  overwriting the other and reporting success both times.
 - **Courses can be created, and a half-created one says so.** A new *Courses*
   page lists them and creates them; creating one also creates its chunk
   collection, its bucket and the ingest key's permission on that bucket. If

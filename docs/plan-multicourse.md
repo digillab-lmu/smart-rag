@@ -104,7 +104,7 @@ done: written last, a crash between the collection and the bucket leaves a
 collection nobody has a record of, and the next attempt either collides with
 it or adopts it silently.
 
-## Phase 3 · Slots and agents per course
+## Phase 3 · Slots and agents per course (completed 2026-08-11)
 
 Every slot route carries a course. Import substitutes *that course's*
 collection and id. Chatflow names carry the course, because Flowise's names
@@ -112,7 +112,16 @@ are global and `find_chatflow_by_name` would otherwise match another course's
 agent — a wrong-course match that looks like a successful import.
 
 **Proven by** two courses with an identically named agent, both imported: two
-distinct chatflows in Flowise, each querying its own collection.
+distinct chatflows, each carrying its own collection and filtering on its own
+course id, and neither carrying the other's.
+
+**What it cost.** Nine test suites exercise slots through app.py and now need
+a database, so a local Postgres 17 — the same major version the deployment
+runs — became part of the development setup; without one those suites report
+"could not run" rather than passing. The schema also caught an unrealistic
+fake: a stubbed Flowise that returned one chatflow id for every slot, which
+the unique index refuses, and rightly — two slots on one chatflow means each
+import silently overwrites the other.
 
 ## Phase 4 · Ingest per course
 

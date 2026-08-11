@@ -34,6 +34,16 @@ os.environ["CONTENT_ADMIN_SESSION_SECRET"] = "test-secret-not-real"
 
 from markupsafe import escape  # noqa: E402
 
+# ─── A database, because agent slots live in one now ─────────────────────────
+# Slots moved out of slots.json into Postgres, so this suite needs a database
+# and a course for the slots to belong to. dbfixture arranges both, or exits
+# 10 — "could not run" rather than a pass that covered nothing.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import dbfixture  # noqa: E402
+_db, COURSE = dbfixture.require_database()
+dbfixture.clear_slots(_db)
+COURSE_ID = COURSE["id"]
+
 import app as m  # noqa: E402
 import i18n  # noqa: E402
 import storage  # noqa: E402
@@ -166,7 +176,7 @@ def fake_client(is_public=False, raises=None, missing=False):
 
 
 # Slot 1: saved but never imported — no publish box at all.
-storage.save_slot(1, ARCH, CONTENT, "Not Imported", None)
+storage.save_slot(COURSE_ID, 1, ARCH, CONTENT, "Not Imported", None)
 body = c.get("/slot/1").get_data(as_text=True)
 check("no publish box before import", 'value="publish"' not in body)
 
@@ -179,8 +189,8 @@ check("publish without import is refused",
       i18n.t("publish_err_not_imported") in body, body[:300])
 
 # Slot 2: imported, currently private.
-storage.save_slot(2, ARCH, CONTENT, "Imported Agent", None)
-storage.set_chatflow_id(2, CFID)
+storage.save_slot(COURSE_ID, 2, ARCH, CONTENT, "Imported Agent", None)
+storage.set_chatflow_id(COURSE_ID, 2, CFID)
 
 with mock.patch.object(m, "_flowise_client", return_value=fake_client(is_public=False)):
     body = c.get("/slot/2").get_data(as_text=True)
@@ -224,11 +234,11 @@ check("unpublish calls Flowise with False",
 check("unpublish confirms", i18n.t("unpublish_ok") in body, body[:300])
 
 # Publishing must not touch the stored content or the prompt.
-before = storage.get_slot(2)
+before = storage.get_slot(COURSE_ID, 2)
 with mock.patch.object(m, "_flowise_client", return_value=fake_client()):
     c.post("/slot/2", data={"archetype": ARCH, "action": "publish"}, follow_redirects=True)
-check("publish leaves the slot untouched", storage.get_slot(2) == before,
-      f"{storage.get_slot(2)} != {before}")
+check("publish leaves the slot untouched", storage.get_slot(COURSE_ID, 2) == before,
+      f"{storage.get_slot(COURSE_ID, 2)} != {before}")
 
 # ── Failure modes must degrade, not 500 ─────────────────────────────────────
 with mock.patch.object(m, "_flowise_client",

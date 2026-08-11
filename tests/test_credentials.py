@@ -42,6 +42,16 @@ os.environ["SMARTRAG_TEMPLATES_DIR"] = str(Path(APP_DIR).parent / "flowise" / "a
 os.environ["CONTENT_ADMIN_SESSION_SECRET"] = "test-secret-not-real"
 
 import agent_templates as at  # noqa: E402
+# ─── A database, because agent slots live in one now ─────────────────────────
+# Slots moved out of slots.json into Postgres, so this suite needs a database
+# and a course for the slots to belong to. dbfixture arranges both, or exits
+# 10 — "could not run" rather than a pass that covered nothing.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import dbfixture  # noqa: E402
+_db, COURSE = dbfixture.require_database()
+dbfixture.clear_slots(_db)
+COURSE_ID = COURSE["id"]
+
 import app as m  # noqa: E402
 import storage  # noqa: E402
 
@@ -122,7 +132,7 @@ at.set_credential_ids(
 
 # ── The import path creates all three credentials ───────────────────────────
 ARCH = "agent-11-expert-feedback.json"
-storage.save_slot(1, ARCH, {
+storage.save_slot(COURSE_ID, 1, ARCH, {
     "EXPERT_DOMAIN": "d", "EXPERT_KNOWLEDGE_DESCRIPTION": "d", "CONCEPT_LIST": "c",
     "RESPONSE_LANGUAGE_RULE": "r", "STUDENT_ROLE": "s",
 }, "Cred Agent", None)
@@ -144,7 +154,7 @@ class FakeFlowise:
         return "chatflow-id", True
 
 
-err = m._do_import(1, ARCH, FakeFlowise())
+err = m._do_import(COURSE, 1, ARCH, FakeFlowise())
 check("import succeeded", err is None, str(err))
 
 types = [c["type"] for c in created]
