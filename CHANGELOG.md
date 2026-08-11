@@ -13,6 +13,14 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Added
 
+- **The progress table showed another course's uploads, and kept finished
+  ones.** Progress rows carried no course, so a document being processed in
+  one course appeared while a different course was selected — next to a
+  document list that correctly showed nothing, which is two contradictory
+  statements about the same upload. Rows carry their course now, and a
+  finished one leaves the table at once: its completion is already visible,
+  because the document appears in the list below. Failures stay, since
+  nothing else mentions them.
 - **The document list showed another course's documents.** It read the
   collection and course id from `.env`, so whichever course was selected in
   the header, the page listed the one fixed collection from the

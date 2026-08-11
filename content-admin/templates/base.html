@@ -91,9 +91,11 @@
                        letter-spacing: .04em; color: var(--muted, #666);
                        padding-left: .25rem; }
     .logout-link { margin-left: 1rem; font-size: .9rem; text-decoration: none; }
-    .course-switch { display: inline-flex; gap: .5rem; align-items: center;
-                     font-size: .95rem; white-space: nowrap; }
-    .course-switch strong { white-space: nowrap; }
+    .course-bar { display: flex; gap: .6rem; align-items: baseline;
+                  white-space: nowrap; margin-bottom: .6rem; }
+    .course-bar-label { font-size: .8rem; text-transform: uppercase;
+                        letter-spacing: .04em; color: var(--muted, #666); }
+    .course-bar strong { font-size: 1.05rem; }
     .course-switch select { padding: .15rem .3rem; font-size: .9rem; }
     h1, h2, h3 { font-weight: 700; }
     h1 { font-size: 1.4rem; color: var(--accent); }
@@ -254,6 +256,29 @@
   </div>
 
   {% if session.get('logged_in') %}
+  {# The course sits above the navigation, not inside it: every page below
+     applies to one course, so the course is the frame and the pages are what
+     you do within it. Reading it as one more link in the row got that
+     relationship backwards. #}
+  {% if available_courses %}
+  <div class="course-bar">
+    <span class="course-bar-label">{{ t('course_selected') }}</span>
+    {% if active_course %}
+      <strong>{{ active_course.name }}</strong>
+    {% else %}
+      <strong>{{ t('course_none_active') }}</strong>
+    {% endif %}
+    {% if available_courses | length > 1 %}
+    <select onchange="if(this.value) location.href=this.value" aria-label="{{ t('course_switch_label') }}">
+      <option value="">{{ t('course_switch_label') }}…</option>
+      {% for c in available_courses %}
+      <option value="{{ url_for('use_course', course_id=c.id) }}"
+              {% if active_course and c.id == active_course.id %}selected{% endif %}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+    {% endif %}
+  </div>
+  {% endif %}
   {# The current page is marked, so the answer to "where am I" does not
      depend on remembering which link was clicked. Flowise's connection page
      is not here any more: it is a setup step, reached from the status page
@@ -280,28 +305,7 @@
     <a href="{{ url_for('getting_started') }}"
        class="{% if here == 'getting_started' %}current{% endif %}">{{ t('guide_title') }}</a>
     <span style="flex:1"></span>
-    {# Which course everything on this page applies to, and how to change it.
-       Without this the pages that need a course simply bounced to the course
-       list — the switcher existed in the view layer and was never rendered,
-       so there was no way to make the choice the redirect was waiting for. #}
-    {% if available_courses %}
-    <span class="course-switch">
-      {% if active_course %}
-        <strong>{{ active_course.name }}</strong>
-      {% else %}
-        <strong>{{ t('course_none_active') }}</strong>
-      {% endif %}
-      {% if available_courses | length > 1 %}
-      <select onchange="if(this.value) location.href=this.value" aria-label="{{ t('course_switch_label') }}">
-        <option value="">{{ t('course_switch_label') }}…</option>
-        {% for c in available_courses %}
-        <option value="{{ url_for('use_course', course_id=c.id) }}"
-                {% if active_course and c.id == active_course.id %}selected{% endif %}>{{ c.name }}</option>
-        {% endfor %}
-      </select>
-      {% endif %}
-    </span>
-    {% endif %}
+
   </nav>
   {% endif %}
 

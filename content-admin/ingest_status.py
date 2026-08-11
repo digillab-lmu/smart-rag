@@ -92,7 +92,8 @@ def _prune(data: dict, now: float) -> dict:
     }
 
 
-def start(job_id: str, filename: str, agent_id: int | None) -> None:
+def start(job_id: str, filename: str, agent_id: int | None,
+          course_id: str = "") -> None:
     """Record an accepted upload. Called by the GUI, not by n8n — so a row
     exists even if the pipeline never reports anything at all, which is
     exactly the case worth seeing."""
@@ -102,6 +103,11 @@ def start(job_id: str, filename: str, agent_id: int | None) -> None:
         data[job_id] = {
             "filename": filename,
             "agent_id": agent_id,
+            # Which course this upload belongs to. Without it the progress
+            # table was installation-wide: a document being processed in one
+            # course appeared while another course was selected, next to a
+            # document list that correctly showed nothing.
+            "course_id": course_id,
             "stage": "accepted",
             "detail": "",
             "started": now,
@@ -139,7 +145,7 @@ def update(job_id: str, stage: str, detail: str = "") -> bool:
     return True
 
 
-def active(now: float | None = None) -> list[dict]:
+def active(course_id: str = "", now: float | None = None) -> list[dict]:
     """Every row worth showing, newest first, each annotated with what the
     template needs: how far along, whether it is finished, and whether it has
     gone quiet."""
@@ -155,12 +161,24 @@ def active(now: float | None = None) -> list[dict]:
 
     rows = []
     for job_id, row in data.items():
+        # Rows written before uploads carried a course have none; they belong
+        # to the installation's original course and are shown nowhere rather
+        # than everywhere.
+        if course_id and row.get("course_id", "") != course_id:
+            continue
         stage = row.get("stage", "accepted")
+        # A finished row is not "in progress". It used to linger so the
+        # operator could see the run complete, but the completion is already
+        # visible: the document appears in the list below. Keeping both said
+        # "still working" and "nothing here" at the same time.
+        if stage == "done":
+            continue
         silent_for = now - row.get("updated", now)
         rows.append({
             "job_id": job_id,
             "filename": row.get("filename", ""),
             "agent_id": row.get("agent_id"),
+            "course_id": row.get("course_id", ""),
             "stage": stage,
             "detail": row.get("detail", ""),
             "started": row.get("started", now),
@@ -178,6 +196,6 @@ def active(now: float | None = None) -> list[dict]:
     return rows
 
 
-def any_running() -> bool:
+def any_running(course_id: str = "") -> bool:
     """Whether the page has a reason to keep refreshing itself."""
-    return any(not r["finished"] for r in active())
+    return any(not r["finished"] for r in active(course_id))

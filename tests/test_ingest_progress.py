@@ -135,12 +135,46 @@ check("the silence is quantified", row["silent_for"] >= ingest_status.STALE_AFTE
 reset()
 ingest_status.start("job3", "fertig.pdf", 1)
 ingest_status.update("job3", "done")
-check("a finished row lingers so the operator sees it complete",
-      len(ingest_status.active()) == 1)
+# A finished row is not "in progress". It used to linger so the operator
+# could watch the run complete — until a finished row sat under "being
+# processed" while the document list below said the course had nothing,
+# which is two contradictory statements about the same upload. The
+# completion is already visible: the document appears in the list.
+check("a finished row leaves the in-progress list at once",
+      len(ingest_status.active()) == 0, ingest_status.active())
 data = json.loads(Path(os.environ["SMARTRAG_INGEST_STATUS_PATH"]).read_text())
+check("…but is kept in the store for a while", "job3" in data, list(data))
 data["job3"]["updated"] = time.time() - (ingest_status.KEEP_FINISHED_SECONDS + 60)
 Path(os.environ["SMARTRAG_INGEST_STATUS_PATH"]).write_text(json.dumps(data))
-check("…and is eventually pruned", len(ingest_status.active()) == 0)
+ingest_status.start("job3b", "next.pdf", 1)   # a write, which is what prunes
+data = json.loads(Path(os.environ["SMARTRAG_INGEST_STATUS_PATH"]).read_text())
+check("…and is eventually pruned from it", "job3" not in data, list(data))
+
+# A failure stays visible: nobody else is going to mention it.
+reset()
+ingest_status.start("job3c", "kaputt.pdf", 1)
+ingest_status.update("job3c", "failed", "429 from the embedding API")
+check("a failed row stays in the list", len(ingest_status.active()) == 1,
+      ingest_status.active())
+
+# Rows belong to a course. Without this the table was installation-wide: an
+# upload in one course appeared while another was selected, beside a document
+# list that correctly showed nothing.
+reset()
+ingest_status.start("job-a", "a.pdf", 1, "kurs-a")
+ingest_status.start("job-b", "b.pdf", 1, "kurs-b")
+check("a course sees only its own uploads",
+      [r["filename"] for r in ingest_status.active("kurs-a")] == ["a.pdf"],
+      ingest_status.active("kurs-a"))
+check("…and the other course sees only its own",
+      [r["filename"] for r in ingest_status.active("kurs-b")] == ["b.pdf"],
+      ingest_status.active("kurs-b"))
+# A row from before uploads carried a course belongs to no course, and is
+# shown in none rather than in all of them.
+ingest_status.start("job-old", "alt.pdf", 1)
+check("a row with no course appears in no course",
+      "alt.pdf" not in [r["filename"] for r in ingest_status.active("kurs-a")],
+      ingest_status.active("kurs-a"))
 
 # An unfinished row is never pruned, however old — that is the row that
 # matters most.

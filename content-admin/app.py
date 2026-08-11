@@ -915,7 +915,7 @@ def upload():
                 # nothing in exactly that case.
                 try:
                     ingest_status.start(job_id, upload_file.filename,
-                                        int(form["slot"]))
+                                        int(form["slot"]), g.course["id"])
                 except OSError as exc:
                     # The document is already with n8n at this point. Failing
                     # the request now would report a failure that did not
@@ -1202,7 +1202,7 @@ def documents():
     # during the exact window it exists for. It is also why it is fetched
     # before the not-configured bail-out — an upload in flight is worth
     # showing even when the index cannot be listed.
-    jobs = ingest_status.active()
+    jobs = ingest_status.active(g.course["id"])
 
     if not course_id or not collection:
         return render_template(
