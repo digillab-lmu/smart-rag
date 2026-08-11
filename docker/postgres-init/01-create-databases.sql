@@ -14,3 +14,8 @@
 
 CREATE DATABASE flowise;
 CREATE DATABASE n8n;
+-- The Content Admin's own: courses, accounts, their assignments and agent
+-- slots. Deliberately not POSTGRES_DB — that one is called "smartrag" and is
+-- already Langfuse's (see DATABASE_URL in .env). Named after its consumer,
+-- like the two above.
+CREATE DATABASE contentadmin;

@@ -6,3 +6,17 @@ requests==2.32.3
 # and BSD-3-Clause. PyMuPDF is faster but AGPL, which would be a licensing
 # problem for this repo; pdfminer.six pulls in cryptography for no gain here.
 pypdf==6.14.2
+
+# Postgres driver for courses, users and agent slots (db.py). psycopg 3, not
+# psycopg2: the 3.x line is the maintained one and ships its own connection
+# pool, which is what a single gunicorn worker serving several maintainers
+# needs.
+#
+# LGPL-3.0-only, and this repository is PolyForm Noncommercial. That
+# combination is fine as long as psycopg stays an unmodified dependency
+# installed from PyPI — the LGPL's obligations attach to the library, not to
+# software that imports it. We ship no modified copy and no static link. The
+# binary wheel is chosen so no build toolchain or libpq-dev is needed in the
+# image.
+psycopg[binary]==3.3.4
+psycopg-pool==3.3.1
