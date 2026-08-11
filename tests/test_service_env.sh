@@ -171,7 +171,13 @@ check "n8n's settings file permissions are enforced" $? \
 # this installation showed trace timestamps two hours ahead of the server
 # clock while running TZ=Europe/Berlin on both. The pin is not cosmetic and
 # must not be quietly reverted to ${TZ} for consistency's sake.
-for svc in smartrag-postgres smartrag-clickhouse smartrag-langfuse-web smartrag-langfuse-worker; do
+#
+# Flowise is in the list for a different reason: it supplies the timestamp on
+# every trace it emits and formats local time while labelling it "Z". Fixing
+# the stores removed one two-hour shift and left that one, so both ends have
+# to be UTC — measured, not assumed: 08:20:52 UTC arrived as 10:20:52Z.
+for svc in smartrag-postgres smartrag-clickhouse smartrag-langfuse-web \
+           smartrag-langfuse-worker smartrag-flowise smartrag-flowise-worker; do
     block="$(awk -v s="  $svc:" '$0==s{f=1;next} f&&/^  [a-z]/{f=0} f' "$COMPOSE")"
     grep -q 'TZ: "UTC"' <<<"$block"
     check "$svc runs in UTC" $? "$(grep -E '^\s+TZ:' <<<"$block")"

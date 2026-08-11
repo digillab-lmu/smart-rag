@@ -254,14 +254,25 @@ docker exec smartrag-clickhouse clickhouse-client --user "$CLICKHOUSE_USER" \
 
 Anything but `UTC` is the answer.
 
-**Fix.** Current versions pin `TZ: "UTC"` on postgres, clickhouse and both
-Langfuse services. Pull and recreate them:
+**There are two independent shifts, and fixing one leaves the other.** The
+stores render what they hold, and Flowise supplies the timestamp on every
+trace it emits — it formats local time and labels it `Z`. On this
+installation each contributed two hours, which is why the same trace was
+wrong by four in one field and two in another.
+
+**Fix.** Current versions pin `TZ: "UTC"` on postgres, clickhouse, both
+Langfuse services and both Flowise services. Pull and recreate them:
 
 ```bash
 cd /srv/smart-rag && git pull
 bash scripts/compose.sh up -d --force-recreate smartrag-clickhouse \
-     smartrag-langfuse-web smartrag-langfuse-worker
+     smartrag-langfuse-web smartrag-langfuse-worker \
+     smartrag-flowise smartrag-flowise-worker
 ```
+
+Flowise's own UI then shows UTC. That is the smaller price: one timestamp
+read occasionally in its chat list, against every trace, cost figure and
+time filter in Langfuse being wrong.
 
 Two caveats. Traces already written keep their wrong timestamps — the fix
 stops new ones being wrong, it does not correct history. And Postgres reads
