@@ -889,6 +889,9 @@ def upload():
             try:
                 _n8n_client().upload_document(
                     job_id=job_id,
+                    course_id=g.course["id"],
+                    collection=g.course["collection"],
+                    bucket=g.course["bucket"],
                     file_stream=upload_file.stream,
                     filename=upload_file.filename,
                     content_type=upload_file.mimetype or "application/octet-stream",
