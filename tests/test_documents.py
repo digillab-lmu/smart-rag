@@ -252,7 +252,15 @@ with mock.patch.object(m, "_weaviate_client", return_value=fake):
                                                 "agent_id": "3"},
                             follow_redirects=True).get_data(as_text=True)
 args = fake.delete_document.call_args[0]
-check("the course comes from .env, not the form", args[1] == COURSE, args)
+# Not from the form, and — since courses became runtime objects — not from
+# .env either: from the course selected in the header. Reading .env here made
+# this page list one fixed collection whichever course was chosen, which is
+# how it was noticed: documents from another course, under a course that
+# never had them.
+check("the collection comes from the selected course",
+      args[0] == "TestkursChunks", args)
+check("the course id comes from the selected course, not the form",
+      args[1] == dbfixture.COURSE_ID, args)
 check("the title is passed through", args[2] == "Kastorff et al. (2022)", args)
 check("the agent is passed as an int", args[3] == 3, repr(args[3]))
 # Jinja escapes the quotes around the title, so compare the escaped form.

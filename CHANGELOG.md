@@ -13,6 +13,21 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Added
 
+- **The document list showed another course's documents.** It read the
+  collection and course id from `.env`, so whichever course was selected in
+  the header, the page listed the one fixed collection from the
+  single-course era — authoritative-looking and belonging to somebody else.
+  It reads the selected course now.
+- **Navigation, tidied.** The current page is marked; *Add documents* and
+  *Vector DB* are grouped under *RAG*; *System status* moved to the end and
+  absorbed the Flowise connection page, which is a setup step rather than a
+  daily destination — reachable from there in every state, because a key is
+  replaced while things are still working. Logging out moved up beside the
+  language switch. Each page's opening paragraph now says what the page is
+  and what can be done on it, instead of explaining the machinery: the
+  status page in particular used to open by explaining that its checks are
+  live rather than cached, which matters to whoever is debugging it and to
+  nobody else.
 - **Agents belong to a course.** Slots moved out of `slots.json` into the
   database, with the course as a required argument everywhere — no
   course-less variant is left for a later change to fall into. Every page

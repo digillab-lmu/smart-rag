@@ -98,6 +98,12 @@
 
     {% if c.link and c.state != State.OK %}
     <p><a href="{{ url_for(c.link) }}">{{ t('guide_' ~ c.key ~ '_link') }} →</a></p>
+    {% elif c.key == 'flowise' %}
+    {# Also when it works. This page absorbed the navigation entry the
+       connection page used to have, so it is now the only way there — and
+       replacing a key that is about to expire is a thing one does while
+       everything is still green. #}
+    <p><a href="{{ url_for('flowise_setup') }}">{{ t('guide_flowise_link') }} →</a></p>
     {% endif %}
 
     {# The service itself, in a new tab. Shown in every state: opening

@@ -81,8 +81,19 @@
     .brand-header .brand-subtitle { font-size: 0.85rem; opacity: 0.7; font-weight: 400; }
 
     nav { display: flex; flex-wrap: wrap; gap: 1.25rem; align-items: center; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
-    nav a { text-decoration: none; font-weight: 500; }
-    .course-switch { display: inline-flex; gap: .5rem; align-items: center; font-size: .95rem; }
+    nav a { text-decoration: none; font-weight: 500; padding: .3rem .6rem;
+            border-radius: 4px; }
+    nav a.current { background: var(--lmu-green); color: #fff; }
+    .nav-group { display: inline-flex; align-items: center; gap: .35rem;
+                 padding: 0 .35rem; border: 1px solid var(--border);
+                 border-radius: 6px; }
+    .nav-group-label { font-size: .8rem; text-transform: uppercase;
+                       letter-spacing: .04em; color: var(--muted, #666);
+                       padding-left: .25rem; }
+    .logout-link { margin-left: 1rem; font-size: .9rem; text-decoration: none; }
+    .course-switch { display: inline-flex; gap: .5rem; align-items: center;
+                     font-size: .95rem; white-space: nowrap; }
+    .course-switch strong { white-space: nowrap; }
     .course-switch select { padding: .15rem .3rem; font-size: .9rem; }
     h1, h2, h3 { font-weight: 700; }
     h1 { font-size: 1.4rem; color: var(--accent); }
@@ -237,17 +248,37 @@
          hreflang="{{ code }}">{{ code|upper }}</a>
       {% endfor %}
     </span>
+    {% if session.get('logged_in') %}
+    <a class="logout-link" href="{{ url_for('logout') }}">{{ t('nav_logout') }}</a>
+    {% endif %}
   </div>
 
   {% if session.get('logged_in') %}
+  {# The current page is marked, so the answer to "where am I" does not
+     depend on remembering which link was clicked. Flowise's connection page
+     is not here any more: it is a setup step, reached from the status page
+     that already reports on it, not a daily destination. #}
+  {% set here = request.endpoint %}
   <nav>
-    <a href="{{ url_for('getting_started') }}">{{ t('guide_title') }}</a>
-    <a href="{{ url_for('courses') }}">{{ t('nav_courses') }}</a>
-    <a href="{{ url_for('dashboard') }}">{{ t('nav_agents') }}</a>
-    <a href="{{ url_for('upload') }}">{{ t('nav_documents') }}</a>
-    <a href="{{ url_for('documents') }}">{{ t('nav_doclist') }}</a>
-    <a href="{{ url_for('graph_guidance') }}">{{ t('nav_graph') }}</a>
-    <a href="{{ url_for('flowise_setup') }}">{{ t('nav_flowise') }}</a>
+    <a href="{{ url_for('courses') }}"
+       class="{% if here == 'courses' %}current{% endif %}">{{ t('nav_courses') }}</a>
+    <a href="{{ url_for('dashboard') }}"
+       class="{% if here == 'dashboard' %}current{% endif %}">{{ t('nav_agents') }}</a>
+    {# RAG groups the two pages that feed it: putting a document in, and
+       seeing what came out. The group label names the machinery, the entries
+       name the actions — an entry called "RAG" would say what the system is
+       rather than what the reader can do here. #}
+    <span class="nav-group">
+      <span class="nav-group-label">{{ t('nav_rag') }}</span>
+      <a href="{{ url_for('upload') }}"
+         class="{% if here == 'upload' %}current{% endif %}">{{ t('nav_upload') }}</a>
+      <a href="{{ url_for('documents') }}"
+         class="{% if here == 'documents' %}current{% endif %}">{{ t('nav_doclist') }}</a>
+    </span>
+    <a href="{{ url_for('graph_guidance') }}"
+       class="{% if here == 'graph_guidance' %}current{% endif %}">{{ t('nav_graph') }}</a>
+    <a href="{{ url_for('getting_started') }}"
+       class="{% if here == 'getting_started' %}current{% endif %}">{{ t('guide_title') }}</a>
     <span style="flex:1"></span>
     {# Which course everything on this page applies to, and how to change it.
        Without this the pages that need a course simply bounced to the course
@@ -271,7 +302,6 @@
       {% endif %}
     </span>
     {% endif %}
-    <a href="{{ url_for('logout') }}">{{ t('nav_logout') }}</a>
   </nav>
   {% endif %}
 

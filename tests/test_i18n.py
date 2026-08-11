@@ -69,6 +69,8 @@ IDENTICAL_OK = {
     # Same again on the courses page: an action column with no header, and
     # "Name", which German spells the same way.
     "courses_col_action", "courses_field_name",
+    # "RAG" is the same three letters in both languages.
+    "nav_rag",
     # "GitHub:" plus the repository URL — a label and an address, neither of
     # which has a German form.
     "footer_repo",
