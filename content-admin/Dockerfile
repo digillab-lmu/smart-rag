@@ -10,6 +10,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY *.py ./
 COPY templates ./templates/
 COPY static ./static/
+# The schema migrations. Missing from this list at first, and the result was
+# not an error: db.py found no migrations directory, applied nothing, and
+# reported success — the tables simply never existed. Hence the accompanying
+# change in db.py, where an absent directory is now a failure rather than an
+# empty list.
+COPY migrations ./migrations/
 
 # Deliberately root, unlike lti-middleware — this app's whole job is
 # reading AND WRITING ../.env (bind-mounted, see docker-compose.yml), which
