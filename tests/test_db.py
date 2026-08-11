@@ -48,6 +48,20 @@ os.environ["SMARTRAG_ENV_PATH"] = str(env_path)
 
 failures = []
 
+# The pool keeps worker threads alive; without this a failing run ends in a
+# page of "couldn't stop thread" hints that bury the actual error.
+import atexit  # noqa: E402
+
+
+def _shutdown():
+    try:
+        db.close_pool()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+atexit.register(_shutdown)
+
 
 def check(name, ok, detail=""):
     if not ok:
@@ -123,8 +137,18 @@ check("two migrations with the same number are rejected",
 # The real directory has to satisfy its own rule.
 real = db.migration_files()
 check("the shipped migrations are well-named and ordered",
-      [v for v, _ in real] == sorted(v for v, _ in real) and len(real) >= 1,
+      [v for v, _ in real] == sorted(v for v, _ in real),
       [p.name for _, p in real])
+# Fail here rather than later. With no migrations everything below still
+# "passes" — nothing is applied, so nothing is missing — until the first
+# INSERT hits a table that was never created, and the crash arrives before
+# the failure report does. That is exactly how the missing COPY in the
+# Dockerfile presented.
+if not real:
+    print(f"FAILURES:\n  - no migrations found in {db.MIGRATIONS_DIR}. "
+          "Inside the container this means the image does not contain "
+          "content-admin/migrations/.")
+    sys.exit(1)
 
 # The DSN must not be guessable into existence from an empty .env.
 #

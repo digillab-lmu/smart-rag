@@ -146,7 +146,15 @@ def migration_files() -> list[tuple[int, Path]]:
     is an error rather than something to skip: a migration silently ignored
     because of a typo in its name is a schema difference nobody sees."""
     if not MIGRATIONS_DIR.is_dir():
-        return []
+        # Not an empty list. A deployment with no migrations directory is
+        # broken, and answering "nothing to apply" makes it look finished:
+        # the image once shipped without migrations/, migrate() reported
+        # success, and every table was missing until something tried to read
+        # one.
+        raise DatabaseError(
+            f"No migrations directory at {MIGRATIONS_DIR}. The image is "
+            "incomplete — it must contain content-admin/migrations/."
+        )
     found: list[tuple[int, Path]] = []
     for path in sorted(MIGRATIONS_DIR.iterdir()):
         if path.name.startswith(".") or path.is_dir():
