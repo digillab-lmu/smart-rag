@@ -72,11 +72,19 @@ def require_database():
 
 
 def _ensure_course(db):
-    """One ready course, created directly rather than through
+    """Exactly one ready course, created directly rather than through
     courses.create_course(): these suites are not about provisioning, and
-    going through it would need Weaviate and Garage to be reachable."""
+    going through it would need Weaviate and Garage to be reachable.
+
+    Exactly one, and other courses removed. All suites share one database, so
+    a suite that aborts part-way leaves its courses behind — and the next one
+    then finds several, gets redirected to the course list because none can
+    be chosen automatically, and fails for a reason that has nothing to do
+    with what it tests. That happened, and it looked like flakiness.
+    """
     with db.connect() as conn:
         with conn.cursor() as cur:
+            cur.execute("DELETE FROM courses WHERE id <> %s", (COURSE_ID,))
             cur.execute(
                 "INSERT INTO courses (id, name, collection, bucket, provisioned_at) "
                 "VALUES (%s, %s, %s, %s, now()) "

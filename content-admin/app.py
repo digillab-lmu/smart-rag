@@ -411,7 +411,9 @@ def with_course(view):
         except db.DatabaseError:
             course = None
         if course is None:
-            return redirect(url_for("courses"))
+            # Say why. Bouncing to the course list without a word looks like
+            # a broken link — which is exactly how it was reported.
+            return redirect(url_for("courses", pick="1"))
         g.course = course
         return view(*args, **kwargs)
     return wrapped
@@ -1154,16 +1156,20 @@ def courses():
         except db.DatabaseError as exc:
             error = str(exc)
 
+    # Arrived here because a page needed a course and none was settled.
+    needs_pick = request.args.get("pick") == "1"
+
     try:
         all_of_them = courses_service.all_courses()
         unfinished = [c for c in all_of_them if not c["ready"]]
     except db.DatabaseError as exc:
         return render_template("courses.html", courses=[], unfinished=[],
-                               error=error or str(exc), success=success, form=form)
+                               error=error or str(exc), success=success,
+                               form=form, needs_pick=needs_pick)
 
     return render_template("courses.html", courses=all_of_them,
                            unfinished=unfinished, error=error, success=success,
-                           form=form)
+                           form=form, needs_pick=needs_pick)
 
 
 # ─── Documents: what is indexed, and removing it ─────────────────────────────────

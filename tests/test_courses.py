@@ -325,8 +325,12 @@ check("a ready course is listed", "Fertiger Kurs" in body)
 check("an unfinished course is listed", "Halber Kurs" in body)
 # The distinction is the whole point: a page that lists both the same way
 # tells an operator their half-made course is fine.
+# Compared inside the page's own content: the course switcher in the layout
+# names every ready course before the body starts, so comparing positions in
+# the whole document measures the navigation, not the list.
+main = body[body.index("</nav>"):] if "</nav>" in body else body
 check("…and is marked as unfinished",
-      body.index("Halber Kurs") < body.index("Fertiger Kurs"),
+      main.index("Halber Kurs") < main.index("Fertiger Kurs"),
       "unfinished courses must come first, where they are seen")
 check("the collection and bucket are shown",
       "Chunks_kurs_fertig" in body and "kurs-fertig-rag" in body)
@@ -345,6 +349,47 @@ check("…and says what is wrong",
       "usable course id" in page.get_data(as_text=True)
       or "Kurskennung" in page.get_data(as_text=True),
       page.get_data(as_text=True)[-300:])
+
+# ─── With several courses, the operator must be able to choose ───────────────
+# Reported from the live system as "the links are corrupt": every page
+# redirected to the course list, because with two courses none is picked
+# automatically — and the switcher existed in the view layer but was never
+# rendered. A redirect nobody can satisfy is a dead end.
+reset()
+wf2, gf2 = FakeWeaviate(), FakeGarage()
+courses.create_course("kurs-eins", "Kurs Eins", weaviate=wf2, garage=gf2)
+courses.create_course("kurs-zwei", "Kurs Zwei", weaviate=wf2, garage=gf2)
+
+fresh = flask_app.app.test_client()
+fresh.post("/login", data={"username": "kursadmin",
+                           "password": "a-strong-test-password"})
+page = fresh.get("/", follow_redirects=True)
+body = page.get_data(as_text=True)
+check("with two courses a page asks which one", "/courses" in page.request.path
+      or "Kurs Eins" in body, page.request.path)
+check("…and says why rather than just bouncing",
+      "arbeitest" in body or "work in" in body, body[-400:])
+check("…and offers both courses to choose from",
+      "Kurs Eins" in body and "Kurs Zwei" in body, "")
+check("…with a link that actually selects one",
+      "/courses/kurs-eins/use" in body, "")
+
+fresh.get("/courses/kurs-eins/use")
+page = fresh.get("/")
+check("after choosing, the page opens", page.status_code == 200, page.status_code)
+check("…and the layout names the active course",
+      "Kurs Eins" in page.get_data(as_text=True), "")
+
+# A single course needs no choosing — asking someone to pick from a list of
+# one teaches clicking without reading.
+reset()
+wf3, gf3 = FakeWeaviate(), FakeGarage()
+courses.create_course("nur-einer", "Nur Einer", weaviate=wf3, garage=gf3)
+solo = flask_app.app.test_client()
+solo.post("/login", data={"username": "kursadmin",
+                          "password": "a-strong-test-password"})
+check("a single course is used without asking",
+      solo.get("/").status_code == 200, "")
 
 check("the page requires a login",
       flask_app.app.test_client().get("/courses").status_code in (302, 401),
