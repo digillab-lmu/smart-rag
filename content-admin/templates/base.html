@@ -240,6 +240,7 @@
   {% if session.get('logged_in') %}
   <nav>
     <a href="{{ url_for('getting_started') }}">{{ t('guide_title') }}</a>
+    <a href="{{ url_for('courses') }}">{{ t('nav_courses') }}</a>
     <a href="{{ url_for('dashboard') }}">{{ t('nav_agents') }}</a>
     <a href="{{ url_for('upload') }}">{{ t('nav_documents') }}</a>
     <a href="{{ url_for('documents') }}">{{ t('nav_doclist') }}</a>

@@ -27,6 +27,8 @@ from flask import Flask, jsonify, redirect, render_template, request, session, u
 import agent_templates
 import auth
 import citation
+import courses as courses_service
+import db
 import i18n
 import ingest_status
 import mailer
@@ -1006,6 +1008,58 @@ def getting_started():
             None,
         ),
     )
+
+
+# ─── Courses ─────────────────────────────────────────────────────────────────
+@app.route("/courses", methods=["GET", "POST"])
+@auth.login_required
+def courses():
+    """List courses and create one.
+
+    Behind the existing single account for now. Who may create a course, and
+    who may see which, is phase 5 — putting a half-built authorisation model
+    here would have to be unpicked, and one that looks finished is worse than
+    none.
+    """
+    error = None
+    success = None
+    form = {"id": "", "name": ""}
+
+    if request.method == "POST":
+        action = request.form.get("action", "create")
+        try:
+            if action == "provision":
+                # Finishing a course whose creation failed part-way. Same
+                # code path as creating one, because the failure could have
+                # been at any step and "resume" that only handles the last
+                # one is a resume that works until it is needed.
+                cid = request.form.get("course_id", "")
+                done = courses_service.provision(cid)
+                success = _t("courses_provisioned", done["name"])
+            else:
+                form = {"id": request.form.get("id", "").strip(),
+                        "name": request.form.get("name", "").strip()}
+                created = courses_service.create_course(form["id"], form["name"])
+                success = _t("courses_created", created["name"],
+                             created["collection"], created["bucket"])
+                form = {"id": "", "name": ""}
+        except courses_service.CourseError as exc:
+            # The message already says which step failed and what is left
+            # behind; repeating it in the operator's words would lose that.
+            error = str(exc)
+        except db.DatabaseError as exc:
+            error = str(exc)
+
+    try:
+        all_of_them = courses_service.all_courses()
+        unfinished = [c for c in all_of_them if not c["ready"]]
+    except db.DatabaseError as exc:
+        return render_template("courses.html", courses=[], unfinished=[],
+                               error=error or str(exc), success=success, form=form)
+
+    return render_template("courses.html", courses=all_of_them,
+                           unfinished=unfinished, error=error, success=success,
+                           form=form)
 
 
 # ─── Documents: what is indexed, and removing it ─────────────────────────────────

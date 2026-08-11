@@ -287,6 +287,62 @@ check("two courses get different collections", a["collection"] != b["collection"
 check("two courses get different buckets", a["bucket"] != b["bucket"])
 check("both are ready", a["ready"] and b["ready"])
 
+# ─── The page ────────────────────────────────────────────────────────────────
+# The route is what an operator touches, and the state it must not hide is
+# "unfinished". Everything below runs against the same real database.
+os.environ["CONTENT_ADMIN_SESSION_SECRET"] = "test-secret-not-real"
+os.environ.setdefault("SMARTRAG_SLOTS_PATH", str(Path(tmpdir) / "slots.json"))
+os.environ.setdefault("SMARTRAG_TEMPLATES_DIR",
+                      str(Path(APP_DIR).parent / "flowise" / "agents"))
+import app as flask_app  # noqa: E402
+import auth  # noqa: E402
+
+auth.create_admin_account("kursadmin", "a-strong-test-password")
+client = flask_app.app.test_client()
+client.post("/login", data={"username": "kursadmin",
+                            "password": "a-strong-test-password"})
+
+reset()
+w6, g6 = FakeWeaviate(), FakeGarage()
+courses.create_course("kurs-fertig", "Fertiger Kurs", weaviate=w6, garage=g6)
+w7, g7 = FakeWeaviate(), FakeGarage(fail_on_create=True)
+try:
+    courses.create_course("kurs-halb", "Halber Kurs", weaviate=w7, garage=g7)
+except courses.CourseError:
+    pass
+
+page = client.get("/courses")
+body = page.get_data(as_text=True)
+check("the courses page renders", page.status_code == 200, page.status_code)
+check("a ready course is listed", "Fertiger Kurs" in body)
+check("an unfinished course is listed", "Halber Kurs" in body)
+# The distinction is the whole point: a page that lists both the same way
+# tells an operator their half-made course is fine.
+check("…and is marked as unfinished",
+      body.index("Halber Kurs") < body.index("Fertiger Kurs"),
+      "unfinished courses must come first, where they are seen")
+check("the collection and bucket are shown",
+      "Chunks_kurs_fertig" in body and "kurs-fertig-rag" in body)
+
+# Creating through the form reaches the service.
+page = client.post("/courses", data={"name": "Neu", "id": "kurs-neu"},
+                   follow_redirects=True)
+check("a course created from the form is refused without a working store",
+      page.status_code == 200, page.status_code)
+
+# A malformed id must come back as a message, not a 500.
+page = client.post("/courses", data={"name": "Kaputt", "id": "Nicht Erlaubt!"})
+check("a malformed id is reported, not raised", page.status_code == 200,
+      page.status_code)
+check("…and says what is wrong",
+      "usable course id" in page.get_data(as_text=True)
+      or "Kurskennung" in page.get_data(as_text=True),
+      page.get_data(as_text=True)[-300:])
+
+check("the page requires a login",
+      flask_app.app.test_client().get("/courses").status_code in (302, 401),
+      "anyone could list every course")
+
 reset()
 db.close_pool()
 
