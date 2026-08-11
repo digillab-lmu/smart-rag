@@ -56,7 +56,10 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
   `source_file` is identical on every chunk ingested before this fix.
   The name now travels as its own form field, and the fallback is derived
   from the title or a timestamp rather than a constant, so a lost name can
-  never again silently overwrite somebody else's document. **Upgrade
+  never again silently overwrite somebody else's document. The keys are also
+  readable now — runs of punctuation collapse to a single dash instead of one
+  dash per character, and the name is capped at 80 characters, because these
+  are read by a person looking through `garage bucket list-objects`. **Upgrade
   required:** re-import the n8n workflows and rebuild the Content Admin;
   re-upload anything whose archived copy matters.
 - **n8n's settings file is no longer world-readable inside the container.**

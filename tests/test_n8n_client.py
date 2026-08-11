@@ -241,6 +241,43 @@ if "'document'" in sanitize:
     failures.append("Sanitize Filename still falls back to a constant name")
 if "Date.now()" not in sanitize:
     failures.append("Sanitize Filename has no collision-free fallback")
+# A name of nothing but punctuation sanitises to "", which would produce the
+# key "agent_N/.md" — shared by every such document, so the silent overwrite
+# would be back through the side door. Caught by exercising the sanitiser
+# itself rather than by reading it.
+if "if (!safeName)" not in sanitize:
+    failures.append("an empty sanitised name is not caught")
+
+# The key-building expression, executed rather than eyeballed. Python stands
+# in for the JS: the same operations in the same order, so a rule added on one
+# side and not the other shows up as a disagreement.
+import re as _re  # noqa: E402
+def _js_key(raw: str) -> str:
+    s = _re.sub(r"\.[^/.]+$", "", raw)
+    for a, b in [("ä","ae"),("ö","oe"),("ü","ue"),("Ä","Ae"),("Ö","Oe"),("Ü","Ue"),("ß","ss")]:
+        s = s.replace(a, b)
+    s = _re.sub(r"[^a-zA-Z0-9/_-]", "-", s)
+    s = _re.sub(r"-{2,}", "-", s)
+    s = s.strip("-").lower()[:80].rstrip("-")
+    return s
+
+for raw, expected in [
+    ("Stegmann, K., Wecker, C. 2018 - Lehren und Lernen.pdf",
+     "stegmann-k-wecker-c-2018-lehren-und-lernen"),
+    ("Über Größenordnungen.pdf", "ueber-groessenordnungen"),
+]:
+    got = _js_key(raw)
+    if got != expected:
+        failures.append(f"key for {raw!r} is {got!r}, expected {expected!r}")
+# Two different documents must not produce one key.
+if _js_key("Skript Teil 1.pdf") == _js_key("Skript Teil 2.pdf"):
+    failures.append("distinct documents collapse to the same key")
+# Runs of punctuation must not survive as runs of dashes: these keys are read
+# by a human looking through `garage bucket list-objects`.
+if "--" in _js_key("Stegmann, K., Wecker, C., Mandl, H. & Fischer, F..pdf"):
+    failures.append("dash runs are not collapsed")
+if len(_js_key("x" * 300)) > 80:
+    failures.append("the key is not capped")
 
 if failures:
     print("FAILURES:")
