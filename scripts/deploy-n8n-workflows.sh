@@ -316,6 +316,41 @@ done
 # effect if n8n is running. Please restart n8n for changes to take effect."
 # Without this the webhook stays unregistered and an upload from the GUI
 # fails with a 404 that looks like a bug in the GUI.
+# ─── Nobody's ingest gets cut off ────────────────────────────────────────────
+# Restarting n8n kills whatever it is running. That happened here: an upload
+# started at 20:12:43, this script restarted n8n eleven seconds later, and the
+# execution was recorded as "crashed" — with n8n's own hint blaming memory,
+# which sent the diagnosis in the wrong direction for a while. A document
+# takes minutes to convert, so the window is wide open on a real course.
+_running_executions() {
+    docker exec smartrag-postgres psql -U "${POSTGRES_USER}" -d n8n -t -A -c \
+        "SELECT count(*) FROM execution_entity WHERE status IN ('running','new')" \
+        2>/dev/null | tr -d '[:space:]'
+}
+
+running="$(_running_executions)"
+if [[ "$running" =~ ^[0-9]+$ ]] && (( running > 0 )); then
+    warn "$(t n8n_restart_busy "$running")"
+    waited=0
+    while (( waited < ${N8N_DRAIN_WAIT:-300} )); do
+        sleep 10; waited=$(( waited + 10 ))
+        running="$(_running_executions)"
+        [[ "$running" =~ ^[0-9]+$ ]] || break
+        (( running == 0 )) && break
+        info "$(t n8n_restart_waiting "$running" "$waited")"
+    done
+    if [[ "$running" =~ ^[0-9]+$ ]] && (( running > 0 )); then
+        # Still busy. The operator decides — but the default is not to
+        # destroy work in progress.
+        if ! confirm n8n_restart_anyway "n"; then
+            warn "$(t n8n_restart_declined)"
+            exit "$EXIT_UNVERIFIED"
+        fi
+    else
+        ok "$(t n8n_restart_drained)"
+    fi
+fi
+
 info "$(t n8n_restarting)"
 if docker restart smartrag-n8n >/dev/null; then
     ok "$(t n8n_restarted)"

@@ -13,6 +13,21 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Added
 
+- **The workflow import restarted n8n over a running ingest.** Observed: an
+  upload started at 20:12:43, `deploy-n8n-workflows.sh` restarted n8n eleven
+  seconds later, and the execution was recorded as `crashed` — with n8n's own
+  hint blaming memory, which sent the diagnosis after Docling and the machine's
+  RAM before the timestamps settled it. A conversion takes minutes, so the
+  window is wide. The deployer now asks n8n's execution table what is running,
+  waits up to five minutes, and if something is still going asks before
+  restarting — defaulting to not destroying work in progress.
+- **A failing ingest step now says so on the page.** The steps that actually
+  fail — conversion, the object store, chunking and embedding — report their
+  own failure from an error output, which unlike n8n's Error Trigger runs
+  inside the same execution and can name the document it was working on. Rows
+  in progress also spin and the page refreshes every seven seconds rather than
+  fifteen, which is why stages appeared to jump straight from "accepted" to
+  "finished" on a small document.
 - **Uploads went to whichever course `.env` named.** The selected course
   governed what was displayed and nothing else: the ingest workflow read the
   collection, the course id and the bucket from n8n's environment, which

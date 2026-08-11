@@ -300,7 +300,9 @@ for node in reports.values():
     body = node["parameters"]["jsonBody"]
     stage = body.split("stage: '")[1].split("'")[0]
     reported.add(stage)
-unknown = reported - set(ingest_status.STAGES)
+# "failed" is a report but not a stage in the ordered list: it can
+# arrive at any point and ends the row.
+unknown = reported - set(ingest_status.STAGES) - {"failed"}
 check("every reported stage is known to the store", not unknown, unknown)
 
 # Reports hang off existing nodes as side branches. Spliced into the chain,
@@ -339,6 +341,39 @@ for key in ["docs_running_heading", "docs_running_intro", "docs_col_stage",
            [f"docs_stage_{s}" for s in ingest_status.STAGES]:
     check(f"{key} exists in both languages", i18n_src.count(f'"{key}":') == 2,
           f'{i18n_src.count(chr(34) + key + chr(34) + ":")} definition(s)')
+
+# ─── A failure has to reach the page ─────────────────────────────────────────
+# Observed live: Docling ran out of memory, n8n stopped the run, and the
+# table went on showing the upload as in progress. A step that dies between
+# two reports sends nothing, so the risky steps now report their own failure
+# from an error output — which, unlike n8n's Error Trigger, runs inside the
+# same execution and can still read the job id.
+wf = json.loads((REPO / "n8n" / "workflows-ingest" / "ingest-document.json").read_text())
+nodes = {n["name"]: n for n in wf["nodes"]}
+check("there is a node that reports a failure", "Report: failed" in nodes,
+      sorted(nodes))
+fail_node = nodes.get("Report: failed", {})
+body = fail_node.get("parameters", {}).get("jsonBody", "")
+check("it reports the failed stage", "'failed'" in body, body[:120])
+check("it carries the job id", "$('Upload Webhook')" in body, body[:120])
+check("it passes on what went wrong", "detail" in body, body[:120])
+
+for risky in ("Docling Conversion", "Upload to object storage", "Chunk + Embed"):
+    node = nodes.get(risky, {})
+    check(f"{risky} has an error output", node.get("onError") == "continueErrorOutput",
+          node.get("onError"))
+    branches = wf["connections"].get(risky, {}).get("main", [])
+    check(f"{risky}'s error output reaches the report",
+          len(branches) > 1 and any(c["node"] == "Report: failed" for c in branches[1]),
+          branches)
+    # The success branch must still go where it went.
+    check(f"{risky} still continues on success",
+          branches and len(branches[0]) >= 1, branches[:1])
+
+tpl = (REPO / "content-admin" / "templates" / "documents.html").read_text()
+check("a row in progress shows it is moving", 'class="spinner"' in tpl, "")
+check("…and the page refreshes while it is",
+      "location.replace" in tpl, "")
 
 if failures:
     print("FAILURES:")

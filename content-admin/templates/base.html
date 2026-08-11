@@ -90,6 +90,15 @@
     .nav-group-label { font-size: .8rem; text-transform: uppercase;
                        letter-spacing: .04em; color: var(--muted, #666);
                        padding-left: .25rem; }
+    /* A moving thing, because a table that only changes every few seconds
+       reads as frozen — and this one sits next to a step that can legitimately
+       take twenty minutes. */
+    .spinner { display: inline-block; width: .8em; height: .8em;
+               margin-right: .4em; vertical-align: -.05em;
+               border: 2px solid var(--border); border-top-color: var(--lmu-green);
+               border-radius: 50%; animation: spin 0.9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
     .logout-link { margin-left: 1rem; font-size: .9rem; text-decoration: none; }
     .course-bar { display: flex; gap: .6rem; align-items: baseline;
                   white-space: nowrap; margin-bottom: .6rem; }

@@ -60,7 +60,8 @@
       "position": [
         240,
         400
-      ]
+      ],
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -296,7 +297,8 @@
           "id": "smartrag-s3-credential",
           "name": "smartrag-s3"
         }
-      }
+      },
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -327,7 +329,8 @@
       "position": [
         3840,
         360
-      ]
+      ],
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -537,6 +540,36 @@
           "timeout": 5000
         }
       }
+    },
+    {
+      "id": "a1a1b1c1-0003-4a1a-9a1a-000000000040",
+      "name": "Report: failed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2400,
+        900
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "http://smartrag-content-admin:5000/api/ingest-status",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Ingest-Token",
+              "value": "={{ $env.INGEST_STATUS_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ job_id: $('Upload Webhook').first().json.body.job_id || '', stage: 'failed', detail: ($json.error && ($json.error.message || $json.error)) || $json.message || 'the step failed and reported nothing' }) }}",
+        "options": {
+          "timeout": 5000
+        }
+      }
     }
   ],
   "pinData": {},
@@ -557,6 +590,13 @@
         [
           {
             "node": "Extract Images",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Report: failed",
             "type": "main",
             "index": 0
           }
@@ -750,6 +790,13 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "Report: failed",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -774,6 +821,13 @@
           },
           {
             "node": "Report: embedded",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Report: failed",
             "type": "main",
             "index": 0
           }
