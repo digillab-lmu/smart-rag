@@ -57,6 +57,9 @@ IDENTICAL_OK = {
     # "Agent" and "Chunk" are the words German uses too, and the action
     # column has no header at all — an empty string in both languages.
     "docs_col_agent", "docs_col_chunks", "docs_col_action",
+    # Same again on the courses page: an action column with no header, and
+    # "Name", which German spells the same way.
+    "courses_col_action", "courses_field_name",
     # "GitHub:" plus the repository URL — a label and an address, neither of
     # which has a German form.
     "footer_repo",

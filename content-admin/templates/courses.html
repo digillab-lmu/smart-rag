@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}{{ t('courses_title') }} — {{ t('app_name') }} {{ t('app_subtitle') }}{% endblock %}
+{% block content %}
+<h1>{{ t('courses_heading') }}</h1>
+<p class="note">{{ t('courses_intro') }}</p>
+
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+{% if success %}<div class="success">{{ success }}</div>{% endif %}
+
+{# Unfinished first. A course whose collection exists but whose bucket does
+   not looks finished in every list that only shows names, and the next
+   upload into it is the moment anyone finds out. #}
+{% if unfinished %}
+<h2>{{ t('courses_unfinished_heading') }}</h2>
+<p class="note">{{ t('courses_unfinished_intro') }}</p>
+<table>
+  <tr>
+    <th>{{ t('courses_col_name') }}</th>
+    <th>{{ t('courses_col_id') }}</th>
+    <th>{{ t('courses_col_action') }}</th>
+  </tr>
+  {% for c in unfinished %}
+  <tr>
+    <td><strong>{{ c.name }}</strong></td>
+    <td><code>{{ c.id }}</code></td>
+    <td>
+      <form method="post" style="margin:0">
+        <input type="hidden" name="action" value="provision">
+        <input type="hidden" name="course_id" value="{{ c.id }}">
+        <button type="submit">{{ t('courses_finish') }}</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<h2>{{ t('courses_list_heading') }}</h2>
+{% if not courses %}
+<p class="note">{{ t('courses_empty') }}</p>
+{% else %}
+<table>
+  <tr>
+    <th>{{ t('courses_col_name') }}</th>
+    <th>{{ t('courses_col_id') }}</th>
+    <th>{{ t('courses_col_storage') }}</th>
+    <th>{{ t('courses_col_state') }}</th>
+  </tr>
+  {% for c in courses %}
+  <tr>
+    <td><strong>{{ c.name }}</strong></td>
+    <td><code>{{ c.id }}</code></td>
+    <td>
+      <span class="note">{{ c.collection }}</span><br>
+      <span class="note">{{ c.bucket }}</span>
+    </td>
+    <td>{% if c.ready %}{{ t('courses_state_ready') }}{% else %}<strong>{{ t('courses_state_unfinished') }}</strong>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<h2>{{ t('courses_new_heading') }}</h2>
+<form method="post">
+  <label for="name">{{ t('courses_field_name') }}</label>
+  <input type="text" id="name" name="name" value="{{ form.name }}" required>
+  <p class="note">{{ t('courses_field_name_help') }}</p>
+
+  <label for="id">{{ t('courses_field_id') }}</label>
+  <input type="text" id="id" name="id" value="{{ form.id }}" required
+         pattern="[a-z0-9][a-z0-9-]{1,62}">
+  <p class="note">{{ t('courses_field_id_help') }}</p>
+
+  <button type="submit">{{ t('courses_create') }}</button>
+</form>
+<p class="note">{{ t('courses_create_why') }}</p>
+{% endblock %}

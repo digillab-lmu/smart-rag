@@ -13,6 +13,15 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Added
 
+- **Courses can be created, and a half-created one says so.** A new *Courses*
+  page lists them and creates them; creating one also creates its chunk
+  collection, its bucket and the ingest key's permission on that bucket. If
+  any of that fails the course is recorded and listed as *unfinished* rather
+  than left half-made and looking complete, and finishing it is a button that
+  is safe to press repeatedly. Unfinished courses are listed above the ready
+  ones, because a page that shows both the same way tells an operator their
+  broken course is fine. Nothing else uses courses yet — agents, uploads and
+  who may see which course are the phases after this one.
 - **A database for courses, accounts and agent slots.** First step of the
   multi-course work: Postgres gains a `contentadmin` database (not
   `POSTGRES_DB`, which is called "smartrag" and is already Langfuse's), the
