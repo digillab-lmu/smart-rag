@@ -68,6 +68,15 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
   because a silent half-minute after "n8n restarted" reads as a hang, and the
   next move is Ctrl-C in the middle of the step that decides whether uploads
   work.
+- **…and the same mistake was in six parameters, the other way round.** In a
+  node parameter the `=` marks the whole value as an expression and must be
+  the first character. Six `Authorization` headers were written as
+  `Bearer ={{ $env.WEAVIATE_API_KEY }}`, so the `=` was just a character, the
+  value a plain string, and Weaviate received the literal text — the same 29
+  characters that came back 401 from the Code node, arriving by the opposite
+  error. Five of them are in `usermemory-summary`, which had not run yet
+  because its schedule is slower. A test now requires the marker to be first
+  and to appear once, in both contexts.
 - **ChatHistory sync could never have worked.** Its first live run failed with
   a 401 from Weaviate, and the cause was in the source all along: the Code
   node sent `Bearer ={{ $env.WEAVIATE_API_KEY }}` — n8n does not evaluate

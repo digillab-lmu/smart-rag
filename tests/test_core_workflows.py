@@ -274,6 +274,40 @@ check("the cursor is created when it does not exist yet",
                            if n["name"] == "Update lastTimestamp"][0]["parameters"]["jsCode"],
       "PATCH on a missing object is a 404, so the first run could never store one")
 
+# ─── The expression marker belongs at the front of a parameter ──────────────
+# The mirror image of the Code-node rule above, and it cost a second live
+# debugging round. In a node parameter, "=" marks the WHOLE value as an
+# expression, so it has to be the first character: "=Bearer {{ $env.KEY }}".
+# Written as "Bearer ={{ $env.KEY }}" the "=" is just a character, the value
+# is a plain string, and the service receives the literal text — the same
+# 29 characters that came back 401 from the Code node, arriving by the
+# opposite mistake. Six headers were written that way.
+def strings_in(o, path=""):
+    if isinstance(o, dict):
+        for k, v in o.items():
+            yield from strings_in(v, f"{path}.{k}")
+    elif isinstance(o, list):
+        for i, v in enumerate(o):
+            yield from strings_in(v, f"{path}[{i}]")
+    elif isinstance(o, str):
+        yield path, o
+
+
+for path in ALL:
+    d = json.loads(path.read_text())
+    for n in d["nodes"]:
+        if n["type"].endswith(".code"):
+            continue    # there {{ }} is wrong in any position, checked above
+        for where, value in strings_in(n.get("parameters", {})):
+            if "{{" not in value:
+                continue
+            check(f"{path.name}/{n['name']}{where} marks its expression at the start",
+                  value.startswith("="), value[:80])
+            # And exactly once: "=Bearer ={{ ... }}" is the same bug repaired
+            # carelessly.
+            check(f"{path.name}/{n['name']}{where} has no stray marker",
+                  "={{" not in value[1:], value[:80])
+
 # ─── Credentials the deployer must create ───────────────────────────────────
 # Every credential referenced by a workflow has to be one the deployer
 # creates, or the workflow imports and fails at run time with a message about
