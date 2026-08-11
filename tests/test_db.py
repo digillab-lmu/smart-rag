@@ -65,8 +65,21 @@ def done():
 try:
     import db
 except ModuleNotFoundError as exc:
-    print(f"psycopg is not installed ({exc}). Run tests/run-tests.sh, which "
-          f"installs content-admin/requirements.txt into tests/.venv.")
+    # Name the module that is actually missing. The first version said
+    # "psycopg is not installed" for every import failure, and the first time
+    # it fired the missing module was db itself — the container had not been
+    # rebuilt since db.py was added. A wrong diagnosis in the message costs
+    # more than no message.
+    missing = getattr(exc, "name", "") or str(exc)
+    if missing == "db":
+        print(f"db.py is not importable from {APP_DIR}. Inside the container "
+              "that means the image predates it: rebuild with\n"
+              "  bash scripts/compose.sh up -d --build smartrag-content-admin")
+    else:
+        print(f"{missing} is not installed ({exc}). On the host, run "
+              "tests/run-tests.sh, which installs "
+              "content-admin/requirements.txt into tests/.venv; inside the "
+              "container, rebuild the image so requirements.txt is applied.")
     sys.exit(10)
 
 
