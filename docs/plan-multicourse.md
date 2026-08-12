@@ -159,6 +159,9 @@ course. Four mutations were run against it: a route with the decorator
 removed, an authorisation function that always says yes, a session cookie
 that survives a withdrawn assignment, and a demotable last administrator.
 
+Confirmed live on 2026-08-12: a maintainer assigned only to mathe-1 cannot
+see chemie-1 — not in the list, not in the switcher.
+
 Two things the writing of it changed. The first attempt recognised the
 decorators by name, which `functools.wraps` copies from the view — it would
 have passed for an undecorated route, so the decorators now set an explicit
