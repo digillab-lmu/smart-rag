@@ -175,7 +175,65 @@ follow.
 **Proven by** a full reinstall on the test machine, then phases 2–6 run
 through as one sequence by hand.
 
-## Phase 8 · Documentation and 2.0
+## Phase 8 · Moving the installation to another server
+
+Asked for while phase 4 was being proven: this deployment will move to
+different hardware within a year or so. Also the missing backup story — the
+two are one problem, because a restore onto a second machine *is* a move.
+
+**The state, in full.** Everything that matters is in two places:
+`BASE_DATA_PATH` (postgres, weaviate, garage, neo4j, clickhouse, redis, n8n,
+flowise, langfuse, content-admin) and `.env`. Nothing else on the host is
+irreplaceable — nginx config and certificates are regenerated, images are
+pinned and pulled.
+
+That is why this is not hard. Three things make it non-trivial anyway, and
+none of them is the copying:
+
+  * **`.env` is not optional and not separable.** Postgres, Neo4j and
+    ClickHouse read their password once, when their data directory is
+    created. A data directory restored without its `.env` is unreadable, and
+    the two must therefore travel together or neither. The same applies to
+    `N8N_ENCRYPTION_KEY`: without it every stored credential in n8n is
+    undecryptable ciphertext.
+  * **A copy taken while the services run is a torn copy.** Postgres and
+    ClickHouse must be stopped, or dumped with their own tools. Stopping is
+    simpler and this system tolerates downtime.
+  * **The address is baked in.** `.env` holds the domain or the MagicDNS
+    name in a dozen values, published chat URLs point at it, and TLS
+    certificates are issued for it. Moving to a machine with a different
+    address is a rename, not a copy — and the rename is the only genuinely
+    fiddly part.
+
+**Shape.** Two commands, `smartrag backup` and `smartrag restore`, with the
+restore refusing rather than guessing:
+
+  * refuse a restore onto a different Postgres major version, because a data
+    directory is not portable across them;
+  * refuse when the archive's `.env` and the data directories disagree about
+    which installation they belong to;
+  * say plainly when the target's address differs from the archive's, and
+    offer the rename as a deliberate step with the list of what it will
+    rewrite — never silently.
+
+**Garage needs its own step.** Its layout carries a node id. A copied data
+directory may or may not bring a usable one to a new host; that has to be
+established against the real thing before the restore claims to work, the
+way the layout requirement itself was. If it does not, the fallback is an
+S3-level copy into a freshly laid-out cluster, which is slower and known to
+work.
+
+**Proven by** a restore onto a second machine, followed by the checks this
+project already trusts: chunk counts per course, an object count per bucket,
+one trace through Langfuse, and one agent answering with a citation. A
+restore that starts every container is not a restore that works.
+
+**Out of scope until then:** nothing about this depends on the multi-course
+work, so it can be built before or after phase 5–7. Doing it *before* the
+reinstall in phase 7 would be convenient — it turns that reinstall into the
+first real test of the restore path.
+
+## Phase 9 · Documentation and 2.0
 
 Runbook entries for the new failure shapes — a course whose collection is
 missing, an account with no course — the operations guide, the changelog, the

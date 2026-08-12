@@ -354,6 +354,37 @@ port 25. Ingest works either way — only the notifications are affected.
 
 ---
 
+## Backing up, or moving to another machine
+
+There is **no backup command yet** (it is planned; see
+[the plan](plan-multicourse.md)). Until there is, this is what has to be
+copied, and it is short:
+
+```bash
+sudo bash /srv/smart-rag/scripts/admin.sh   # → Stop, so the copy is not torn
+sudo tar czf smartrag-$(date +%F).tar.gz \
+     -C /srv/smart-rag .env \
+     -C / "$(grep -oP '(?<=^BASE_DATA_PATH=").*(?=")' /srv/smart-rag/.env | sed 's|^/||')"
+```
+
+Two things are easy to get wrong.
+
+**`.env` and the data directories are one unit.** Postgres, Neo4j and
+ClickHouse read their password once, when their data directory is first
+created, so a restored data directory without its original `.env` cannot be
+opened at all. `N8N_ENCRYPTION_KEY` is the same story: without it, every
+credential stored in n8n is ciphertext nobody can read.
+
+**Copy nothing while it runs.** A live Postgres or ClickHouse directory
+copied under load is a torn copy that may restore and then fail later. Stop
+the stack first; this system tolerates the downtime.
+
+Moving to a machine with a **different address** is more than a copy: the
+domain or MagicDNS name appears throughout `.env`, in the published chat
+URLs, and in the TLS certificates. Plan that as a rename, not as a restore.
+
+---
+
 ## Something else
 
 1. `sudo smartrag` → *Status* — containers **and** the ingest webhook.
