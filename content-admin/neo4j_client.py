@@ -30,7 +30,21 @@ import requests
 MAX_NAME = 120
 MAX_CONCEPTS = 500
 
-CONCEPT_KEYS = {"name", "chapter", "section_id", "description", "topic"}
+# What a concept may carry. "topic" is deliberately absent: it was accepted
+# here and then never written, so a model that used it would have its output
+# silently dropped — accepting a field is a promise to store it.
+CONCEPT_KEYS = {"name", "chapter", "section_id", "description"}
+
+
+def concept_key(course_id: str, name: str) -> str:
+    """The one property the database can enforce uniqueness on.
+
+    Neo4j Community has no composite uniqueness — a node key is Enterprise —
+    so the pair (course, name) is folded into one value. The separator is two
+    colons because a course id cannot contain one (see the courses table's
+    CHECK), which makes the encoding unambiguous.
+    """
+    return f"{course_id}::{name}"
 
 
 class Neo4jError(RuntimeError):
@@ -137,11 +151,19 @@ class Neo4jClient:
         for c in concepts:
             statements.append({
                 "statement": (
-                    "MERGE (c:Concept {name: $name, course_id: $course}) "
-                    "SET c.chapter = coalesce($chapter, c.chapter), "
+                    # MERGE on the synthetic key, not on (name, course_id):
+                    # the uniqueness constraint can only cover one property in
+                    # Neo4j Community, so the pair lives in c.key and that is
+                    # what the database enforces. Merging on anything else
+                    # would let a concurrent write create a second node the
+                    # constraint then rejects.
+                    "MERGE (c:Concept {key: $key}) "
+                    "SET c.name = $name, c.course_id = $course, "
+                    "    c.chapter = coalesce($chapter, c.chapter), "
                     "    c.section_id = coalesce($section_id, c.section_id), "
                     "    c.description = coalesce($description, c.description)"),
                 "parameters": {
+                    "key": concept_key(course_id, c["name"]),
                     "name": c["name"], "course": course_id,
                     "chapter": c.get("chapter"), "section_id": c.get("section_id"),
                     "description": c.get("description"),
@@ -187,7 +209,12 @@ class Neo4jClient:
         """Claim the concepts that predate course scoping for one course."""
         results = self._run([{
             "statement": ("MATCH (c:Concept) WHERE c.course_id IS NULL "
-                          "SET c.course_id = $course RETURN count(c) AS moved"),
+                          # The key comes with the course: a concept adopted
+                          # without one is invisible to every later MERGE,
+                          # which would then create a second node beside it.
+                          "SET c.course_id = $course, "
+                          "    c.key = $course + '::' + c.name "
+                          "RETURN count(c) AS moved"),
             "parameters": {"course": course_id},
         }])
         rows = _rows(results[0]) if results else []
@@ -284,7 +311,46 @@ def parse_proposal(text: str) -> tuple[list[dict], list[dict]]:
             raise GraphInputError(f"Prerequisite {i} points {before!r} at itself.")
         edges.append({"before": before, "after": after})
 
+    _reject_cycles(concepts, edges)
     return concepts, edges
+
+
+def _reject_cycles(concepts: list[dict], edges: list[dict]) -> None:
+    """A prerequisite chain that comes back to where it started.
+
+    "A before B before C before A" says every one of the three must be
+    understood first, which is not a statement about a course, it is a
+    contradiction. Nothing downstream would complain: the agent would fetch
+    prerequisites for ever or teach in an arbitrary order, and the map would
+    look plausible. Self-loops are the one-element case and are caught
+    earlier with a clearer message.
+    """
+    after: dict[str, list[str]] = {}
+    for e in edges:
+        after.setdefault(e["before"].casefold(), []).append(e["after"].casefold())
+
+    WHITE, GREY, BLACK = 0, 1, 2
+    colour: dict[str, int] = {}
+    path: list[str] = []
+
+    def visit(node: str):
+        colour[node] = GREY
+        path.append(node)
+        for nxt in after.get(node, []):
+            state = colour.get(nxt, WHITE)
+            if state == GREY:
+                loop = path[path.index(nxt):] + [nxt]
+                raise GraphInputError(
+                    "These prerequisites form a circle, so none of them could "
+                    "ever be learned first: " + " → ".join(loop))
+            if state == WHITE:
+                visit(nxt)
+        path.pop()
+        colour[node] = BLACK
+
+    for c in concepts:
+        if colour.get(c["name"].casefold(), WHITE) == WHITE:
+            visit(c["name"].casefold())
 
 
 def _opt(value):

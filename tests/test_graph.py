@@ -96,6 +96,34 @@ check("an oversized proposal is refused",
       rejects(json.dumps({"concepts": [{"name": f"C{i}"} for i in range(nc.MAX_CONCEPTS + 1)]}),
               "split it up"))
 
+# A field that is accepted and then not written is worse than one that is
+# refused: the model's output disappears and nobody is told. "topic" was in
+# the accepted set and never stored.
+check("a field that is not stored is refused rather than dropped",
+      rejects('{"concepts": [{"name": "A", "topic": "Kapitel 1"}]}', "does not store"))
+
+# Circles. "A before B before C before A" is a contradiction, and nothing
+# downstream would object — the agent would fetch prerequisites for ever or
+# teach in an arbitrary order, and the map would look plausible.
+check("a prerequisite circle is refused",
+      rejects(json.dumps({
+          "concepts": [{"name": "A"}, {"name": "B"}, {"name": "C"}],
+          "prerequisites": [{"before": "A", "after": "B"},
+                            {"before": "B", "after": "C"},
+                            {"before": "C", "after": "A"}]}), "circle"))
+long_chain = json.dumps({
+    "concepts": [{"name": n} for n in "ABCDE"],
+    "prerequisites": [{"before": a, "after": b}
+                      for a, b in zip("ABCD", "BCDE")]})
+check("a long chain is not mistaken for a circle",
+      len(nc.parse_proposal(long_chain)[1]) == 4, "")
+diamond = json.dumps({
+    "concepts": [{"name": n} for n in "ABCD"],
+    "prerequisites": [{"before": "A", "after": "B"}, {"before": "A", "after": "C"},
+                      {"before": "B", "after": "D"}, {"before": "C", "after": "D"}]})
+check("two paths to the same concept are allowed",
+      len(nc.parse_proposal(diamond)[1]) == 4, "a diamond is not a circle")
+
 # ─── 2. Every statement carries the course ───────────────────────────────────
 class Recorder(nc.Neo4jClient):
     def __init__(self):
@@ -117,8 +145,17 @@ check("something was written", r.sent, "")
 for st in r.sent:
     check("every write names the course",
           st["parameters"].get("course") == "mathe-1", st["parameters"])
-    check("…in the pattern, not as an afterthought",
-          "course_id: $course" in st["statement"], st["statement"])
+    # Two shapes, both carrying the course into the match itself. A concept
+    # is merged on its key, which begins with the course; an edge matches
+    # both ends inside the course. What must never appear is a statement
+    # that finds a node by name alone and then sets the course afterwards —
+    # that one would attach to another course's node.
+    if st["statement"].startswith("MERGE (c:Concept"):
+        check("a concept is keyed by its course",
+              st["parameters"]["key"].startswith("mathe-1::"), st["parameters"])
+    else:
+        check("an edge matches both ends inside the course",
+              st["statement"].count("course_id: $course") == 2, st["statement"])
 # MERGE everywhere, CREATE nowhere. A model asked twice returns almost the
 # same list, so re-applying a proposal is the normal case — with CREATE it
 # would double the graph each time, and the duplicates are only visible as
@@ -128,6 +165,32 @@ check("nothing is created blindly",
       [st["statement"][:60] for st in r.sent if "CREATE (" in st["statement"]])
 check("concepts are merged", any(st["statement"].startswith("MERGE (c:Concept")
                                  for st in r.sent), "")
+
+# The uniqueness the database can actually enforce. Neo4j Community has no
+# composite uniqueness — a node key is Enterprise — and the constraint that
+# shipped was on c.name alone, which is global: two courses could not both
+# have a concept called "Cognitive Load", and the second one failed on MERGE.
+# The pair is folded into c.key, and that is what is merged on.
+check("a concept is keyed by course and name",
+      nc.concept_key("mathe-1", "Cognitive Load") == "mathe-1::Cognitive Load",
+      nc.concept_key("mathe-1", "Cognitive Load"))
+check("the same name in two courses gives two keys",
+      nc.concept_key("mathe-1", "X") != nc.concept_key("chemie-1", "X"), "")
+check("the write merges on that key",
+      any("MERGE (c:Concept {key: $key})" in st["statement"] for st in r.sent),
+      [st["statement"][:50] for st in r.sent])
+
+schema = (REPO / "neo4j" / "schema.cypher").read_text()
+check("the global uniqueness on the name is dropped",
+      "DROP CONSTRAINT constraint_concept_name IF EXISTS" in schema,
+      "two courses cannot both have a concept of the same name")
+check("…and replaced by one on the key",
+      "REQUIRE c.key IS UNIQUE" in schema, "")
+check("adopting old concepts gives them a key",
+      "c.key = $course + '::' + c.name" in
+      (APP_DIR / "neo4j_client.py").read_text(),
+      "an adopted concept without a key is invisible to the next MERGE, "
+      "which then creates a second node beside it")
 check("edges are merged onto existing concepts",
       any("MERGE (a)-[:PREREQUISITE_FOR]->(b)" in st["statement"] for st in r.sent), "")
 
@@ -140,6 +203,7 @@ for method, args in (("concepts", ("mathe-1",)), ("edges", ("mathe-1",)),
     for st in r.sent:
         check(f"{method} scopes its query to the course",
               "course_id: $course" in st["statement"], st["statement"])
+
         check(f"{method} passes the course as a parameter",
               st["parameters"].get("course") == "mathe-1", st.get("parameters"))
 
