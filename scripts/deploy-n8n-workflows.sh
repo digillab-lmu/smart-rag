@@ -197,6 +197,20 @@ jq -n \
         }
       },
       {
+        "id": "smartrag-contentadmin-credential",
+        "name": "smartrag-contentadmin",
+        "type": "postgres",
+        "data": {
+          "host": "smartrag-postgres",
+          "port": 5432,
+          "database": "contentadmin",
+          "user": $pg_user,
+          "password": $pg_pass,
+          "ssl": "disable",
+          "allowUnauthorizedCerts": false
+        }
+      },
+      {
         "id": "smartrag-smtp-credential",
         "name": "smartrag-smtp",
         "type": "smtp",

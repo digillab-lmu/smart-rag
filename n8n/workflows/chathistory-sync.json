@@ -91,7 +91,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Aufbereitung aus PostgreSQL chat_message Zeilen\n// Gruppieren nach sessionId, sortieren nach createdDate, message_index vergeben\n\nconst grouped = {};\n\nfor (const item of $input.all()) {\n  const row = item.json;\n  const sessionId = row.sessionId || '';\n  if (!grouped[sessionId]) grouped[sessionId] = [];\n  grouped[sessionId].push(row);\n}\n\nconst results = [];\n\nfor (const sessionId of Object.keys(grouped)) {\n  // Nach createdDate aufsteigend sortieren\n  const messages = grouped[sessionId].sort((a, b) =>\n    new Date(a.createdDate) - new Date(b.createdDate)\n  );\n\n  const parts = sessionId.split('|');\n  const userId = parts[0] || '';\n  const agentIdStr = parts[2] || 'agent-01';\n  const agentId = parseInt(agentIdStr.replace('agent-', '')) || 1;\n  const chapter = agentId;\n\n  messages.forEach((row, idx) => {\n    let role = 'user';\n    if (row.role === 'apiMessage') role = 'assistant';\n\n    const traceId = row.id;\n    const timestamp = row.createdDate\n      ? new Date(row.createdDate).toISOString()\n      : new Date().toISOString();\n\n    const text = row.content || '';\n    if (!text.trim()) return;\n\n    results.push({ json: {\n      user_id: userId,\n      session_id: sessionId,\n      agent_id: agentId,\n      role: role,\n      text: text,\n      timestamp: timestamp,\n      message_index: idx,\n      message_hash: `${traceId}_${idx}`,\n      trace_id: traceId,\n      chapter: chapter\n    }});\n  });\n}\n\nreturn results;"
+        "jsCode": "// Aufbereitung aus PostgreSQL chat_message Zeilen\n// Gruppieren nach sessionId, sortieren nach createdDate, message_index vergeben\n\n// Which course each chatflow belongs to. Until this existed, every message\n// was stamped with $env.COURSE_ID — the installation's one course — so with\n// several courses the history of one landed under another, five minutes at a\n// time and without a word.\nconst courseOf = {};\nfor (const row of $('Look up the course per chatflow').all()) {\n  courseOf[row.json.chatflow_id] = row.json.course_id;\n}\n\nconst grouped = {};\nlet unplaceable = 0;\n\nfor (const item of $('Fetch new messages').all()) {\n  const row = item.json;\n  // A message from a chatflow this installation does not know is skipped,\n  // not guessed at. A wrong course is worse than a missing message: the\n  // message can be re-synced once the mapping exists, a wrong one is only\n  // found by somebody reading another course's conversation.\n  row.course_id = courseOf[row.chatflowid];\n  if (!row.course_id) { unplaceable++; continue; }\n  const sessionId = row.sessionId || '';\n  if (!grouped[sessionId]) grouped[sessionId] = [];\n  grouped[sessionId].push(row);\n}\n\nif (unplaceable > 0) {\n  console.log(`Skipped ${unplaceable} message(s): no course for their chatflow.`);\n}\n\nconst results = [];\n\nfor (const sessionId of Object.keys(grouped)) {\n  // Nach createdDate aufsteigend sortieren\n  const messages = grouped[sessionId].sort((a, b) =>\n    new Date(a.createdDate) - new Date(b.createdDate)\n  );\n\n  const parts = sessionId.split('|');\n  const userId = parts[0] || '';\n  const agentIdStr = parts[2] || 'agent-01';\n  const agentId = parseInt(agentIdStr.replace('agent-', '')) || 1;\n  const chapter = agentId;\n\n  messages.forEach((row, idx) => {\n    let role = 'user';\n    if (row.role === 'apiMessage') role = 'assistant';\n\n    const traceId = row.id;\n    const timestamp = row.createdDate\n      ? new Date(row.createdDate).toISOString()\n      : new Date().toISOString();\n\n    const text = row.content || '';\n    if (!text.trim()) return;\n\n    results.push({ json: {\n      user_id: userId,\n      session_id: sessionId,\n      agent_id: agentId,\n      role: role,\n      text: text,\n      timestamp: timestamp,\n      message_index: idx,\n      message_hash: `${traceId}_${idx}`,\n      trace_id: traceId,\n      chapter: chapter\n    }});\n  });\n}\n\nreturn results;"
       },
       "id": "041306d5-f7dc-4c62-9328-8ca70d253004",
       "name": "Prepare messages",
@@ -239,7 +239,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ {\n  \"class\": \"ChatHistory\",\n  \"vector\": $json.embedding,\n  \"properties\": {\n    \"course_id\": $env.COURSE_ID || \"\",\n    \"user_id\": $json.user_id,\n    \"session_id\": $json.session_id,\n    \"agent_id\": $json.agent_id,\n    \"role\": $json.role,\n    \"text\": $json.text,\n    \"timestamp\": $json.timestamp,\n    \"message_index\": $json.message_index,\n    \"message_hash\": $json.message_hash,\n    \"trace_id\": $json.trace_id,\n    \"chapter\": $json.chapter,\n    \"message_type\": $json.message_type,\n    \"question_type\": $json.question_type,\n    \"concepts_mentioned\": $json.concepts_mentioned\n  }\n} }}",
+        "jsonBody": "={{ {\n  \"class\": \"ChatHistory\",\n  \"vector\": $json.embedding,\n  \"properties\": {\n    \"course_id\": $json.course_id,\n    \"user_id\": $json.user_id,\n    \"session_id\": $json.session_id,\n    \"agent_id\": $json.agent_id,\n    \"role\": $json.role,\n    \"text\": $json.text,\n    \"timestamp\": $json.timestamp,\n    \"message_index\": $json.message_index,\n    \"message_hash\": $json.message_hash,\n    \"trace_id\": $json.trace_id,\n    \"chapter\": $json.chapter,\n    \"message_type\": $json.message_type,\n    \"question_type\": $json.question_type,\n    \"concepts_mentioned\": $json.concepts_mentioned\n  }\n} }}",
         "options": {}
       },
       "id": "31a89458-acd1-429e-8bc8-1871e0cb273e",
@@ -277,6 +277,26 @@
         144
       ],
       "typeVersion": 2
+    },
+    {
+      "id": "8dc3148f-6d96-490a-b55d-e3b73fe4b050",
+      "name": "Look up the course per chatflow",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT chatflow_id, course_id FROM agent_slots WHERE chatflow_id IS NOT NULL",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "name": "smartrag-contentadmin"
+        }
+      }
     }
   ],
   "connections": {
@@ -317,7 +337,7 @@
       "main": [
         [
           {
-            "node": "Prepare messages",
+            "node": "Look up the course per chatflow",
             "type": "main",
             "index": 0
           }
@@ -424,6 +444,17 @@
         [
           {
             "node": "Update lastTimestamp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Look up the course per chatflow": {
+      "main": [
+        [
+          {
+            "node": "Prepare messages",
             "type": "main",
             "index": 0
           }

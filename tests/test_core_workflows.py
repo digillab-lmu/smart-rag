@@ -308,6 +308,41 @@ for path in ALL:
             check(f"{path.name}/{n['name']}{where} has no stray marker",
                   "={{" not in value[1:], value[:80])
 
+# ─── The chat history belongs to the course it came from ────────────────────
+# It used to be stamped with $env.COURSE_ID — the installation's one course —
+# so with several courses one course's conversations were filed under
+# another, every five minutes, silently. The mapping exists in the database
+# (a chatflow belongs to one slot, and a slot to one course); the workflow
+# now reads it instead of assuming.
+cs = loaded.get("chathistory-sync.json", {})
+cs_nodes = {n["name"]: n for n in cs.get("nodes", [])}
+lookup = "Look up the course per chatflow"
+check("the course is looked up", lookup in cs_nodes, sorted(cs_nodes))
+if lookup in cs_nodes:
+    q = cs_nodes[lookup]["parameters"].get("query", "")
+    check("…from the slot table", "agent_slots" in q and "chatflow_id" in q, q)
+    check("…against the Content Admin's database, not Flowise's",
+          cs_nodes[lookup].get("credentials", {}).get("postgres", {}).get("name")
+          == "smartrag-contentadmin",
+          cs_nodes[lookup].get("credentials"))
+    # A node name with an apostrophe cannot be referenced from a
+    # single-quoted JS string — the first version was called "Look up each
+    # chatflow's course" and broke the code that referenced it.
+    check("…with a name a Code node can reference",
+          "'" not in lookup, lookup)
+
+prep = cs_nodes.get("Prepare messages", {}).get("parameters", {}).get("jsCode", "")
+check("preparation reads the mapping", f"$('{lookup}')" in prep, prep[:120])
+check("a message whose chatflow is unknown is skipped, not guessed",
+      "continue" in prep and "unplaceable" in prep, "")
+
+writer = cs_nodes.get("Write to Weaviate ChatHistory", {})
+body = writer.get("parameters", {}).get("jsonBody", "")
+check("the written course comes from the message",
+      '"course_id": $json.course_id' in body, body[:160])
+check("…and no longer from the environment",
+      "$env.COURSE_ID" not in body, body[:160])
+
 # ─── Credentials the deployer must create ───────────────────────────────────
 # Every credential referenced by a workflow has to be one the deployer
 # creates, or the workflow imports and fails at run time with a message about
