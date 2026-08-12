@@ -342,6 +342,15 @@ check("the written course comes from the message",
       '"course_id": $json.course_id' in body, body[:160])
 check("…and no longer from the environment",
       "$env.COURSE_ID" not in body, body[:160])
+# These two checks are the ends of the chain, and both were green while the
+# middle dropped the field: "Prepare messages" looked the course up, skipped
+# on it, and left it out of the object it emitted, so every message was
+# written with course_id null. Reading node text cannot see that — it would
+# have to know which fields each node passes on. tests/test_chathistory_chain.sh
+# runs these Code nodes instead and asserts on what reaches the writer.
+check("the chain itself is exercised, not only its two ends",
+      (REPO / "tests" / "test_chathistory_chain.sh").exists(),
+      "nothing checks what the nodes between them carry")
 
 # ─── Credentials the deployer must create ───────────────────────────────────
 # Every credential referenced by a workflow has to be one the deployer
