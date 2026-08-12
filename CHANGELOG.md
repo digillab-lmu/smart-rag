@@ -13,6 +13,20 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Added
 
+- **A concept's name was globally unique, which made a per-course graph
+  impossible.** `neo4j/schema.cypher` constrained `Concept.name` across the
+  whole installation, so two courses could not both have a concept called
+  "Cognitive Load" — the second course's write would simply fail. Neo4j
+  Community cannot constrain a pair of properties (a node key is Enterprise),
+  so the pair is folded into one synthetic `key` property, `course::name`,
+  and the constraint moved there. Found by reading the schema after the
+  feature was written; the tests stub the transport and could not have seen
+  it. **Upgrade required:** re-run the schema step, which drops the old
+  constraint.
+- **Prerequisite circles are refused.** "A before B before C before A" is a
+  contradiction, and nothing downstream objects: the agent would fetch
+  prerequisites for ever or teach in an arbitrary order, and the map would
+  look plausible.
 - **The knowledge graph belongs to a course, and is no longer edited by
   pasting Cypher.** Concepts carried no course and the agents matched them by
   name alone, so with two courses one course's prerequisites answered for the

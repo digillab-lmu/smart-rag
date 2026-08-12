@@ -29,5 +29,18 @@
 CREATE CONSTRAINT constraint_topic_name IF NOT EXISTS
 FOR (t:Topic) REQUIRE t.name IS UNIQUE;
 
-CREATE CONSTRAINT constraint_concept_name IF NOT EXISTS
-FOR (c:Concept) REQUIRE c.name IS UNIQUE;
+// A concept is unique WITHIN ITS COURSE, not across the installation. The
+// constraint used to be on c.name alone, which made the multi-course graph
+// impossible: two courses cannot both have a concept called "Cognitive
+// Load", and the second one fails on MERGE.
+//
+// The pair (course_id, name) would be a node key, and node keys are Neo4j
+// Enterprise only
+// (neo4j.com/docs/cypher-manual/current/constraints/managing-constraints).
+// This runs Community, so the pair is carried in one synthetic property —
+// c.key = "<course_id>::<name>" — and that property is unique. Written by
+// the Content Admin on every MERGE, never by hand.
+DROP CONSTRAINT constraint_concept_name IF EXISTS;
+
+CREATE CONSTRAINT constraint_concept_key IF NOT EXISTS
+FOR (c:Concept) REQUIRE c.key IS UNIQUE;
