@@ -297,9 +297,11 @@ instead of a loss; it cannot turn it into a migration.
 *Phase 4 is irreversible* in practice. Everything before it can be reverted by
 deploying the previous version.
 
-*The course stamping in `n8n/workflows/` is now live rather than dormant.*
-Those workflows run on a schedule and take the course from `$env.COURSE_ID`,
-which is correct while there is one course and silently wrong the moment there
-are two. Phase 4/5 must convert them, and until then no second course may
-exist on a deployment that runs them — which is exactly the ordering this plan
-already imposes.
+*The course stamping in `n8n/workflows/`.* `chathistory-sync` was converted on
+2026-08-12: it looks the course up from the chatflow, in the Content Admin's
+database, and skips a message whose chatflow it cannot place rather than
+filing it under a guess. `usermemory-summary` still stamps
+`$env.COURSE_ID` — it iterates over learners rather than over courses, so
+making it course-aware is a change to what it iterates, not a one-line
+substitution. Until that is done, learner summaries on a multi-course
+installation are attributed to whichever course `.env` names.

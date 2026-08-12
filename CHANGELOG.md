@@ -13,6 +13,17 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Added
 
+- **Chat history was filed under whichever course `.env` named.**
+  `chathistory-sync` stamped `$env.COURSE_ID` onto every message it wrote,
+  every five minutes. With one course that was right; with two it silently
+  attributed one course's conversations to another. It now looks the course
+  up from the chatflow the message came from — the mapping is a column in the
+  Content Admin's database — and skips a message whose chatflow it cannot
+  place rather than guessing, because a missing message can be synced later
+  and a misfiled one is only found by somebody reading another course's
+  conversation. **Upgrade required:** re-import the n8n workflows; a new
+  `smartrag-contentadmin` credential is created for the lookup.
+  `usermemory-summary` is not converted yet and still uses `$env.COURSE_ID`.
 - **A concept's name was globally unique, which made a per-course graph
   impossible.** `neo4j/schema.cypher` constrained `Concept.name` across the
   whole installation, so two courses could not both have a concept called
