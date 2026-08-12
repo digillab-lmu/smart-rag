@@ -311,6 +311,12 @@
     </span>
     <a href="{{ url_for('graph_guidance') }}"
        class="{% if here == 'graph_guidance' %}current{% endif %}">{{ t('nav_graph') }}</a>
+    {# Only for the role that has anything to do there. A link to a page
+       that answers with a redirect teaches people to ignore the navigation. #}
+    {% if is_admin %}
+    <a href="{{ url_for('accounts_page') }}"
+       class="{% if here == 'accounts_page' %}current{% endif %}">{{ t('nav_accounts') }}</a>
+    {% endif %}
     <a href="{{ url_for('getting_started') }}"
        class="{% if here == 'getting_started' %}current{% endif %}">{{ t('guide_title') }}</a>
     <span style="flex:1"></span>

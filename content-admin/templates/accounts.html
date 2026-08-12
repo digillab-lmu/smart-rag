@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}{{ t('accounts_title') }} — {{ t('app_name') }}{% endblock %}
+{% block content %}
+<h1>{{ t('accounts_heading') }}</h1>
+<p class="note">{{ t('accounts_intro') }}</p>
+
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+{% if success %}<div class="success">{{ success }}</div>{% endif %}
+
+<table>
+  <tr>
+    <th>{{ t('accounts_col_user') }}</th>
+    <th>{{ t('accounts_col_role') }}</th>
+    <th>{{ t('accounts_col_courses') }}</th>
+    <th>{{ t('accounts_col_action') }}</th>
+  </tr>
+  {% for a in accounts %}
+  <tr>
+    <td>
+      <strong>{{ a.username }}</strong>
+      {% if a.email %}<br><span class="note">{{ a.email }}</span>{% endif %}
+    </td>
+    <td>
+      {% if a.role == 'admin' %}{{ t('accounts_role_admin') }}
+      {% else %}{{ t('accounts_role_maintainer') }}{% endif %}
+      <form method="post" style="display:inline">
+        <input type="hidden" name="action" value="role">
+        <input type="hidden" name="user_id" value="{{ a.id }}">
+        <input type="hidden" name="role"
+               value="{% if a.role == 'admin' %}maintainer{% else %}admin{% endif %}">
+        <button type="submit" class="secondary">
+          {% if a.role == 'admin' %}{{ t('accounts_make_maintainer') }}
+          {% else %}{{ t('accounts_make_admin') }}{% endif %}
+        </button>
+      </form>
+    </td>
+    <td>
+      {% if a.role == 'admin' %}
+        <span class="note">{{ t('accounts_all_courses') }}</span>
+      {% else %}
+        {% for cid in a.courses %}
+          <form method="post" style="display:inline">
+            <input type="hidden" name="action" value="unassign">
+            <input type="hidden" name="user_id" value="{{ a.id }}">
+            <input type="hidden" name="course_id" value="{{ cid }}">
+            <button type="submit" class="secondary">{{ cid }} ✕</button>
+          </form>
+        {% else %}
+          <span class="note">{{ t('accounts_no_courses') }}</span>
+        {% endfor %}
+        {% set open_courses = courses | rejectattr('id', 'in', a.courses) | list %}
+        {% if open_courses %}
+        <form method="post" style="display:inline">
+          <input type="hidden" name="action" value="assign">
+          <input type="hidden" name="user_id" value="{{ a.id }}">
+          <select name="course_id" onchange="this.form.submit()">
+            <option value="">{{ t('accounts_assign') }}…</option>
+            {% for c in open_courses %}
+            <option value="{{ c.id }}">{{ c.name }}</option>
+            {% endfor %}
+          </select>
+        </form>
+        {% endif %}
+      {% endif %}
+    </td>
+    <td>
+      {% if a.id != current_id %}
+      <form method="post" style="margin:0"
+            onsubmit="return confirm('{{ t('accounts_delete_confirm', a.username) }}')">
+        <input type="hidden" name="action" value="delete">
+        <input type="hidden" name="user_id" value="{{ a.id }}">
+        <button type="submit">{{ t('accounts_delete') }}</button>
+      </form>
+      {% else %}
+      <span class="note">{{ t('accounts_you') }}</span>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+
+<h2>{{ t('accounts_new_heading') }}</h2>
+<form method="post">
+  <input type="hidden" name="action" value="create">
+  <label for="username">{{ t('accounts_field_user') }}</label>
+  <input type="text" id="username" name="username" required>
+
+  <label for="email">{{ t('accounts_field_email') }}</label>
+  <input type="email" id="email" name="email">
+  <p class="note">{{ t('accounts_field_email_help') }}</p>
+
+  <label for="password">{{ t('accounts_field_password') }}</label>
+  <input type="password" id="password" name="password" required minlength="12">
+  <p class="note">{{ t('accounts_field_password_help') }}</p>
+
+  <label for="role">{{ t('accounts_field_role') }}</label>
+  <select id="role" name="role">
+    <option value="maintainer">{{ t('accounts_role_maintainer') }}</option>
+    <option value="admin">{{ t('accounts_role_admin') }}</option>
+  </select>
+  <p class="note">{{ t('accounts_field_role_help') }}</p>
+
+  <button type="submit">{{ t('accounts_create') }}</button>
+</form>
+{% endblock %}

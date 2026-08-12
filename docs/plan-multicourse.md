@@ -146,15 +146,24 @@ now waits for running executions instead of cutting them off.
 **This phase is the point of no return.** After it the ingest is
 course-bound, and going back costs a re-embed rather than a revert.
 
-## Phase 5 · Users and authorisation
+## Phase 5 · Users and authorisation (completed 2026-08-12)
 
 Two roles, n:m assignment, a course switcher. Authorisation at **one** choke
 point — a `before_request` that resolves the active course and asserts
 membership. Checked in fifteen places is forgotten in one, and the omission is
 invisible until someone reads another course's material.
 
-**Proven by** negative tests generated from the route table, so a new route
-added without protection fails the suite rather than being noticed later.
+**Proven by** negative tests generated from Flask's own route table, so a
+route added without protection fails the suite rather than being noticed in a
+course. Four mutations were run against it: a route with the decorator
+removed, an authorisation function that always says yes, a session cookie
+that survives a withdrawn assignment, and a demotable last administrator.
+
+Two things the writing of it changed. The first attempt recognised the
+decorators by name, which `functools.wraps` copies from the view — it would
+have passed for an undecorated route, so the decorators now set an explicit
+marker. And `flowise-setup` moved from any logged-in user to administrators
+only: the API key it stores is installation-wide, not a course's.
 
 ## Phase 6 · Deleting a course
 

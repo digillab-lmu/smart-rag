@@ -71,6 +71,7 @@
 </table>
 {% endif %}
 
+{% if is_admin %}
 <h2>{{ t('courses_new_heading') }}</h2>
 <form method="post">
   <label for="name">{{ t('courses_field_name') }}</label>
@@ -85,4 +86,7 @@
   <button type="submit">{{ t('courses_create') }}</button>
 </form>
 <p class="note">{{ t('courses_create_why') }}</p>
+{% else %}
+<p class="note">{{ t('courses_create_admin_only') }}</p>
+{% endif %}
 {% endblock %}
