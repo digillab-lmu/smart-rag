@@ -51,7 +51,8 @@
       "typeVersion": 4.2,
       "credentials": {
         "httpBasicAuth": {
-          "name": "smartrag-langfuse"
+          "name": "smartrag-langfuse",
+          "id": "smartrag-langfuse-credential"
         }
       }
     },
@@ -86,7 +87,8 @@
       "typeVersion": 2.5,
       "credentials": {
         "postgres": {
-          "name": "smartrag-postgres"
+          "name": "smartrag-postgres",
+          "id": "smartrag-postgres-credential"
         }
       }
     },
@@ -157,7 +159,8 @@
       "typeVersion": 4.2,
       "credentials": {
         "httpBasicAuth": {
-          "name": "smartrag-langfuse"
+          "name": "smartrag-langfuse",
+          "id": "smartrag-langfuse-credential"
         }
       }
     },

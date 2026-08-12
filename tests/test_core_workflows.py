@@ -359,6 +359,25 @@ for fname in ("ingest-document.json", "ingest-chunk-and-embed.json"):
         for cred in (n.get("credentials") or {}).values():
             referenced.add(cred["name"])
 
+# Referenced by id, not only by name. n8n links credentials by id; a
+# name-only reference falls back to a lookup by type, and with two Postgres
+# credentials in the same workflow it bound to the wrong one — the course
+# lookup ran against Flowise's database and failed with "relation
+# agent_slots does not exist", while the same query worked by hand.
+deployer_ids = dict(re.findall(
+    r'"id":\s*"([^"]+)",\s*\n\s*"name":\s*"([^"]+)"', DEPLOYER))
+name_to_id = {n: i for i, n in deployer_ids.items()}
+for path in ALL:
+    d = json.loads(path.read_text())
+    for n in d["nodes"]:
+        for typ, cred in (n.get("credentials") or {}).items():
+            label = f"{path.name}/{n['name']}"
+            check(f"{label} references its credential by id",
+                  bool(cred.get("id")), cred)
+            check(f"{label}'s credential id is the one the deployer creates",
+                  cred.get("id") == name_to_id.get(cred.get("name")),
+                  f"{cred} vs {name_to_id.get(cred.get('name'))}")
+
 for name in sorted(referenced):
     check(f"the deployer creates the credential {name}",
           f'"name": "{name}"' in DEPLOYER or f'"{name}"' in DEPLOYER,
