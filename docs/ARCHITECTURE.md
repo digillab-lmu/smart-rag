@@ -271,6 +271,51 @@ learner data is exactly the kind of claim this project does not make.
 
 ---
 
+## 6d · Where the concept graph should live (open, 2026-08-12)
+
+**Status.** Deliberately not decided. Recorded so the next person does not
+have to redo the comparison.
+
+**What is built.** The graph is per course, enforced by a `course_id` on every
+node and in every statement, with the pair (course, name) folded into a
+synthetic `key` property because Neo4j Community cannot constrain two
+properties at once — a node key is Enterprise, and Community allows exactly
+one database, so neither of the two natural boundaries is available.
+
+**Why that is weaker than the rest of the system.** Everywhere else the
+boundary is physical: a Weaviate collection per course, a Garage bucket per
+course, rows behind a foreign key. Here it is a property, and it holds
+because queries name it and a test checks that they do. That is discipline,
+not enforcement.
+
+**The three options, and what decides between them.**
+
+| | Boundary | Cost |
+| --- | --- | --- |
+| Postgres | Foreign key; deleting a course takes the graph with it | The agents need an endpoint, because they cannot speak SQL from Flowise — which also removes the database password they currently hold |
+| Neo4j Community (today) | A property, checked by convention | None, but it is the weakest boundary in the system |
+| Neo4j + DozerDB | A database per course | A GPL plugin from a single sponsor, pinned to the Neo4j patch release it was built for; still no role-based access control |
+
+**The deciding question is not "will we ever run graph algorithms".** At a few
+hundred concepts per course, every algorithm anyone would want — prerequisite
+chains, bottlenecks, clustering — runs in milliseconds in Python on data
+fetched from anywhere. The question is whether the graph will one day span
+learners and interactions across courses and years, growing with usage rather
+than with courses. Then traversal depth starts to matter and Neo4j earns its
+place; until then it costs about 1.5 GB of RAM on a machine whose documented
+minimum is 8 GB.
+
+**What can be done before deciding.** Normalise the concept vocabulary (see
+the plan). Learner data already references concepts as free text —
+`concepts_mentioned` on chat messages, `concepts_struggling` in UserMemory,
+`gaps` in TestResults — and none of it can be counted against the graph
+because "Cognitive Load", "cognitive load theory" and "Kognitive Belastung"
+are three different strings. Fixing that is worth doing under any of the
+three options, and it is not a data-protection question, because it concerns
+course vocabulary rather than people.
+
+---
+
 ## 7 · Flowise's code sandbox has no `process`
 
 **Decision.** Custom-function nodes in the agent templates read secrets as

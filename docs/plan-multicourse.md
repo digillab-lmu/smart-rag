@@ -187,6 +187,28 @@ follow.
 **Proven by** a full reinstall on the test machine, then phases 2–6 run
 through as one sequence by hand.
 
+## Phase 7a · One vocabulary for concepts
+
+Learner data already points at concepts, in three places and as free text:
+`concepts_mentioned` on every chat message, `concepts_struggling` and
+`concepts_mastered` in UserMemory, `gaps` and `strengths` in TestResults.
+None of it can be counted against the concept map, because the strings do not
+match the nodes — and nothing notices, because there is no join to fail.
+
+Normalising that is the prerequisite for every analytical question worth
+asking of this system: which concept is the bottleneck for a cohort, which
+prerequisite the map claims and the data denies, what a given learner should
+do next. It is also independent of where the graph is stored (ARCHITECTURE
+6d), so it can be built before that decision rather than after it.
+
+**Not a data-protection question.** This is course vocabulary, not people.
+Linking learners to concepts as durable data is, and belongs with the LTI
+question that is still with the data protection officer.
+
+**Proven by** an extraction that resolves to a concept in the map, or to
+nothing, with the "nothing" counted and visible — a silent 40% miss rate
+would make every number computed on top of it wrong in the same direction.
+
 ## Phase 8 · Moving the installation to another server
 
 Asked for while phase 4 was being proven: this deployment will move to
