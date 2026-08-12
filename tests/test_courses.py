@@ -302,14 +302,20 @@ os.environ.setdefault("SMARTRAG_SLOTS_PATH", str(Path(tmpdir) / "slots.json"))
 os.environ.setdefault("SMARTRAG_TEMPLATES_DIR",
                       str(Path(APP_DIR).parent / "flowise" / "agents"))
 import app as flask_app  # noqa: E402
+import accounts  # noqa: E402
 import auth  # noqa: E402
 
-auth.create_admin_account("kursadmin", "a-strong-test-password")
+accounts.create_account("kursadmin", "a-strong-test-password",
+                        role=accounts.ROLE_ADMIN,
+                        email="kursadmin@example.com")
 client = flask_app.app.test_client()
 client.post("/login", data={"username": "kursadmin",
                             "password": "a-strong-test-password"})
 
 reset()
+USER = accounts.create_account("kursadmin", "a-strong-test-password",
+                               role=accounts.ROLE_ADMIN,
+                               email="kursadmin@example.com")
 w6, g6 = FakeWeaviate(), FakeGarage()
 courses.create_course("kurs-fertig", "Fertiger Kurs", weaviate=w6, garage=g6)
 w7, g7 = FakeWeaviate(), FakeGarage(fail_on_create=True)
@@ -356,6 +362,9 @@ check("…and says what is wrong",
 # automatically — and the switcher existed in the view layer but was never
 # rendered. A redirect nobody can satisfy is a dead end.
 reset()
+USER = accounts.create_account("kursadmin", "a-strong-test-password",
+                               role=accounts.ROLE_ADMIN,
+                               email="kursadmin@example.com")
 wf2, gf2 = FakeWeaviate(), FakeGarage()
 courses.create_course("kurs-eins", "Kurs Eins", weaviate=wf2, garage=gf2)
 courses.create_course("kurs-zwei", "Kurs Zwei", weaviate=wf2, garage=gf2)
@@ -383,6 +392,9 @@ check("…and the layout names the active course",
 # A single course needs no choosing — asking someone to pick from a list of
 # one teaches clicking without reading.
 reset()
+USER = accounts.create_account("kursadmin", "a-strong-test-password",
+                               role=accounts.ROLE_ADMIN,
+                               email="kursadmin@example.com")
 wf3, gf3 = FakeWeaviate(), FakeGarage()
 courses.create_course("nur-einer", "Nur Einer", weaviate=wf3, garage=gf3)
 solo = flask_app.app.test_client()
@@ -404,6 +416,9 @@ import storage  # noqa: E402
 import agent_templates  # noqa: E402
 
 reset()
+USER = accounts.create_account("kursadmin", "a-strong-test-password",
+                               role=accounts.ROLE_ADMIN,
+                               email="kursadmin@example.com")
 wf, gf = FakeWeaviate(), FakeGarage()
 a = courses.create_course("kurs-a", "Kurs A", weaviate=wf, garage=gf)
 b = courses.create_course("kurs-b", "Kurs B", weaviate=wf, garage=gf)
@@ -472,6 +487,9 @@ check("the chatflow can be traced back to its course",
       storage.course_of_chatflow(storage.get_slot("kurs-b", 1)["chatflow_id"]) == "kurs-b")
 
 reset()
+USER = accounts.create_account("kursadmin", "a-strong-test-password",
+                               role=accounts.ROLE_ADMIN,
+                               email="kursadmin@example.com")
 db.close_pool()
 
 if failures:

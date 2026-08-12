@@ -67,6 +67,15 @@ def require_database():
     import atexit
     atexit.register(db.close_pool)
 
+    # Accounts too. A suite that creates one through /setup finds the
+    # previous suite's account still there, is redirected to the login page,
+    # and then fails on something three steps away — the same shared-database
+    # trap the courses had.
+    with db.connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM users")
+        conn.commit()
+
     course = _ensure_course(db)
     return db, course
 

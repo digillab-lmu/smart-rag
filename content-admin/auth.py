@@ -1,108 +1,132 @@
 """
-Single-admin-account auth. Deliberately simple: this is a low-traffic
-internal tool with exactly one operator account, not a multi-user system —
-Flask's built-in signed-cookie session (itsdangerous, keyed by
-CONTENT_ADMIN_SESSION_SECRET) is sufficient and needs no server-side store.
-No Redis dependency for this reason (see commit message for the reasoning).
+Sessions: who is logged in, and the two decorators that guard a route.
 
-Credentials live in .env (CONTENT_ADMIN_USERNAME / CONTENT_ADMIN_PASSWORD_HASH)
-via env_file.py's set_env_var() — the one canonical secrets location this
-whole project already uses, so scripts/admin.sh's Secrets overview picks
-this up automatically too.
+The accounts themselves live in the database now (accounts.py). This module
+is only the part that belongs to a request: the signed cookie, resolving it
+back to an account, and refusing when it does not.
+
+Why the session holds an id and not the account. A cookie is written once and
+read for as long as it lives; a role copied into it at login would survive
+the account being demoted or deleted. The id is looked up per request, which
+costs one small query and means "no longer an administrator" takes effect
+immediately rather than at next login.
+
+The account that used to live in .env is adopted on first use — see
+adopt_legacy_account(). Without it the first start after this change would
+find no accounts, offer its first-run setup page, and let anybody who reaches
+the address claim the installation.
 """
 
-import hashlib
-import hmac
-import secrets
-import time
+import logging
 from functools import wraps
 
 from flask import redirect, session, url_for
-from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.security import check_password_hash
 
+import accounts
 from env_file import read_env, set_env_var
 
-# How long a reset link stays usable. Long enough to survive a mail relay
-# that queues for a few minutes, short enough that a link left in an inbox
-# is not a standing key to the system.
-RESET_TTL_SECONDS = 3600
+logger = logging.getLogger(__name__)
 
-MIN_PASSWORD_LENGTH = 12
+MIN_PASSWORD_LENGTH = accounts.MIN_PASSWORD_LENGTH
+
+
+def current_user() -> dict | None:
+    user_id = session.get("user_id")
+    if not user_id:
+        return None
+    return accounts.get(user_id)
+
+
+def log_in(user: dict) -> None:
+    session["user_id"] = user["id"]
+    session["logged_in"] = True          # what the layout checks
+    session["username"] = user["username"]
+
+
+def log_out() -> None:
+    session.clear()
 
 
 def is_configured() -> bool:
-    env = read_env()
-    return bool(env.get("CONTENT_ADMIN_USERNAME")) and bool(
-        env.get("CONTENT_ADMIN_PASSWORD_HASH")
-    )
-
-
-def create_admin_account(username: str, password: str) -> None:
-    set_env_var("CONTENT_ADMIN_USERNAME", username)
-    set_env_var("CONTENT_ADMIN_PASSWORD_HASH", generate_password_hash(password))
-
-
-def verify_login(username: str, password: str) -> bool:
-    env = read_env()
-    if username != env.get("CONTENT_ADMIN_USERNAME"):
-        return False
-    stored_hash = env.get("CONTENT_ADMIN_PASSWORD_HASH", "")
-    return bool(stored_hash) and check_password_hash(stored_hash, password)
-
-
-def set_password(password: str) -> None:
-    """Replace the password, keeping the username."""
-    set_env_var("CONTENT_ADMIN_PASSWORD_HASH", generate_password_hash(password))
-
-
-# ─── Password reset by email ─────────────────────────────────────────────────
-# The token is stored hashed, for the same reason the password is: .env is
-# readable by root and appears in the admin TUI's secrets overview, and a
-# token in there is a usable key until it expires. SHA-256 without a salt is
-# right here and would be wrong for a password — the token is 32 bytes of
-# CSPRNG output, so there is nothing to guess and nothing to precompute.
-
-def _hash_token(token: str) -> str:
-    return hashlib.sha256(token.encode()).hexdigest()
-
-
-def create_reset_token() -> str:
-    """Generate a reset token, store its hash and expiry, return the token."""
-    token = secrets.token_urlsafe(32)
-    set_env_var("CONTENT_ADMIN_RESET_TOKEN_HASH", _hash_token(token))
-    set_env_var("CONTENT_ADMIN_RESET_EXPIRES", str(int(time.time()) + RESET_TTL_SECONDS))
-    return token
-
-
-def clear_reset_token() -> None:
-    set_env_var("CONTENT_ADMIN_RESET_TOKEN_HASH", "")
-    set_env_var("CONTENT_ADMIN_RESET_EXPIRES", "")
-
-
-def verify_reset_token(token: str) -> bool:
-    """True only for the current, unexpired token."""
-    env = read_env()
-    stored = env.get("CONTENT_ADMIN_RESET_TOKEN_HASH", "").strip()
-    expires_raw = env.get("CONTENT_ADMIN_RESET_EXPIRES", "").strip()
-    if not stored or not expires_raw or not token:
-        return False
-    try:
-        expires = int(expires_raw)
-    except ValueError:
-        # An unreadable expiry is not a reason to accept the token.
-        return False
-    if time.time() > expires:
-        return False
-    # compare_digest, not ==: the comparison is against a secret, and this
-    # endpoint is reachable by anyone who can reach the login page.
-    return hmac.compare_digest(stored, _hash_token(token))
+    """Whether this installation has any account at all."""
+    return accounts.any_account_exists()
 
 
 def login_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
-        if not session.get("logged_in"):
+        if not current_user():
             return redirect(url_for("login"))
         return view(*args, **kwargs)
-
+    wrapped.__login_required__ = True
     return wrapped
+
+
+def admin_required(view):
+    """For the pages that manage the installation rather than a course.
+
+    Separate from login_required rather than folded into it: a maintainer
+    reaching an admin page is a different situation from a stranger reaching
+    any page, and answering both with the login form would send a
+    legitimately logged-in person round in a circle.
+    """
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        user = current_user()
+        if not user:
+            return redirect(url_for("login"))
+        if user["role"] != accounts.ROLE_ADMIN:
+            return redirect(url_for("dashboard"))
+        return view(*args, **kwargs)
+    # An explicit marker, because functools.wraps makes a wrapper
+    # indistinguishable from the function it wraps — a test that tried to
+    # recognise the decoration by name saw only the view's own name and
+    # would have passed for an unguarded route.
+    wrapped.__admin_only__ = True
+    return wrapped
+
+
+def adopt_legacy_account() -> bool:
+    """Move the single .env account into the database, once.
+
+    Before accounts existed, there was one, in CONTENT_ADMIN_USERNAME and
+    CONTENT_ADMIN_PASSWORD_HASH. Leaving it behind would mean the first start
+    after this change finds no accounts, shows the first-run setup page, and
+    hands the installation to whoever opens it first.
+
+    The hash is carried across as it is, so the existing password keeps
+    working and nobody has to be told a new one. The .env values are cleared
+    afterwards: two places holding a credential is one place too many, and
+    the stale one is the one somebody will later "fix" the login with.
+    """
+    if accounts.any_account_exists():
+        return False
+    env = read_env()
+    username = env.get("CONTENT_ADMIN_USERNAME", "").strip()
+    password_hash = env.get("CONTENT_ADMIN_PASSWORD_HASH", "").strip()
+    if not username or not password_hash:
+        return False
+
+    with accounts.db.connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO users (username, email, password_hash, role) "
+                "VALUES (%s, %s, %s, %s)",
+                (username, env.get("ADMIN_EMAIL", "").strip() or None,
+                 password_hash, accounts.ROLE_ADMIN))
+        conn.commit()
+    set_env_var("CONTENT_ADMIN_USERNAME", "")
+    set_env_var("CONTENT_ADMIN_PASSWORD_HASH", "")
+    logger.info("Adopted the .env account %r as the first administrator", username)
+    return True
+
+
+def verify_password(user: dict, password: str) -> bool:
+    """Used where an action needs the current password again."""
+    with accounts.db.connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT password_hash FROM users WHERE id = %s", (user["id"],))
+            row = cur.fetchone()
+        conn.commit()
+    return bool(row) and check_password_hash(row[0], password or "")

@@ -27,6 +27,7 @@ from functools import wraps
 from flask import (Flask, g, jsonify, redirect, render_template, request,
                    session, url_for)
 
+import accounts
 import agent_templates
 import auth
 import citation
@@ -225,10 +226,14 @@ def setup():
         elif len(password) < 12:
             error = _t("setup_err_too_short")
         else:
-            auth.create_admin_account(username, password)
-            session["logged_in"] = True
-            session["username"] = username
-            return redirect(url_for("flowise_setup"))
+            try:
+                user = accounts.create_account(username, password,
+                                               role=accounts.ROLE_ADMIN)
+            except accounts.AccountError as exc:
+                error = str(exc)
+            else:
+                auth.log_in(user)
+                return redirect(url_for("flowise_setup"))
     return render_template("setup.html", error=error)
 
 
@@ -242,9 +247,9 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "")
         password = request.form.get("password", "")
-        if auth.verify_login(username, password):
-            session["logged_in"] = True
-            session["username"] = username
+        user = accounts.verify_login(username, password)
+        if user:
+            auth.log_in(user)
             return redirect(url_for("dashboard"))
         error = _t("login_err_invalid")
     return render_template(
@@ -284,22 +289,28 @@ def forgot_password():
         username = request.form.get("username", "").strip()
         # Always report success — see the note above.
         sent = True
-        if username and username == env.get("CONTENT_ADMIN_USERNAME"):
-            token = auth.create_reset_token()
+        user = accounts.get_by_username(username) if username else None
+        # The link goes to the address stored on the account, and to
+        # ADMIN_EMAIL only for an account that has none. Never to an address
+        # from the form: that would let anyone have a working reset link
+        # delivered to themselves.
+        target = (user or {}).get("email") or env.get("ADMIN_EMAIL", "")
+        if user and target:
+            token = accounts.create_reset_token(user["id"])
             base = (env.get("CONTENT_ADMIN_PUBLIC_URL") or "").rstrip("/")
             link = f"{base}{url_for('reset_password', token=token)}"
             try:
                 mailer.send_mail(
-                    env["ADMIN_EMAIL"],
+                    target,
                     _t("reset_mail_subject"),
-                    _t("reset_mail_body", link, auth.RESET_TTL_SECONDS // 60),
+                    _t("reset_mail_body", link, accounts.RESET_TTL_SECONDS // 60),
                 )
             except mailer.MailError as exc:
                 # The operator sees the same page either way; the log is
                 # where the real reason belongs, and the admin TUI remains
                 # the way in if mail is broken.
                 logger.error("Could not send password-reset mail: %s", exc)
-                auth.clear_reset_token()
+                accounts.clear_reset_token(user["id"])
 
     return render_template(
         "forgot.html",
@@ -313,7 +324,8 @@ def reset_password(token: str):
     if not auth.is_configured():
         return redirect(url_for("setup"))
 
-    if not auth.verify_reset_token(token):
+    user = accounts.user_for_reset_token(token)
+    if not user:
         return render_template("reset.html", invalid=True), 400
 
     error = None
@@ -327,10 +339,10 @@ def reset_password(token: str):
         elif len(password) < auth.MIN_PASSWORD_LENGTH:
             error = _t("setup_err_too_short")
         else:
-            auth.set_password(password)
-            # Single use: the token dies with the password it replaced,
-            # whether or not the link is still within its hour.
-            auth.clear_reset_token()
+            # set_password clears the token itself — single use, so the link
+            # dies with the password it replaced whether or not its hour is
+            # up.
+            accounts.set_password(user["id"], password)
             return render_template("reset.html", done=True)
 
     return render_template("reset.html", token=token, error=error)
@@ -338,13 +350,13 @@ def reset_password(token: str):
 
 @app.route("/logout")
 def logout():
-    session.clear()
+    auth.log_out()
     return redirect(url_for("login"))
 
 
 # ─── Flowise connection setup ───────────────────────────────────────────────────
 @app.route("/flowise-setup", methods=["GET", "POST"])
-@auth.login_required
+@auth.admin_required
 def flowise_setup():
     env = read_env()
     error = None
@@ -370,6 +382,81 @@ def flowise_setup():
     )
 
 
+# ─── The account that used to live in .env ───────────────────────────────────
+# Done on the first request rather than at import: the database may not be
+# reachable when the container starts, and refusing to start over an account
+# migration would take the whole GUI down for a problem it could report.
+_adoption_done = False
+
+
+@app.before_request
+def _adopt_once():
+    global _adoption_done
+    if _adoption_done:
+        return
+    _adoption_done = True
+    try:
+        auth.adopt_legacy_account()
+    except db.DatabaseError as exc:
+        # Not fatal: the pages that need the database will say so themselves,
+        # and the ones that do not still work.
+        logger.warning("Could not check for a legacy account: %s", exc)
+
+
+# ─── Accounts ────────────────────────────────────────────────────────────────
+@app.route("/accounts", methods=["GET", "POST"])
+@auth.admin_required
+def accounts_page():
+    """Who exists, what they may reach, and how that changes.
+
+    Administrator-only, and the reason is worth stating: this page hands out
+    access to course material. A maintainer who could assign themselves a
+    course would make the whole authorisation model decorative.
+    """
+    error = None
+    success = None
+    try:
+        courses_available = [c for c in courses_service.all_courses() if c["ready"]]
+    except db.DatabaseError as exc:
+        return render_template("accounts.html", accounts=[], courses=[],
+                               error=str(exc), success=None)
+
+    if request.method == "POST":
+        action = request.form.get("action", "")
+        try:
+            if action == "create":
+                user = accounts.create_account(
+                    request.form.get("username", ""),
+                    request.form.get("password", ""),
+                    role=request.form.get("role", accounts.ROLE_MAINTAINER),
+                    email=request.form.get("email", ""))
+                success = _t("accounts_created", user["username"])
+            elif action == "assign":
+                accounts.assign(int(request.form.get("user_id", "0")),
+                                request.form.get("course_id", ""))
+            elif action == "unassign":
+                accounts.unassign(int(request.form.get("user_id", "0")),
+                                  request.form.get("course_id", ""))
+            elif action == "role":
+                accounts.set_role(int(request.form.get("user_id", "0")),
+                                  request.form.get("role", ""))
+            elif action == "delete":
+                accounts.delete_account(int(request.form.get("user_id", "0")))
+                success = _t("accounts_deleted")
+        except accounts.AccountError as exc:
+            # These messages already explain themselves — the last-administrator
+            # one in particular says what to do instead.
+            error = str(exc)
+        except (ValueError, db.DatabaseError) as exc:
+            error = str(exc)
+
+    return render_template("accounts.html",
+                           accounts=accounts.all_accounts(),
+                           courses=courses_available,
+                           current_id=(auth.current_user() or {}).get("id"),
+                           error=error, success=success)
+
+
 # ─── The active course ───────────────────────────────────────────────────────
 # Every page that touches agents, documents or uploads works inside exactly
 # one course. Which one is resolved here, in one place.
@@ -387,17 +474,23 @@ def _resolve_course() -> dict | None:
     no choice made, nothing is guessed: the wrong course silently selected is
     how one course's documents end up in another.
     """
+    user = auth.current_user()
     chosen = session.get("course_id")
     if chosen:
         course = courses_service.get_course(chosen)
-        if course and course["ready"]:
+        # Membership is checked here, on every request, and not once at the
+        # moment of choosing: an assignment can be withdrawn while somebody
+        # is logged in, and a cookie written before that would otherwise keep
+        # working for as long as the session lives.
+        if course and course["ready"] and accounts.may_access(user, chosen):
             return course
         # A course that was deleted, or whose provisioning never finished,
         # must not stay selected — every page would then fail somewhere
         # deeper, with a message about a missing collection.
         session.pop("course_id", None)
 
-    ready = [c for c in courses_service.all_courses() if c["ready"]]
+    ready = [c for c in courses_service.all_courses()
+             if c["ready"] and accounts.may_access(user, c["id"])]
     if len(ready) == 1:
         return ready[0]
     return None
@@ -416,6 +509,7 @@ def with_course(view):
             return redirect(url_for("courses", pick="1"))
         g.course = course
         return view(*args, **kwargs)
+    wrapped.__course_bound__ = True
     return wrapped
 
 
@@ -426,17 +520,21 @@ def _inject_course():
     edit lands in the wrong one."""
     try:
         active = getattr(g, "course", None) or _resolve_course()
-        available = [c for c in courses_service.all_courses() if c["ready"]]
+        user = auth.current_user()
+        available = [c for c in courses_service.all_courses()
+                     if c["ready"] and accounts.may_access(user, c["id"])]
     except db.DatabaseError:
         active, available = None, []
-    return {"active_course": active, "available_courses": available}
+    return {"active_course": active, "available_courses": available,
+            "is_admin": bool(user and user["role"] == accounts.ROLE_ADMIN),
+            "current_account": user}
 
 
 @app.route("/courses/<course_id>/use")
 @auth.login_required
 def use_course(course_id):
     course = courses_service.get_course(course_id)
-    if course and course["ready"]:
+    if course and course["ready"] and accounts.may_access(auth.current_user(), course_id):
         session["course_id"] = course_id
     return redirect(request.referrer or url_for("dashboard"))
 
@@ -1134,8 +1232,16 @@ def courses():
     success = None
     form = {"id": "", "name": ""}
 
+    user = auth.current_user()
+    is_admin = bool(user and user["role"] == accounts.ROLE_ADMIN)
+
     if request.method == "POST":
         action = request.form.get("action", "create")
+        if not is_admin:
+            # Creating a course creates a collection, a bucket and a storage
+            # grant. That is an installation-level act, not a course-level
+            # one, so it belongs to the role that manages the installation.
+            return redirect(url_for("courses"))
         try:
             if action == "provision":
                 # Finishing a course whose creation failed part-way. Same
@@ -1163,16 +1269,23 @@ def courses():
     needs_pick = request.args.get("pick") == "1"
 
     try:
-        all_of_them = courses_service.all_courses()
+        visible = courses_service.all_courses()
+        if not is_admin:
+            # A maintainer sees the courses they are assigned to and no
+            # others — including no unfinished ones, which are somebody
+            # else's problem to finish.
+            visible = [c for c in visible if accounts.may_access(user, c["id"])]
+        all_of_them = visible
         unfinished = [c for c in all_of_them if not c["ready"]]
     except db.DatabaseError as exc:
         return render_template("courses.html", courses=[], unfinished=[],
                                error=error or str(exc), success=success,
-                               form=form, needs_pick=needs_pick)
+                               form=form, needs_pick=needs_pick,
+                               is_admin=is_admin)
 
     return render_template("courses.html", courses=all_of_them,
                            unfinished=unfinished, error=error, success=success,
-                           form=form, needs_pick=needs_pick)
+                           form=form, needs_pick=needs_pick, is_admin=is_admin)
 
 
 # ─── Documents: what is indexed, and removing it ─────────────────────────────────
@@ -1253,6 +1366,7 @@ def documents():
 # ─── Knowledge-graph guidance ────────────────────────────────────────────────────
 @app.route("/graph-guidance", methods=["GET", "POST"])
 @auth.login_required
+@with_course
 def graph_guidance():
     error = None
     success = None

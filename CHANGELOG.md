@@ -13,6 +13,23 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Added
 
+- **Accounts, roles, and who may reach which course.** The single account in
+  `.env` became rows in the database. Two roles: an installation
+  administrator, who manages courses and accounts and works anywhere, and a
+  maintainer, who works in the courses assigned to them and sees no others —
+  not in the list, not in the switcher, not by typing a URL. The check lives
+  in one function called from one decorator, and a test reads Flask's own
+  route table to require it on every course-bound route, so a route added
+  later without it fails the suite rather than quietly showing one course's
+  material to another course's maintainer. The role is looked up per request
+  rather than copied into the session, so a withdrawn assignment takes effect
+  on the next click instead of the next login. The last administrator can be
+  neither demoted nor deleted: an installation with none can only be repaired
+  from a shell. Password resets go to the address on the account, falling
+  back to `ADMIN_EMAIL`, and never to an address typed into the form. The
+  existing `.env` account is adopted as the first administrator on the first
+  start, hash and all, so nobody has to be told a new password and nobody can
+  claim the installation through the first-run page.
 - **The workflow import restarted n8n over a running ingest.** Observed: an
   upload started at 20:12:43, `deploy-n8n-workflows.sh` restarted n8n eleven
   seconds later, and the execution was recorded as `crashed` — with n8n's own
