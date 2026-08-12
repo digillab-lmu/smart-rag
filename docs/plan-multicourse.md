@@ -125,15 +125,23 @@ fake: a stubbed Flowise that returned one chatflow id for every slot, which
 the unique index refuses, and rightly — two slots on one chatflow means each
 import silently overwrites the other.
 
-## Phase 4 · Ingest per course (built 2026-08-11, live proof pending)
+## Phase 4 · Ingest per course (completed 2026-08-11)
 
 The upload carries the course; the workflow takes `course_id`, the collection
 and the bucket **from the request** instead of `$env`. Progress rows carry the
 course.
 
-**Proven by** the test this whole feature exists for: ingest into course A,
-ask in course B, and get nothing — and then the same query in course A, so
-that "nothing" is not simply everything being broken.
+**Proven** on the live system: a document uploaded into mathe-1 produced 23
+chunks in `Chunks_mathe_1` and none in `Chunks_chemie_1`, the chunks carry
+`course_id: mathe-1` — the value every agent filters on — and the archived
+copy went to `mathe-1-rag`. `Testkurs2Chunks` stayed at 113, so nothing
+reaches the original course any more.
+
+Getting there cost three misdiagnoses worth remembering. n8n reported "may
+have run out of memory"; Docling's log showed two clean conversions and the
+machine had 7.9 GB free. The execution table gave the real answer: the
+workflow import had restarted n8n eleven seconds into the run. The deployer
+now waits for running executions instead of cutting them off.
 
 **This phase is the point of no return.** After it the ingest is
 course-bound, and going back costs a re-embed rather than a revert.
