@@ -13,6 +13,29 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Added
 
+- **The knowledge graph belongs to a course, and is no longer edited by
+  pasting Cypher.** Concepts carried no course and the agents matched them by
+  name alone, so with two courses one course's prerequisites answered for the
+  other — the last of the cross-course leaks. Every concept now carries its
+  course, every read and write names it inside the pattern, and each agent
+  matches only its own.
+
+  The page changed with it. It used to hand out a Cypher prompt and run
+  whatever came back; a boundary cannot be enforced inside a statement
+  somebody else wrote, and checking Cypher before running it would mean
+  parsing Cypher. The model is asked for JSON instead, which is validated
+  here — a nameless or duplicated concept, an unknown field, an edge to a
+  concept that is not in the answer, or an answer that is not JSON at all are
+  each refused with the reason — and the writing is done with parameterised
+  statements. `MERGE` throughout, so applying the same answer twice changes
+  nothing the second time.
+
+  The page also shows what is in the graph now: concepts with how many links
+  lead in and out (a duplicate is the one with none), all links, removal of a
+  single concept, and starting over. Concepts created before the split belong
+  to no course and are invisible to every agent; the page says so and offers
+  to claim them for the current course rather than guessing which one they
+  were for.
 - **Accounts, roles, and who may reach which course.** The single account in
   `.env` became rows in the database. Two roles: an installation
   administrator, who manages courses and accounts and works anywhere, and a

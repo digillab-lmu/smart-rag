@@ -196,9 +196,13 @@ if storage.name_taken(COURSE_ID, "Chapter 4 Tutor", exclude_slot=4):
 if storage.name_taken(COURSE_ID, "Some Totally Unused Name", exclude_slot=1):
     failures.append("name_taken() should report False for an unused name")
 
-# 15. Graph guidance page renders with the prompt template visible
+# 15. The knowledge-graph page renders: the prompt to hand a model, and the
+# box its answer goes into. The old expectations were Cypher — "MERGE
+# (t:Topic" and "PREREQUISITE_FOR" — because the page used to hand out Cypher
+# for a person to run. It hands out a request for JSON now, and validates the
+# answer here, so those strings are gone by design rather than by accident.
 check("GET /graph-guidance", client.get("/graph-guidance"), 200, [
-    "PREREQUISITE_FOR", "MERGE (t:Topic", "Run against Neo4j",
+    "prerequisites", "concepts", "JSON",
 ])
 
 # 16. /slot/<n>/optimize route: unknown field rejected without calling the LLM

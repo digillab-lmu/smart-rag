@@ -43,6 +43,7 @@ from flowise_client import FlowiseClient, FlowiseError
 from llm_client import LLMError, optimize_field, suggest_keywords
 from n8n_client import N8nClient, N8nError
 from weaviate_client import WeaviateClient, WeaviateError
+import neo4j_client
 from neo4j_client import Neo4jClient, Neo4jError
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-7s  %(message)s")
@@ -1368,13 +1369,58 @@ def documents():
 @auth.login_required
 @with_course
 def graph_guidance():
+    """The course's concept graph: what is in it, and adding to it.
+
+    The page no longer runs pasted Cypher. It takes the model's answer as
+    JSON, validates it here, and writes with parameterised statements that
+    carry the course — a boundary cannot be enforced inside a statement
+    somebody else wrote, and checking Cypher before running it would mean
+    parsing Cypher, which is the kind of nearly-right safeguard that is worse
+    than none.
+    """
+    course_id = g.course["id"]
+    client = _neo4j_client()
     error = None
     success = None
+    proposal = ""
+
     if request.method == "POST":
-        cypher = request.form.get("cypher", "")
+        action = request.form.get("action", "apply")
         try:
-            results = _neo4j_client().run_script(cypher)
-            success = _t("graph_ok", len(results))
+            if action == "delete":
+                name = request.form.get("name", "")
+                removed = client.delete_concept(course_id, name)
+                success = _t("graph_deleted", name) if removed else _t("graph_not_found", name)
+            elif action == "adopt":
+                moved = client.adopt_unassigned(course_id)
+                success = _t("graph_adopted", moved, g.course["name"])
+            elif action == "clear":
+                removed = client.clear_course(course_id)
+                success = _t("graph_cleared", removed, g.course["name"])
+            else:
+                proposal = request.form.get("proposal", "")
+                concepts, edges = neo4j_client.parse_proposal(proposal)
+                written = client.apply_proposal(course_id, concepts, edges)
+                success = _t("graph_applied", written["concepts"], written["edges"])
+                proposal = ""
+        except neo4j_client.GraphInputError as exc:
+            # The reader did not write this input — a model did — so the
+            # message says which part to fix rather than "invalid".
+            error = str(exc)
         except Neo4jError as exc:
             error = str(exc)
-    return render_template("graph_guidance.html", error=error, success=success)
+
+    try:
+        concepts = client.concepts(course_id)
+        edges = client.edges(course_id)
+        counts = client.counts(course_id)
+        unassigned = client.unassigned_count()
+    except Neo4jError as exc:
+        return render_template("graph_guidance.html", error=error or str(exc),
+                               success=success, concepts=[], edges=[],
+                               counts={"concepts": 0, "edges": 0}, unassigned=0,
+                               proposal=proposal)
+
+    return render_template("graph_guidance.html", error=error, success=success,
+                           concepts=concepts, edges=edges, counts=counts,
+                           unassigned=unassigned, proposal=proposal)

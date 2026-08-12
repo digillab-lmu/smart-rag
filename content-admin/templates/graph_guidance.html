@@ -1,56 +1,106 @@
 {% extends "base.html" %}
-{% block title %}{{ t('graph_title') }} — {{ t('app_name') }} {{ t('app_subtitle') }}{% endblock %}
+{% block title %}{{ t('graph_title') }} — {{ t('app_name') }}{% endblock %}
 {% block content %}
 <h1>{{ t('graph_heading') }}</h1>
 <p class="note">{{ t('graph_intro') }}</p>
 
-<h2>{{ t('graph_h_model') }}</h2>
-<ul>
-  <li><code>(Topic)</code> — {{ t('graph_model_topic') }}</li>
-  <li><code>(Concept)</code> — {{ t('graph_model_concept') }}</li>
-  <li><code>(:Concept)-[:BELONGS_TO]-&gt;(:Topic)</code></li>
-  <li><code>(:Concept)-[:PREREQUISITE_FOR]-&gt;(:Concept)</code></li>
-</ul>
-<p>{{ t('graph_model_props')|safe }}</p>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+{% if success %}<div class="success">{{ success }}</div>{% endif %}
 
-<h2>{{ t('graph_h_prompt') }}</h2>
-<p>{{ t('graph_prompt_intro') }}</p>
-<pre id="prompt-template">I'm building a concept-prerequisite graph for a course, to be loaded into Neo4j.
+{# Concepts from before the graph knew about courses. Not moved silently:
+   they belong to whichever course existed at the time, and only a person
+   knows which one that was. #}
+{% if unassigned %}
+<div class="error">
+  {{ t('graph_unassigned', unassigned) }}
+  <form method="post" style="display:inline">
+    <input type="hidden" name="action" value="adopt">
+    <button type="submit">{{ t('graph_adopt') }}</button>
+  </form>
+</div>
+{% endif %}
 
-Data model:
-  (Topic)     — a high-level topic/chapter
-  (Concept)   — a specific learning concept
-  (:Concept)-[:BELONGS_TO]->(:Topic)
-  (:Concept)-[:PREREQUISITE_FOR]->(:Concept)   -- "X must be understood before Y"
+<h2>{{ t('graph_state_heading') }}</h2>
+<p class="note">{{ t('graph_state_intro', counts.concepts, counts.edges) }}</p>
 
-Given the attached course material, produce Cypher MERGE statements that:
-  1. Create one Topic per chapter/unit.
-  2. Create one Concept per distinct learning concept, each with a short
-     `description` property and the `chapter` number it belongs to.
-  3. Link each Concept to its Topic via BELONGS_TO.
-  4. Link concepts that genuinely require prior understanding of another
-     concept via PREREQUISITE_FOR — only where the material itself implies
-     a dependency, don't invent one. When in doubt, omit the edge rather
-     than guess.
+{% if not concepts %}
+<p class="note">{{ t('graph_empty') }}</p>
+{% else %}
+<table>
+  <tr>
+    <th>{{ t('graph_col_concept') }}</th>
+    <th>{{ t('graph_col_chapter') }}</th>
+    <th>{{ t('graph_col_edges') }}</th>
+    <th></th>
+  </tr>
+  {% for c in concepts %}
+  <tr>
+    <td>
+      <strong>{{ c.name }}</strong>
+      {% if c.description %}<br><span class="note">{{ c.description }}</span>{% endif %}
+    </td>
+    <td>{{ c.chapter or '—' }}</td>
+    <td>
+      {# A concept with no edges at all is usually a duplicate under a
+         slightly different name — the number is here to make that visible. #}
+      {{ t('graph_edges_summary', c.depends_on, c.leads_to) }}
+    </td>
+    <td>
+      <form method="post" style="margin:0"
+            onsubmit="return confirm('{{ t('graph_delete_confirm', c.name) }}')">
+        <input type="hidden" name="action" value="delete">
+        <input type="hidden" name="name" value="{{ c.name }}">
+        <button type="submit" class="secondary">{{ t('graph_delete') }}</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
 
-Use exactly this format for every statement (idempotent, safe to re-run):
+<details>
+  <summary>{{ t('graph_edges_heading', edges|length) }}</summary>
+  <ul>
+    {% for e in edges %}
+    <li>{{ e.before }} → {{ e.after }}</li>
+    {% endfor %}
+  </ul>
+</details>
+{% endif %}
 
-MERGE (t:Topic {name: "..."});
+<h2>{{ t('graph_add_heading') }}</h2>
+<p class="note">{{ t('graph_prompt_intro') }}</p>
+<textarea id="graph-prompt" rows="14" readonly>{{ t('graph_prompt_text', active_course.name) }}</textarea>
+<button type="button" class="copy-btn secondary" data-copy="graph-prompt">{{ t('publish_copy') }}</button>
 
-MERGE (c:Concept {name: "..."})
-SET c.chapter = ..., c.description = "...";
-
-MERGE (c:Concept {name: "..."})-[:BELONGS_TO]->(t:Topic {name: "..."});
-
-MERGE (a:Concept {name: "..."})-[:PREREQUISITE_FOR]->(b:Concept {name: "..."});
-
-Output ONLY the Cypher statements, nothing else.</pre>
-
-<h2>{{ t('graph_h_run') }}</h2>
-<p>{{ t('graph_run_intro') }}</p>
+<p class="note">{{ t('graph_run_intro') }}</p>
 <form method="post">
-  <label for="cypher">{{ t('graph_cypher_label') }}</label>
-  <textarea id="cypher" name="cypher" style="min-height: 14rem;" required placeholder="MERGE (t:Topic {name: &quot;...&quot;});"></textarea>
+  <input type="hidden" name="action" value="apply">
+  <label for="proposal">{{ t('graph_proposal_label') }}</label>
+  <textarea id="proposal" name="proposal" rows="12"
+            placeholder='{"concepts": [...], "prerequisites": [...]}'>{{ proposal }}</textarea>
+  <p class="note">{{ t('graph_proposal_help') }}</p>
   <button type="submit">{{ t('graph_submit') }}</button>
 </form>
+
+{% if concepts %}
+<h2>{{ t('graph_danger_heading') }}</h2>
+<form method="post"
+      onsubmit="return confirm('{{ t('graph_clear_confirm', counts.concepts, active_course.name) }}')">
+  <input type="hidden" name="action" value="clear">
+  <button type="submit">{{ t('graph_clear') }}</button>
+</form>
+<p class="note">{{ t('graph_clear_why') }}</p>
+{% endif %}
+
+<script>
+(function () {
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.copy-btn');
+    if (!btn) return;
+    var el = document.getElementById(btn.dataset.copy);
+    el.select();
+    if (navigator.clipboard) { navigator.clipboard.writeText(el.value); }
+  });
+})();
+</script>
 {% endblock %}
