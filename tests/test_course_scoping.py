@@ -283,7 +283,57 @@ check("usermemory: the record is written with the loop's course",
 check("usermemory: a record with no course is refused, not written empty",
       "no_course" in merge, merge[:400])
 
-# ── And the agents read it within their own course ──────────────────────────
+# ── Every query an agent makes, not the ones we thought of ──────────────────
+# This block exists because checking the ones we thought of is how the last
+# one was missed. "Load UserMemory" was found and fixed by grepping for
+# UserMemory; "Load Relevant ChatHistory" — a nearVector search over the
+# learner's history in the same six files — was not, and it carried the
+# comment "cross-agent, filter by user_id only". It would quote a learner's
+# questions from one course back at them in another course's agent.
+#
+# So the rule is enumerated from the files rather than from memory: every
+# string in every archetype that queries a per-learner or per-course class
+# has to name the course. A new node that queries without one fails here on
+# the day it is added.
+SCOPED_CLASSES = ("ChatHistory", "UserMemory", "TestResults", "Concept")
+
+
+def all_strings(o, path=""):
+    if isinstance(o, dict):
+        for k, v in o.items():
+            yield from all_strings(v, f"{path}.{k}")
+    elif isinstance(o, list):
+        for i, v in enumerate(o):
+            yield from all_strings(v, f"{path}[{i}]")
+    elif isinstance(o, str):
+        yield path, o
+
+
+queries_found = 0
+for path in sorted(TEMPLATES.glob("*.json")):
+    for where, text in all_strings(json.loads(path.read_text())):
+        if not any(c in text for c in SCOPED_CLASSES):
+            continue
+        # A query, not prose that happens to name a class.
+        if "Get {" not in text and "MATCH" not in text and "/v1/" not in text:
+            continue
+        queries_found += 1
+        label = f"{path.name}{where.split('.inputs')[0][-40:]}"
+        check(f"{label}: this query names the course",
+              "course_id" in text,
+              f"reads {[c for c in SCOPED_CLASSES if c in text]} across every course")
+        # The learner id comes out of the session string. Interpolated raw it
+        # is one quote away from rewriting the query it sits in.
+        check(f"{label}: the learner id is not interpolated raw",
+              "${userId}" not in text, text[:160])
+
+# A sweep that finds nothing passes silently, which is the one way this
+# check could rot: a refactor that moves the queries elsewhere would leave
+# it green and blind.
+check("the sweep actually found the agents' queries", queries_found >= 15,
+      f"only {queries_found} — has the query code moved?")
+
+# ── And the record lookup in particular ─────────────────────────────────────
 for path in sorted(TEMPLATES.glob("*.json")):
     flow = json.loads(path.read_text())
     for node in flow.get("nodes", []):
@@ -394,9 +444,10 @@ print(
     "writes course_id wherever it writes agent_id, and neither background workflow takes "
     "the course from the environment any more — the chat history from the chatflow it came "
     "from, the learning record from a loop that runs over courses and then over the "
-    "learners inside each one, refusing to write a record with no course; every agent that "
-    "reads a learning record matches its own course and no longer interpolates the learner "
-    "id into the query; and a dry-runnable, idempotent migration exists for deployments "
+    "learners inside each one, refusing to write a record with no course; every query in "
+    "every archetype — enumerated from the files, not from the ones we remembered — names "
+    "the course and no longer interpolates the learner id into the query text; and a "
+    "dry-runnable, idempotent migration exists for deployments "
     "created before this, since deploy-schemas.sh deliberately never touches an existing "
     "class."
 )
