@@ -187,17 +187,23 @@ sudo bash scripts/deploy-n8n-workflows.sh
 
 Then, in the Content Admin, re-import each agent of each course.
 
-**The old records.** Records written before the change carry no course, so no
-agent can see them. Nothing has to be done: the next summary run finds no
-record for a (learner, course) pair, starts its cursor at 1970 and rebuilds
-one from that course's whole history. The old ones simply linger. To see how
-many:
+**The old records.** They carry whatever `COURSE_ID` the `.env` held when they
+were written — the installation's single course — regardless of which course
+the learner was actually talking about. So they are not invisible: they sit
+under that one course, and a record summarising a conversation from another
+course sits there with them.
+
+For every other course, nothing has to be done: the next summary run finds no
+record for that (learner, course) pair, starts its cursor at 1970 and rebuilds
+one from that course's whole history. The old records simply stay where they
+are. To see how they are distributed:
 
 ```bash
 set -a && . ./.env && set +a && curl -s -X POST "http://127.0.0.1:${WEAVIATE_HTTP_PORT}/v1/graphql" -H "Authorization: Bearer $WEAVIATE_API_KEY" -H 'Content-Type: application/json' -d '{"query":"{ Aggregate { UserMemory(groupBy: [\"course_id\"]) { groupedBy { value } meta { count } } } }"}' | jq
 ```
 
-As with `ChatHistory`, records without a course appear in no group, so
+A single group holding everything is the signature of the old behaviour. As
+with `ChatHistory`, a record without a course appears in no group at all, so
 compare the sum against the total:
 
 ```bash
