@@ -239,11 +239,37 @@ compare the sum against the total:
 set -a && . ./.env && set +a && curl -s -X POST "http://127.0.0.1:${WEAVIATE_HTTP_PORT}/v1/graphql" -H "Authorization: Bearer $WEAVIATE_API_KEY" -H 'Content-Type: application/json' -d '{"query":"{ Aggregate { UserMemory { meta { count } } } }"}' | jq
 ```
 
-There is deliberately no repair script for these. A chat message can be
-traced back to its course through the chatflow it came from; a learning
-record cannot — it is a summary, and which course it summarises is only
-recoverable by reading it. Deleting them is a decision for a person, not a
-script.
+Some of them belong to a pair that never had a conversation in that course
+at all: the old workflow looped over every learner and stamped each one with
+the installation's single course, so a learner who only ever wrote in Mathe
+ended up with a record filed under Testkurs. Those are the ones the summary
+run cannot reach — it visits the pairs that have conversations, and this pair
+has none. To find them, compare who has a record in a course with who has
+spoken in it:
+
+```bash
+set -a && . ./.env && set +a && for cls in UserMemory ChatHistory; do echo "— $cls —"; curl -s "http://127.0.0.1:${WEAVIATE_HTTP_PORT}/v1/objects?class=$cls&limit=1000" -H "Authorization: Bearer $WEAVIATE_API_KEY" | jq -r '.objects[] | "\(.properties.course_id)  \(.properties.user_id)"' | sort -u; done
+```
+
+A pair listed under `UserMemory` but not under `ChatHistory` is one of these.
+Delete it by its object id — `?class=UserMemory` lists them with `.id` — and
+check the record's `summary` first if you want to see which course it really
+came from.
+
+There is deliberately no repair script and no rule in the workflow for this.
+A chat message can be traced back to its course through the chatflow it came
+from; a learning record cannot — it is a summary, and which course it
+summarises is only recoverable by reading it. A rule that deleted records on
+the strength of a missing conversation would also be wrong the day anyone
+puts a retention policy on `ChatHistory`. And it cannot arise on an
+installation set up with courses from the start: a record is only ever
+written for a pair that has a conversation. This is a one-off state of
+installations upgraded from the single-course era, and clearing it is a
+decision for a person.
+
+Removing a course's records deliberately — all of them, chat history and
+graph included — belongs to course deletion, where it is an explicit act
+rather than an inference from an absence.
 
 ---
 
