@@ -148,6 +148,28 @@ check("the re-import runs inside one course",
 check("a partly failed re-import reports both halves",
       "dash_reimport_partial" in src and "dash_reimport_done" in src, "")
 
+# ─── 5. A migration has to reach an installation ─────────────────────────────
+# 002 is the first migration written after anything read these tables, and it
+# nearly shipped into the same hole 001 did: nothing in this repository ever
+# called migrate(). db.py said that was deliberate — "nothing reads these
+# tables in this phase" — which expired two phases later, and the admin menu
+# entry named "apply pending migrations" checked .env keys and stale state and
+# touched no SQL. 001 reached the test machine because somebody ran the CLI by
+# hand. The next one would have arrived as a missing column at request time.
+check("the application applies migrations at startup",
+      "db.migrate()" in src, "a schema change would reach nobody")
+check("…and refuses to serve if it cannot",
+      "could not be brought up to date" in src,
+      "serving with the wrong shape fails later and less clearly")
+admin = (Path(application.__file__).parent.parent / "scripts" / "admin.sh")
+if admin.is_file():
+    menu = admin.read_text()
+    check("the admin menu's migration entry applies migrations",
+          "db.py migrate" in menu,
+          "the entry is called 'apply pending migrations' and applied none")
+    check("…and looks before it writes",
+          "db.py status" in menu, "")
+
 if failures:
     print("FAILURES:")
     for f in failures:
@@ -163,5 +185,5 @@ print(
     "unknown rather than behind, and one never imported is not reported at "
     "all; and the dashboard shows the state, warns above the table, and "
     "offers the re-import as a POST inside one course whether or not anything "
-    "is behind."
+    "is behind; and a migration actually reaches an installation, because the application applies pending ones at startup and refuses to serve if it cannot, while the admin menu entry that claims to apply them now does."
 )

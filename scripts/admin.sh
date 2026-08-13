@@ -494,6 +494,37 @@ action_migrate() {
     fi
 
     echo
+    # ── 1d. The database schema ─────────────────────────────────────────────
+    # This menu entry is called "apply pending migrations" and, until now,
+    # applied none: it checked .env keys and stale state and never touched the
+    # SQL. The application applies them at startup, so this is the path for
+    # looking without restarting — and for the case where the container is
+    # down because of the very schema it needs.
+    if docker ps --format '{{.Names}}' | grep -qx smartrag-content-admin; then
+        local schema_state
+        schema_state="$(docker exec smartrag-content-admin \
+            python3 /app/db.py status 2>&1 || true)"
+        if grep -q "pending: \[\]" <<<"$schema_state"; then
+            ok "$(t admin_migrate_schema_ok)"
+        else
+            warn "$(t admin_migrate_schema_pending)"
+            printf '      %s\n' "$schema_state"
+            if confirm admin_migrate_schema_confirm "y"; then
+                if docker exec smartrag-content-admin \
+                       python3 /app/db.py migrate; then
+                    ok "$(t admin_migrate_schema_done)"
+                else
+                    warn "$(t admin_migrate_schema_failed)"
+                fi
+            else
+                info "$(t admin_migrate_env_skipped)"
+            fi
+        fi
+    else
+        dim "$(t admin_migrate_schema_no_container)"
+    fi
+
+    echo
     # ── 2. course_id on existing Weaviate data ──────────────────────────────
     info "$(t admin_migrate_course_intro)"
     if confirm admin_migrate_course_dry "y"; then
