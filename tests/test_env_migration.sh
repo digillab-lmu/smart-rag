@@ -273,9 +273,18 @@ check "the upgrade patches through set_env_var" $? ""
 # It must back the file up before appending.
 sed -n '/^action_migrate()/,/^}/p' "$REPO/scripts/admin.sh" | grep -q 'cp "\$REPO_ROOT/.env"'
 check "it backs .env up before writing" $? ""
-# And offer the course migration as a dry run first.
-sed -n '/^action_migrate()/,/^}/p' "$REPO/scripts/admin.sh" | grep -q -- "--dry-run"
-check "the course migration is offered as a dry run first" $? ""
+# The course-tagging migration used to be offered here as a dry run first. It
+# is gone — it stamped .env's single COURSE_ID onto anything untagged, which
+# on an installation with several courses could only be wrong, and there is no
+# 1.x upgrade path for the case it was written for. What replaced it is the
+# database schema, which is shown before it is applied for the same reason.
+sed -n '/^action_migrate()/,/^}/p' "$REPO/scripts/admin.sh" | grep -q "migrate-add-course-id"
+check "the retired course-tagging migration is not offered" $(( $? == 0 ? 1 : 0 )) \
+      "it would stamp one course's id onto another course's data"
+sed -n '/^action_migrate()/,/^}/p' "$REPO/scripts/admin.sh" | grep -q "db.py status"
+check "the schema is shown before it is applied" $? ""
+sed -n '/^action_migrate()/,/^}/p' "$REPO/scripts/admin.sh" | grep -q "db.py migrate"
+check "…and the entry applies it, as its name says" $? ""
 
 if (( ${#FAILURES[@]} > 0 )); then
     echo "FAILURES:"; printf '  - %s\n' "${FAILURES[@]}"; exit 1

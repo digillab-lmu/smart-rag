@@ -524,19 +524,6 @@ action_migrate() {
         dim "$(t admin_migrate_schema_no_container)"
     fi
 
-    echo
-    # ── 2. course_id on existing Weaviate data ──────────────────────────────
-    info "$(t admin_migrate_course_intro)"
-    if confirm admin_migrate_course_dry "y"; then
-        bash "$SCRIPT_DIR/migrate-add-course-id.sh" --lang "$LANG_CHOICE" --dry-run \
-            || err "$(t admin_migrate_course_failed)"
-        echo
-        if confirm admin_migrate_course_apply "n"; then
-            bash "$SCRIPT_DIR/migrate-add-course-id.sh" --lang "$LANG_CHOICE" \
-                || err "$(t admin_migrate_course_failed)"
-        fi
-    fi
-
     press_enter
 }
 

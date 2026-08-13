@@ -214,28 +214,20 @@ Weaviate class. Both of those are deliberate — neither should silently
 overwrite something in production — but it means an upgrade occasionally
 has one manual action.
 
-**Course scoping (`course_id`).** Everything the agents retrieve now
-carries a `course_id`, and every agent filters on it, so one installation
-can host more than one course. A deployment created before this has
-neither the property nor the values, and **its agents will retrieve
-nothing until this has run**:
+**Course scoping (`course_id`).** Everything the agents retrieve carries a
+`course_id`, and every agent filters on it, so one installation hosts more
+than one course. There is **no upgrade path from 1.x**: a 1.x installation's
+data has neither the property nor the values, and a 2.x installation creates
+its courses through the Content Admin. The script that used to tag existing
+data with the installation's single `COURSE_ID` has been removed — on an
+installation with several courses it would have stamped the wrong one, and
+the case it was written for cannot arise where there is no in-place upgrade.
 
-```bash
-sudo bash scripts/migrate-add-course-id.sh --dry-run   # show what would change
-sudo bash scripts/migrate-add-course-id.sh             # apply
-```
-
-It adds the property to the existing classes and tags every existing
-object with this installation's `COURSE_ID`. Both steps are idempotent —
-running it twice changes nothing the second time — and it does not
-re-embed anything; `course_id` is metadata, not content. Afterwards,
-re-import your agents in the Content Admin GUI so their filters carry the
-course as well.
-
-The empty-retrieval failure is intentional. The alternative — a filter
-that matched everything when no course was set — would have served one
-course's material to another course's students, and nobody would have
-noticed.
+The empty-retrieval failure that scoping can produce is intentional. The
+alternative — a filter that matched everything when no course was set — would
+have served one course's material to another course's students, and nobody
+would have noticed. See the RUNBOOK entry "An agent retrieves nothing from
+its course" for the three things that actually cause it.
 
 ---
 

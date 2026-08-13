@@ -146,15 +146,13 @@ line in the interface.
 
 ## 4 · What is left over from the single-course era
 
-**Q4.1 — `migrate-add-course-id.sh`: guard it, or retire it?**
-It assigns `.env`'s `COURSE_ID` to every object that lacks one. On an
-installation with three courses it announces "existing data now belongs to
-course testkurs2", which is false. It only ever fills blanks, so it is
-currently harmless — but the next object without a course would be stamped
-wrongly and silently. The plan already records that **there is no migration
-path from 1.0**, which argues for retiring it rather than guarding it.
-**Recommendation: retire, unless an existing 1.0 installation is expected to
-upgrade in place.**
+**Q4.1 — `migrate-add-course-id.sh`: guard it, or retire it? — RETIRED
+2026-08-13.** It assigned `.env`'s `COURSE_ID` to every object that lacked
+one, and announced "existing data now belongs to course testkurs2" on an
+installation with three. It only ever filled blanks, so it never did damage,
+but the case it was written for — a 1.x installation upgraded in place —
+cannot arise, because there is no such upgrade path. Removed with its menu
+entry, its messages and every reference; a check requires it to stay removed.
 
 **Q4.2 — `testkurs2` and `SMART RAG — TestAgent`.**
 159 chat messages and 113 chunks belong to a course that has no row in the
