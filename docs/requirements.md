@@ -121,10 +121,44 @@ Requirements scale with which Compose profiles you enable
 
 | Profile combination | CPU | RAM | Disk |
 |---|---|---|---|
-| `core` only | 2 cores | 8 GB | 20 GB |
+| `core` only | 2 cores (4 recommended) | 8 GB | 20 GB |
 | `core,observability` (recommended) | 4 cores | 12 GB | 20 GB |
 | `core,observability,lti` | 4 cores | 12 GB | 20 GB |
 
-These are baseline figures for a small-to-medium course. Scale up disk
-space with the volume of ingested course material, and RAM if you expect
-many concurrent users.
+**Where the memory actually goes.** These are not estimates. Measured with
+`docker stats` on a 4-core/16 GB test machine running two courses, once idle
+and once during a document ingest:
+
+| | idle | during an ingest |
+|---|---|---|
+| `core` (11 containers) | ~3.9 GB | ~5.3 GB |
+| `observability` (3 more) | +2.5 GB | +2.5 GB |
+
+Three services account for almost all of it, and it is worth knowing which:
+
+* **Docling** — 1.3 GB idle, **2.7 GB while converting a document**. It is the
+  single largest consumer and it is idle most of the time.
+* **Langfuse and its ClickHouse** — 2.5 GB together, a third of an 8 GB
+  machine. This is why `observability` is a separate profile: tracing is
+  genuinely useful and genuinely expensive. On 8 GB, run it on a test machine
+  rather than alongside a production ingest.
+* **Neo4j** — held 871 MB with its shipped settings, for a graph of a few
+  hundred concepts. Both its heap and its page cache are now capped at a size
+  matched to that (256 MB initial heap, 512 MB maximum, 256 MB page cache),
+  which brings it to roughly 600 MB. If you intend to grow the graph well
+  beyond course concept maps, raise both in `docker/docker-compose.yml`.
+
+**What this means for 8 GB.** `core` alone fits, with room for the ingest
+peak. `core,observability` measured 7.8 GB at peak, which does not leave
+enough for the operating system — hence 12 GB in the table. An 8 GB machine
+that must have tracing can run it, but not while ingesting.
+
+**Two things that grow.** Weaviate held 133 MB for 113 chunks; its index is
+proportional to the number of chunks and their embedding dimensions, so plan
+for it to be the largest consumer on an installation with many courses. Disk
+grows with ingested material, and 40+ GB is realistic once several courses
+have their documents.
+
+**CPU is what ingest time depends on.** Document conversion and embedding are
+CPU-bound; two cores work and are slow. Nothing else in normal operation is
+demanding — answering a chat is mostly waiting for the LLM provider.

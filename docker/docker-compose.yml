@@ -284,8 +284,19 @@ services:
     # key and crash-loops. List explicitly, only what neo4j should ever see.
     environment:
       NEO4J_AUTH: "${NEO4J_AUTH}"
-      NEO4J_server_memory_heap_initial__size: "512m"
-      NEO4J_server_memory_heap_max__size: "1G"
+      # Sized for what this graph actually is: a course's concept map, a few
+      # hundred nodes. Measured on the test machine, Neo4j held 871 MB with a
+      # 512 MB initial heap and a 512 MB page cache — on a 16 GB host that is
+      # invisible, on the 8 GB minimum this project documents it is a tenth of
+      # the machine for the smallest store in the stack.
+      #
+      # The initial heap is deliberately below the maximum, which Neo4j's own
+      # guidance advises against: an equal setting avoids resize pauses, and
+      # resize pauses on a graph this size are not measurable. What is
+      # measurable is that the initial value is committed at startup, so it —
+      # not the maximum — is what the idle footprint costs.
+      NEO4J_server_memory_heap_initial__size: "256m"
+      NEO4J_server_memory_heap_max__size: "512m"
       # The heap was capped and the page cache was not — and Neo4j sizes that
       # from the memory it detects, so on a bigger host it quietly claims
       # more. Capping it makes the service's footprint a property of the
@@ -302,7 +313,7 @@ services:
       # _size" — no such setting, and Neo4j refuses to start on an unknown
       # one rather than ignoring it. That strictness is why this was a
       # crash-loop on the next install and not a silently uncapped cache.
-      NEO4J_server_memory_pagecache_size: "512m"
+      NEO4J_server_memory_pagecache_size: "256m"
       TZ: "${TZ}"
     volumes:
       - ${BASE_DATA_PATH}/neo4j/data:/data
