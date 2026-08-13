@@ -256,11 +256,15 @@ def schema_state() -> dict:
 
 
 # ─── Command line ────────────────────────────────────────────────────────────
-# Applying migrations is not wired into the application's startup yet, and
-# deliberately so: nothing reads these tables in this phase, and a container
-# that refuses to start because a database it does not use is unreachable
-# would be a step backwards. Until a route needs them, this is how they are
-# applied and inspected:
+# The application applies migrations at startup (see app.py). It did not
+# always: this comment used to say that was deliberate, "because nothing reads
+# these tables in this phase" — true when it was written, and quietly false
+# two phases later, by which point courses, accounts and agent slots all lived
+# here and no code path applied anything. Migration 001 reached the test
+# installation only because somebody ran the CLI below by hand.
+#
+# The CLI stays, for looking without restarting and for applying from the
+# admin menu:
 #
 #   docker exec smartrag-content-admin python3 /app/db.py status
 #   docker exec smartrag-content-admin python3 /app/db.py migrate

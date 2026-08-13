@@ -59,6 +59,30 @@ if not app.secret_key:
         "with an unsigned/insecure session."
     )
 
+# Bring the schema up to date before serving the first request.
+#
+# db.py used to say this was deliberately not wired in, "because nothing reads
+# these tables in this phase". That stopped being true two phases later:
+# courses, accounts and agent slots all live here now, and there was still no
+# path that applied a migration. The admin menu's "Upgrade — apply pending
+# migrations" checks .env keys and stale state and never touches the SQL, so
+# migration 001 reached this installation only because somebody ran the CLI by
+# hand. The next one would have arrived as a missing column at request time.
+#
+# Safe at startup because the runner takes an advisory lock: two containers
+# coming up together do not race, the second waits and then finds nothing to
+# do. Fatal on failure, because every page needs this schema — a container
+# that serves with the wrong shape fails later and less clearly.
+try:
+    _applied = db.migrate()
+    if _applied:
+        logger.info("Applied database migration(s): %s",
+                    ", ".join(str(v) for v in _applied))
+except db.DatabaseError as exc:
+    raise RuntimeError(
+        f"The database schema could not be brought up to date: {exc}"
+    ) from exc
+
 
 # Internal Docker hostname, not the public smart-rag.<domain> URL — this
 # container is already on smart-rag-network, so going out through nginx/DNS/
