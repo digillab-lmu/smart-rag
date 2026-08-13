@@ -164,6 +164,54 @@ set. The difference between the two counts is the answer.
 
 ---
 
+## A learner's record is empty, or holds another course's concepts
+
+**Symptom.** An agent says "No prior learning record found" for a learner who
+has been chatting for weeks — or, before the fix below, greeted them with
+concepts from a course they are not in.
+
+**Cause.** `UserMemory` is one record per learner **per course**, and until
+this was fixed it was one per learner. The summary workflow looped over
+learners alone, merged both courses' concepts into a single record and
+stamped it with the installation's single course from the environment; the
+six agents that read a record filtered on `user_id` only, with `limit: 1`, so
+they took whichever record Weaviate returned first.
+
+**Fix.** Deploy the workflow and re-import the agents — the course reaches an
+agent's code through the `{{COURSE_ID}}` substitution at import time, so an
+agent imported before this change keeps the old query:
+
+```bash
+sudo bash scripts/deploy-n8n-workflows.sh
+```
+
+Then, in the Content Admin, re-import each agent of each course.
+
+**The old records.** Records written before the change carry no course, so no
+agent can see them. Nothing has to be done: the next summary run finds no
+record for a (learner, course) pair, starts its cursor at 1970 and rebuilds
+one from that course's whole history. The old ones simply linger. To see how
+many:
+
+```bash
+set -a && . ./.env && set +a && curl -s -X POST "http://127.0.0.1:${WEAVIATE_HTTP_PORT}/v1/graphql" -H "Authorization: Bearer $WEAVIATE_API_KEY" -H 'Content-Type: application/json' -d '{"query":"{ Aggregate { UserMemory(groupBy: [\"course_id\"]) { groupedBy { value } meta { count } } } }"}' | jq
+```
+
+As with `ChatHistory`, records without a course appear in no group, so
+compare the sum against the total:
+
+```bash
+set -a && . ./.env && set +a && curl -s -X POST "http://127.0.0.1:${WEAVIATE_HTTP_PORT}/v1/graphql" -H "Authorization: Bearer $WEAVIATE_API_KEY" -H 'Content-Type: application/json' -d '{"query":"{ Aggregate { UserMemory { meta { count } } } }"}' | jq
+```
+
+There is deliberately no repair script for these. A chat message can be
+traced back to its course through the chatflow it came from; a learning
+record cannot — it is a summary, and which course it summarises is only
+recoverable by reading it. Deleting them is a decision for a person, not a
+script.
+
+---
+
 ## Objects are not being stored, and nothing says so
 
 **Symptom.** Uploads appear to succeed, Langfuse's dashboard stays empty, or

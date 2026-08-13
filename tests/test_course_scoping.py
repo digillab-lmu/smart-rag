@@ -227,12 +227,81 @@ for name, code in code_nodes.items():
               "course_id" in code, "agent_id is set but course_id is not")
 
 # ── The background workflows write it too ───────────────────────────────────
+# This block used to require the bug. It read "takes it from the environment:
+# $env.COURSE_ID is present" — the installation's single course, stamped on
+# every row, which is exactly what stopped there being more than one. Worse,
+# it kept passing after chathistory-sync was fixed, because a comment inside
+# the workflow still contained the words. Prose is not behaviour, so the token
+# may not appear anywhere in these files now, comments included.
 for wf, cls in (("chathistory-sync.json", "ChatHistory"),
                 ("usermemory-summary.json", "UserMemory")):
     blob = (REPO / "n8n" / "workflows" / wf).read_text()
     check(f"{wf}: writes course_id", "course_id" in blob,
           f"{cls} rows would be shared across courses")
-    check(f"{wf}: takes it from the environment", "$env.COURSE_ID" in blob, "")
+    check(f"{wf}: does not take the course from the environment",
+          "COURSE_ID" not in blob,
+          "every row would carry the installation's single course")
+
+# ── The learning record is per learner AND per course ───────────────────────
+# A learner can be in several courses, and what they have mastered in one says
+# nothing about another. The summary workflow used to loop over learners
+# alone: one record per learner, both courses' concepts merged into it, and
+# the course stamped from the environment. Now the loop runs over courses
+# first, and over the learners inside each course.
+um = json.loads((REPO / "n8n" / "workflows" / "usermemory-summary.json").read_text())
+um_nodes = {n["name"]: n for n in um["nodes"]}
+
+
+def um_code(node):
+    return um_nodes.get(node, {}).get("parameters", {}).get("jsCode", "")
+
+
+check("usermemory: the loop starts from the courses",
+      "List courses" in um_nodes, sorted(um_nodes))
+check("usermemory: learners are listed within one course",
+      "Get users per course" in um_nodes, sorted(um_nodes))
+check("usermemory: a course with no id is skipped rather than merged",
+      "if (!course_id) continue" in um_code("List courses"), um_code("List courses")[:200])
+
+extract = um_code("Extract user_ids")
+check("usermemory: the record is looked up by learner and course",
+      'path: ["user_id"]' in extract and 'path: ["course_id"]' in extract,
+      "limit: 1 on the learner alone returns whichever course Weaviate finds first")
+
+process = um_code("Process Memory")
+check("usermemory: the chat history it summarises is the course's",
+      'path: ["course_id"]' in process, process[:200])
+# The cursor lives in the record, so it is per course as well. Shared, a
+# learner active in one course would move the other course's cursor past
+# messages that are then never summarised.
+check("usermemory: the cursor comes from that course's record",
+      "last_updated" in process and 'path: ["timestamp"]' in process, process[:200])
+
+merge = um_code("Parse and Merge")
+check("usermemory: the record is written with the loop's course",
+      "course_id," in merge, merge[-400:])
+check("usermemory: a record with no course is refused, not written empty",
+      "no_course" in merge, merge[:400])
+
+# ── And the agents read it within their own course ──────────────────────────
+for path in sorted(TEMPLATES.glob("*.json")):
+    flow = json.loads(path.read_text())
+    for node in flow.get("nodes", []):
+        code = (node.get("data", {}).get("inputs") or {}).get(
+            "customFunctionJavascriptFunction") or ""
+        if "Get { UserMemory" not in code:
+            continue
+        label = f"{path.name}/{node.get('data', {}).get('label', '?')}"
+        check(f"{label}: reads the record of its own course",
+              'path: ["course_id"]' in code,
+              "another course's learning record would be read as this one's")
+        check(f"{label}: takes the course from the import substitution",
+              "{{COURSE_ID}}" in code, "")
+        # The learner id comes out of the session and went into the query
+        # unquoted. JSON.stringify is what the rest of this project uses for
+        # the same reason: a value with a quote in it would rewrite the query.
+        check(f"{label}: does not interpolate the learner id raw",
+              '"${userId}"' not in code, code[:200])
 
 # ── The migration exists and is honest about being needed ───────────────────
 mig = REPO / "scripts" / "migrate-add-course-id.sh"
@@ -321,8 +390,13 @@ print(
     "weaviate-client's own And shape — `filters`, not `operands`, with an explicit null "
     "value — and comparing course_id as a string while agent_id stays a bare number so it "
     "is not encoded as text against an int property; the id reaches the filter through "
-    "auto-fill rather than the content form, leaving no placeholder behind; the ingest and "
-    "both background workflows write course_id from the environment wherever they write "
-    "agent_id; and a dry-runnable, idempotent migration exists for deployments created "
-    "before this, since deploy-schemas.sh deliberately never touches an existing class."
+    "auto-fill rather than the content form, leaving no placeholder behind; the ingest "
+    "writes course_id wherever it writes agent_id, and neither background workflow takes "
+    "the course from the environment any more — the chat history from the chatflow it came "
+    "from, the learning record from a loop that runs over courses and then over the "
+    "learners inside each one, refusing to write a record with no course; every agent that "
+    "reads a learning record matches its own course and no longer interpolates the learner "
+    "id into the query; and a dry-runnable, idempotent migration exists for deployments "
+    "created before this, since deploy-schemas.sh deliberately never touches an existing "
+    "class."
 )
