@@ -12,8 +12,8 @@
   {% endif %}
 {% endif %}
 
-{% if error %}<div class="error">{{ error }}</div>{% endif %}
-{% if success %}<div class="success">{{ success }}</div>{% endif %}
+{# error and success are rendered by base.html, above the page's own content.
+   Repeating them here printed every message twice. #}
 
 {# An agent in Flowise is a copy of the template, not a reference to it. Two
    cross-course leaks survived their own fix here because nothing said so. #}

@@ -501,6 +501,21 @@ check("no key at all still says 'not connected yet'", client.get("/"), 200,
 flask_app_module._flowise_client = _real_client_factory
 
 
+# ─── No page prints the same message twice ───────────────────────────────────
+# base.html renders `error` and `success` above the content block, so a child
+# template that renders them as well prints every message twice. Three did,
+# and a fourth was added the day this check was written — which is the
+# argument for checking it rather than remembering it.
+TEMPLATES = Path(__file__).resolve().parent.parent / "content-admin" / "templates"
+for tpl in sorted(TEMPLATES.glob("*.html")):
+    if tpl.name == "base.html":
+        continue
+    text = tpl.read_text()
+    if ('class="error">{{ error }}' in text
+            or 'class="success">{{ success }}' in text):
+        failures.append(f"{tpl.name}: renders the flash messages itself, so "
+                        "base.html and the page both print them")
+
 if failures:
     print("FAILURES:")
     for f in failures:
