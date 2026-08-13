@@ -11,7 +11,59 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ## Unreleased
 
+---
+
+## 2.0.0-beta.1 — 2026-08-13
+
+**A pre-release, deliberately.** One installation can now hold several
+courses, and that has been proven on a live server rather than argued:
+documents, agents, chat history, learning records, the concept graph and the
+accounts that reach them are all separated per course, and each separation was
+demonstrated by measuring one course while acting on another. What is not
+done is what keeps this from being 2.0.0 — deleting a course, erasing one
+person's data, backup and restore, and the decision about where the concept
+graph should live. `1.0.0` remains the release to install if you want the
+single-course system that has been running.
+
+**There is no upgrade path from 1.x.** A 1.x installation's data carries no
+course, and nothing tags it retroactively any more (see *Removed*). A 2.x
+installation starts fresh and creates its courses in the Content Admin.
+
 ### Added
+
+- **An agent now says which version of its template it was built from.** An
+  agent in Flowise is a copy, not a reference: changing a template here, a
+  slot's content, or a model name in `.env` reaches nobody until each agent of
+  each course is imported again — and the page said "Imported" either way.
+  That let two cross-course leaks survive their own fix on a running
+  installation, findable only by querying Flowise's database. An import now
+  records a digest of the flow it built, the Agents page compares it against
+  the flow that would be built now, and a button re-imports every agent of a
+  course. Three states, not two: "behind" is only said when the flows differ,
+  and a slot imported before this existed reads as "version unknown" rather
+  than being accused. **Upgrade required:** none — the migration runs at
+  start.
+- **A failed workflow reaches a person.** `usermemory-summary` failed on every
+  scheduled run for at least two days — ten red executions — and was found
+  only because its output was being examined for something else. An error
+  workflow now mails the configured address, and an hourly watchdog covers
+  what an error trigger cannot see: a workflow switched off, one that stopped
+  being triggered, and one that reports success while writing nothing. Both go
+  quiet after the first mail and say how many failures the next one stands
+  for, because a five-minute schedule that fails is 288 mails a day and the
+  second day teaches everyone to filter them.
+- **Pending database migrations are applied when the Content Admin starts.**
+  Nothing in this repository had ever applied one: the admin menu entry called
+  "apply pending migrations" checked `.env` keys and never touched SQL, and
+  the first migration reached the test installation only because somebody ran
+  the CLI by hand. The application now applies them at startup and refuses to
+  serve if it cannot; the menu entry does what its name says as well.
+- **`scripts/repair-chathistory-course.sh`** files existing chat history under
+  the course it came from, for installations that ran either of the two broken
+  versions. It reads the truth rather than assuming it — a stored message
+  names the Flowise message it came from, that names its chatflow, and a
+  chatflow belongs to one slot of one course — and leaves untouched, with a
+  count, everything where that chain is incomplete. Report by default.
 
 - **Chat history was filed under whichever course `.env` named.**
   `chathistory-sync` stamped `$env.COURSE_ID` onto every message it wrote,
@@ -193,6 +245,48 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
   `sudo smartrag` — for a second person, or when the role changes hands.
 
 ### Fixed
+
+- **Chat history was written with no course at all.** The fix that read the
+  course from the chatflow looked it up, used it to decide whether to skip the
+  message — and then built its output object without it. Both ends of the
+  chain were right and the middle was empty, so every execution was green and
+  every row was written with `course_id` null. The tests checked both ends,
+  which is how it passed. The workflow's Code nodes are now executed by the
+  suite, not read.
+- **A learning record belonged to a learner, not to a learner in a course.**
+  `usermemory-summary` looped over learners alone: someone in two courses got
+  one record with both courses' concepts merged, stamped with the
+  installation's single course, and the six agents that read a record filtered
+  on the learner only — so an agent greeted a learner with what they had
+  struggled with in another course. The loop now runs over courses and then
+  over the learners inside each, and a record's id is derived from that pair,
+  which makes a duplicate impossible rather than cleaned up afterwards. The
+  duplicates the old version left — one per run, ten for the most active
+  learner — are removed on the next run, including for a pair with nothing new
+  to summarise. **Upgrade required:** the n8n container must be recreated, not
+  just restarted, so Code nodes may use Node's `crypto`; the deploy script
+  checks and offers it.
+- **Two agent queries reached across every course.** `Load UserMemory` and
+  `Load Relevant ChatHistory` filtered on the learner alone. The second does a
+  similarity search over the learner's own questions and quotes the hits back
+  into the prompt — in one course's agent, from another course's
+  conversations. Found by enumerating every query in every archetype instead
+  of grepping for the one that had already been fixed: 17 queries, 6 of them
+  unscoped. They also stopped interpolating the learner id into the query
+  text. **Upgrade required:** re-import every agent of every course.
+- **Neo4j held 871 MB for a few hundred concepts.** Invisible on 16 GB, a
+  tenth of the machine on the documented 8 GB minimum. Sized to what it
+  actually holds. The hardware table now carries measured figures instead of
+  estimates, and says plainly that `core,observability` peaks at 7.8 GB and
+  does not fit 8 GB.
+- **Every page printed its messages twice.** `base.html` renders `error` and
+  `success` above the content, and four pages rendered them again. A
+  duplicated confirmation is easy to stop seeing; a duplicated error reads as
+  two failures.
+- **"In Bearbeitung" meant the selected course, not an unfinished one** — in a
+  column that also says "unfertig", which is the state where a course's
+  collection, bucket or write permission is missing and uploads go nowhere.
+
 
 - **The installer reported a 180-second timeout that had not elapsed.** After
   the restart it waited for n8n's `healthz`, then took whatever the ingest
@@ -398,6 +492,35 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
   near-empty legacy convict schema, and the request helpers that build every
   outbound call contain no `process.env` read at all. Removed; a setting that
   looks like it configures a timeout and does not is worse than no setting.
+
+---
+
+### Removed
+
+- **`scripts/migrate-add-course-id.sh`.** It assigned `.env`'s `COURSE_ID` to
+  every object that lacked one, which was right while an installation had one
+  course and false the moment it had three — it announced "existing data now
+  belongs to course testkurs2" on a machine with two other courses. It only
+  ever filled blanks, so it never did damage, but the case it was written for
+  cannot arise where there is no in-place upgrade from 1.x. Removed with its
+  menu entry, its messages and every reference to it.
+
+### Known limitations
+
+- **A course cannot be deleted.** Creating one provisions a collection, a
+  bucket, ten slots and a grant; nothing removes them again.
+- **One person's data cannot be erased.** It is spread over Weaviate's three
+  learner classes, Flowise's `chat_message`, Langfuse's traces and n8n's
+  execution data, and there is no path that covers all of them. The data
+  protection officer has approved the processing; the erasure obligation that
+  comes with it is not yet implemented.
+- **No backup or restore**, and therefore no supported way to move an
+  installation to another machine.
+- **Where the concept graph lives is undecided** (ARCHITECTURE 6d). It works,
+  per course, but its boundary is a property that queries must name, while
+  every other boundary in this system is physical.
+- **Learner data references concepts as free text**, so nothing it says can be
+  counted against the concept map.
 
 ---
 
