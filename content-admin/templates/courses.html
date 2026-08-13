@@ -7,8 +7,6 @@
 {% if needs_pick %}
 <div class="error">{{ t('courses_pick_first') }}</div>
 {% endif %}
-{% if error %}<div class="error">{{ error }}</div>{% endif %}
-{% if success %}<div class="success">{{ success }}</div>{% endif %}
 
 {# Unfinished first. A course whose collection exists but whose bucket does
    not looks finished in every list that only shows names, and the next

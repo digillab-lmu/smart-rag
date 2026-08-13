@@ -4,8 +4,6 @@
 <h1>{{ t('graph_heading') }}</h1>
 <p class="note">{{ t('graph_intro') }}</p>
 
-{% if error %}<div class="error">{{ error }}</div>{% endif %}
-{% if success %}<div class="success">{{ success }}</div>{% endif %}
 
 {# Concepts from before the graph knew about courses. Not moved silently:
    they belong to whichever course existed at the time, and only a person
