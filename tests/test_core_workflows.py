@@ -307,6 +307,31 @@ for path in ALL:
             # carelessly.
             check(f"{path.name}/{n['name']}{where} has no stray marker",
                   "={{" not in value[1:], value[:80])
+            # Nor nested. A URL was written as
+            #   ={{ 'http://host:{{ $env.PORT }}/objects/' + $json.id }}
+            # where the inner braces sit inside a JavaScript string of the
+            # outer expression: they are never evaluated, and the port went
+            # into the URL as the literal text "{{ $env.PORT }}". The stray-
+            # marker check above misses it, because the inner one is preceded
+            # by a colon rather than an "=".
+            depth = 0
+            nested = False
+            i = 0
+            while i < len(value) - 1:
+                pair = value[i:i + 2]
+                if pair == "{{":
+                    if depth:
+                        nested = True
+                    depth += 1
+                    i += 2
+                    continue
+                if pair == "}}" and depth:
+                    depth -= 1
+                    i += 2
+                    continue
+                i += 1
+            check(f"{path.name}/{n['name']}{where} has no nested expression",
+                  not nested, value[:120])
 
 # ─── The chat history belongs to the course it came from ────────────────────
 # It used to be stamped with $env.COURSE_ID — the installation's one course —

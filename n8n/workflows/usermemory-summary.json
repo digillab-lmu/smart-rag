@@ -37,11 +37,11 @@
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "application/json",
-        "body": "{\"query\": \"{ Aggregate { ChatHistory( groupBy: \\\"user_id\\\" ) { groupedBy { value } meta { count } } } }\"}",
+        "body": "{\"query\": \"{ Aggregate { ChatHistory( groupBy: \\\"course_id\\\" ) { groupedBy { value } meta { count } } } }\"}",
         "options": {}
       },
       "id": "caaca4b1-c12f-4ba1-8bbc-b2d3927230e8",
-      "name": "Get distinct user_ids",
+      "name": "Get distinct courses",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -51,14 +51,14 @@
     },
     {
       "parameters": {
-        "jsCode": "const groups = $input.first().json?.data?.Aggregate?.ChatHistory || [];\nif (!groups || groups.length === 0) return [];\nreturn groups\n  .filter(g => g.groupedBy?.value)\n  .map(g => {\n    const user_id = g.groupedBy.value;\n    return {\n      json: {\n        user_id,\n        um_query_body: {\n          query: `{ Get { UserMemory( where: { path: [\"user_id\"] operator: Equal valueText: ${JSON.stringify(String(user_id ?? ''))} } limit: 1 ) { _additional { id } user_id concepts_mastered concepts_struggling open_questions learning_patterns summary last_updated chapter } } }`\n        }\n      }\n    };\n  });"
+        "jsCode": "// The HTTP node before this ran once per course and answers in the same\n// order, so item i belongs to course i. The course is taken from there\n// rather than from the answer, which does not carry it.\nconst courses = $('List courses').all();\nconst results = [];\n\n$input.all().forEach((item, i) => {\n  const course_id = courses[i]?.json?.course_id;\n  if (!course_id) return;\n\n  const groups = item.json?.data?.Aggregate?.ChatHistory || [];\n  for (const g of groups) {\n    const user_id = g.groupedBy?.value;\n    if (!user_id) continue;\n\n    results.push({ json: {\n      course_id,\n      user_id,\n      // Both halves of the key. Filtering on the learner alone returns\n      // whichever course's record Weaviate finds first, and limit: 1 makes\n      // that silent.\n      um_query_body: {\n        query: `{ Get { UserMemory(\n          where: { operator: And operands: [\n            { path: [\"user_id\"]   operator: Equal valueText: ${JSON.stringify(String(user_id))} }\n            { path: [\"course_id\"] operator: Equal valueText: ${JSON.stringify(String(course_id))} }\n          ] }\n          limit: 1\n        ) { _additional { id } user_id course_id concepts_mastered concepts_struggling open_questions learning_patterns summary last_updated chapter } } }`\n      }\n    }});\n  }\n});\n\nreturn results;\n"
       },
       "id": "7fcc23b8-fc19-46db-af83-7ae786fd4563",
       "name": "Extract user_ids",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -3248,
+        -2888,
         208
       ]
     },
@@ -86,21 +86,21 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -3008,
+        -2648,
         208
       ]
     },
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const response = $input.item.json;\nconst user_id = $('Extract user_ids').item.json.user_id;\nconst memData = response?.data?.Get?.UserMemory || [];\n\nlet memory_id = null;\nlet last_updated = '1970-01-01T00:00:00.000Z';\nlet existing = {\n  concepts_mastered: [],\n  concepts_struggling: [],\n  open_questions: [],\n  learning_patterns: '',\n  summary: ''\n};\n\nif (memData.length > 0) {\n  const mem = memData[0];\n  memory_id = mem._additional?.id || null;\n  last_updated = mem.last_updated || '1970-01-01T00:00:00.000Z';\n  existing = {\n    concepts_mastered: mem.concepts_mastered || [],\n    concepts_struggling: mem.concepts_struggling || [],\n    open_questions: mem.open_questions || [],\n    learning_patterns: mem.learning_patterns || '',\n    summary: mem.summary || ''\n  };\n}\n\nconst ch_query_body = {\n  query: `{ Get { ChatHistory( where: { operator: And operands: [ { path: [\"user_id\"] operator: Equal valueText: ${JSON.stringify(String(user_id ?? ''))} } { path: [\"timestamp\"] operator: GreaterThan valueText: ${JSON.stringify(String(last_updated ?? ''))} } ] } sort: [{ path: [\"timestamp\"] order: asc }] limit: 500 ) { user_id role text timestamp chapter concepts_mentioned } } }`\n};\n\nreturn {\n  json: {\n    user_id,\n    memory_id,\n    last_updated,\n    existing,\n    ch_query_body\n  }\n};"
+        "jsCode": "const response = $input.item.json;\nconst { user_id, course_id } = $('Extract user_ids').item.json;\nconst memData = response?.data?.Get?.UserMemory || [];\n\nlet memory_id = null;\nlet last_updated = '1970-01-01T00:00:00.000Z';\nlet existing = {\n  concepts_mastered: [],\n  concepts_struggling: [],\n  open_questions: [],\n  learning_patterns: '',\n  summary: ''\n};\n\nif (memData.length > 0) {\n  const mem = memData[0];\n  memory_id = mem._additional?.id || null;\n  last_updated = mem.last_updated || '1970-01-01T00:00:00.000Z';\n  existing = {\n    concepts_mastered: mem.concepts_mastered || [],\n    concepts_struggling: mem.concepts_struggling || [],\n    open_questions: mem.open_questions || [],\n    learning_patterns: mem.learning_patterns || '',\n    summary: mem.summary || ''\n  };\n}\n\n// The cursor is per course as well. Without that, a learner active in one\n// course would move the cursor past the other course's messages, which are\n// then never summarised.\nconst ch_query_body = {\n  query: `{ Get { ChatHistory(\n    where: { operator: And operands: [\n      { path: [\"user_id\"]   operator: Equal valueText: ${JSON.stringify(String(user_id ?? ''))} }\n      { path: [\"course_id\"] operator: Equal valueText: ${JSON.stringify(String(course_id ?? ''))} }\n      { path: [\"timestamp\"] operator: GreaterThan valueText: ${JSON.stringify(String(last_updated ?? ''))} }\n    ] }\n    sort: [{ path: [\"timestamp\"] order: asc }]\n    limit: 500\n  ) { user_id course_id role text timestamp chapter concepts_mentioned } } }`\n};\n\nreturn {\n  json: {\n    user_id,\n    course_id,\n    memory_id,\n    last_updated,\n    existing,\n    ch_query_body\n  }\n};\n"
       },
       "id": "baef8b11-952b-46cc-acb0-79ecbebaccfe",
       "name": "Process Memory",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -2752,
+        -2392,
         208
       ]
     },
@@ -128,21 +128,21 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -2496,
+        -2136,
         208
       ]
     },
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const response = $input.item.json;\nconst vars = $('Process Memory').item.json;\nconst { user_id, memory_id, existing } = vars;\nconst chatData = response?.data?.Get?.ChatHistory || [];\n\n// [A] Keine neuen Messages\nif (chatData.length === 0) {\n  return { json: { skip: true, reason: 'no_new_messages', user_id } };\n}\n\n// [B] Session noch aktiv (< 30 Min Inaktivität)\nconst timestamps = chatData.map(m => new Date(m.timestamp).getTime());\nconst maxTimestamp = Math.max(...timestamps);\nconst diffMin = (Date.now() - maxTimestamp) / 60000;\nif (diffMin < 30) {\n  return { json: { skip: true, reason: 'session_active', user_id, inactive_min: Math.round(diffMin) } };\n}\n\nconst maxChapter = Math.max(...chatData.map(m => m.chapter || 0));\n\nconst messagesText = chatData\n  .map(m => m.role === 'user'\n    ? `[user]: ${m.text}`\n    : `[assistant]: ${m.text.slice(0, 200)}`)\n  .join('\\n');\n\nreturn {\n  json: {\n    skip: false,\n    user_id,\n    memory_id,\n    existing,\n    max_chapter: maxChapter,\n    last_updated_now: new Date().toISOString(),\n    messagesText\n  }\n};"
+        "jsCode": "const response = $input.item.json;\nconst vars = $('Process Memory').item.json;\nconst { user_id, course_id, memory_id, existing } = vars;\nconst chatData = response?.data?.Get?.ChatHistory || [];\n\n// [A] Keine neuen Messages\nif (chatData.length === 0) {\n  return { json: { skip: true, reason: 'no_new_messages', user_id, course_id } };\n}\n\n// [B] Session noch aktiv (< 30 Min Inaktivität)\nconst timestamps = chatData.map(m => new Date(m.timestamp).getTime());\nconst maxTimestamp = Math.max(...timestamps);\nconst diffMin = (Date.now() - maxTimestamp) / 60000;\nif (diffMin < 30) {\n  return { json: { skip: true, reason: 'session_active', user_id, course_id, inactive_min: Math.round(diffMin) } };\n}\n\nconst maxChapter = Math.max(...chatData.map(m => m.chapter || 0));\n\nconst messagesText = chatData\n  .map(m => m.role === 'user'\n    ? `[user]: ${m.text}`\n    : `[assistant]: ${m.text.slice(0, 200)}`)\n  .join('\\n');\n\nreturn {\n  json: {\n    skip: false,\n    user_id,\n    course_id,\n    memory_id,\n    existing,\n    max_chapter: maxChapter,\n    last_updated_now: new Date().toISOString(),\n    messagesText\n  }\n};"
       },
       "id": "5c81e7f5-582b-4710-8d1e-09b03bf47be3",
       "name": "Check and Prepare",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -2256,
+        -1896,
         208
       ]
     },
@@ -175,21 +175,21 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        -2000,
+        -1640,
         208
       ]
     },
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const response = $input.item.json;\nconst vars = $('Check and Prepare').item.json;\nconst { user_id, memory_id, existing, max_chapter, last_updated_now } = vars;\n\n// OpenAI-compatible chat/completions shape, which is what every provider\n// this project supports speaks. The node before this was an Anthropic node\n// with a hard-coded model, so on an installation configured for any other\n// provider it could not run at all — and the parser read content[0].text,\n// which only Anthropic returns.\nconst raw = response?.choices?.[0]?.message?.content || '';\n\n// Thinking-Tags entfernen (falls Modell trotzdem denkt)\nconst cleaned = raw.replace(/<think>[\\s\\S]*?<\\/think>/gi, '').trim();\n\n// JSON extrahieren\nconst jsonMatch = cleaned.match(/\\{[\\s\\S]*\\}/);\nif (!jsonMatch) {\n  return {\n    json: {\n      parse_error: true,\n      error_reason: 'no_json_found',\n      user_id,\n      memory_id,\n      raw_preview: raw.substring(0, 300)\n    }\n  };\n}\n\nlet parsed;\ntry {\n  parsed = JSON.parse(jsonMatch[0]);\n} catch(e) {\n  return {\n    json: {\n      parse_error: true,\n      error_reason: 'json_parse_failed',\n      user_id,\n      memory_id,\n      error: e.message,\n      raw_preview: cleaned.substring(0, 300)\n    }\n  };\n}\n\n// REPLACE: concepts_mastered (nur aktuelle Session, max. 5)\nconst newMastered = parsed.concepts_mastered || [];\n\n// REPLACE: concepts_struggling (nur aktuelle Session, max. 5), REMOVE wenn auch in mastered\nconst newStruggling = (parsed.concepts_struggling || [])\n  .filter(c => !newMastered.includes(c));\n\n// open_questions: REPLACE (aktuelle Session)\nconst newOpenQuestions = parsed.open_questions || [];\n\n// learning_patterns: LLM konsolidiert (REPLACE, enthält Historie)\nconst newLearningPatterns = parsed.learning_patterns || existing.learning_patterns || '';\n\n// summary: REPLACE (aktuelle Session)\nconst newSummary = parsed.summary || '';\n\nreturn {\n  json: {\n    parse_error: false,\n    user_id,\n    memory_id,\n    weaviate_object: {\n      class: 'UserMemory',\n      properties: {\n        // One installation can host several courses; without this the record\n        // would be shared across all of them.\n        course_id: $env.COURSE_ID || '',\n        user_id,\n        concepts_mastered: newMastered,\n        concepts_struggling: newStruggling,\n        open_questions: newOpenQuestions,\n        learning_patterns: newLearningPatterns,\n        summary: newSummary,\n        chapter: max_chapter || 0,\n        last_updated: last_updated_now\n      }\n    }\n  }\n};"
+        "jsCode": "const response = $input.item.json;\nconst vars = $('Check and Prepare').item.json;\nconst { user_id, course_id, memory_id, existing, max_chapter, last_updated_now } = vars;\n\n// Refused rather than written with an empty course. A record nobody can\n// retrieve is a bug that hides; one written under the wrong course is a\n// bug that shows up as another course's learner data.\nif (!course_id) {\n  return { json: { parse_error: true, error_reason: 'no_course', user_id,\n                   memory_id, raw_preview: '' } };\n}\n\n// OpenAI-compatible chat/completions shape, which is what every provider\n// this project supports speaks. The node before this was an Anthropic node\n// with a hard-coded model, so on an installation configured for any other\n// provider it could not run at all — and the parser read content[0].text,\n// which only Anthropic returns.\nconst raw = response?.choices?.[0]?.message?.content || '';\n\n// Thinking-Tags entfernen (falls Modell trotzdem denkt)\nconst cleaned = raw.replace(/<think>[\\s\\S]*?<\\/think>/gi, '').trim();\n\n// JSON extrahieren\nconst jsonMatch = cleaned.match(/\\{[\\s\\S]*\\}/);\nif (!jsonMatch) {\n  return {\n    json: {\n      parse_error: true,\n      error_reason: 'no_json_found',\n      user_id,\n      memory_id,\n      raw_preview: raw.substring(0, 300)\n    }\n  };\n}\n\nlet parsed;\ntry {\n  parsed = JSON.parse(jsonMatch[0]);\n} catch(e) {\n  return {\n    json: {\n      parse_error: true,\n      error_reason: 'json_parse_failed',\n      user_id,\n      memory_id,\n      error: e.message,\n      raw_preview: cleaned.substring(0, 300)\n    }\n  };\n}\n\n// REPLACE: concepts_mastered (nur aktuelle Session, max. 5)\nconst newMastered = parsed.concepts_mastered || [];\n\n// REPLACE: concepts_struggling (nur aktuelle Session, max. 5), REMOVE wenn auch in mastered\nconst newStruggling = (parsed.concepts_struggling || [])\n  .filter(c => !newMastered.includes(c));\n\n// open_questions: REPLACE (aktuelle Session)\nconst newOpenQuestions = parsed.open_questions || [];\n\n// learning_patterns: LLM konsolidiert (REPLACE, enthält Historie)\nconst newLearningPatterns = parsed.learning_patterns || existing.learning_patterns || '';\n\n// summary: REPLACE (aktuelle Session)\nconst newSummary = parsed.summary || '';\n\nreturn {\n  json: {\n    parse_error: false,\n    user_id,\n    memory_id,\n    weaviate_object: {\n      class: 'UserMemory',\n      properties: {\n        // The course this record belongs to, carried down from the loop\n        // rather than read from the environment. The environment holds\n        // the installation's single course, which is exactly what stopped\n        // there being more than one.\n        course_id,\n        user_id,\n        concepts_mastered: newMastered,\n        concepts_struggling: newStruggling,\n        open_questions: newOpenQuestions,\n        learning_patterns: newLearningPatterns,\n        summary: newSummary,\n        chapter: max_chapter || 0,\n        last_updated: last_updated_now\n      }\n    }\n  }\n};"
       },
       "id": "e6254bb8-3f0f-491a-8e58-56b25df461b7",
       "name": "Parse and Merge",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -1296,
+        -936,
         208
       ]
     },
@@ -222,7 +222,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        -1040,
+        -680,
         208
       ]
     },
@@ -250,7 +250,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -800,
+        -440,
         208
       ]
     },
@@ -264,7 +264,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -544,
+        -184,
         208
       ]
     },
@@ -297,7 +297,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        -288,
+        72,
         208
       ]
     },
@@ -330,14 +330,14 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        -48,
+        312,
         112
       ]
     },
     {
       "parameters": {
         "method": "DELETE",
-        "url": "={{ 'http://smartrag-weaviate:{{ $env.WEAVIATE_HTTP_PORT || 8080 }}/v1/objects/UserMemory/' + $json.old_memory_id }}",
+        "url": "=http://smartrag-weaviate:{{ $env.WEAVIATE_HTTP_PORT || 8080 }}/v1/objects/UserMemory/{{ $json.old_memory_id }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -354,7 +354,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        208,
+        568,
         0
       ]
     },
@@ -389,7 +389,7 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        464,
+        824,
         112
       ]
     },
@@ -430,7 +430,7 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        -2000,
+        -1640,
         464
       ]
     },
@@ -477,7 +477,7 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        -1040,
+        -680,
         464
       ]
     },
@@ -518,7 +518,7 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        -288,
+        72,
         464
       ]
     },
@@ -550,7 +550,48 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -1712,
+        -1352,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// One record per learner per course, so the loop has to run over courses\n// first. It used to run over learners alone: a learner in two courses got a\n// single record in which both courses' concepts were merged, and it was\n// written with the installation's single course from the environment.\nconst groups = $input.first().json?.data?.Aggregate?.ChatHistory || [];\nconst out = [];\n\nfor (const g of groups) {\n  const course_id = g.groupedBy?.value;\n  // Messages written before the sync carried the course have an empty one.\n  // They are left out rather than folded into whichever course comes first:\n  // a learning record is about one course, and a wrong one is invisible.\n  if (!course_id) continue;\n\n  out.push({ json: {\n    course_id,\n    users_query_body: {\n      query: `{ Aggregate { ChatHistory(\n        where: { path: [\"course_id\"] operator: Equal valueText: ${JSON.stringify(String(course_id))} }\n        groupBy: \"user_id\"\n      ) { groupedBy { value } meta { count } } } }`\n    }\n  }});\n}\n\nif (out.length === 0) {\n  console.log('No course has any chat history yet — nothing to summarise.');\n}\nreturn out;\n"
+      },
+      "id": "b7a1c3e2-9f14-4d6b-8a52-1c0de4f7ab31",
+      "name": "List courses",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3324,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://smartrag-weaviate:{{ $env.WEAVIATE_HTTP_PORT || 8080 }}/v1/graphql",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.WEAVIATE_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "options": {},
+        "body": "={{ JSON.stringify($json.users_query_body) }}"
+      },
+      "id": "c8b2d4f3-a025-4e7c-9b63-2d1ef5a8bc42",
+      "name": "Get users per course",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3144,
         208
       ]
     }
@@ -560,18 +601,7 @@
       "main": [
         [
           {
-            "node": "Get distinct user_ids",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get distinct user_ids": {
-      "main": [
-        [
-          {
-            "node": "Extract user_ids",
+            "node": "Get distinct courses",
             "type": "main",
             "index": 0
           }
@@ -754,6 +784,39 @@
         [
           {
             "node": "Parse and Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get distinct courses": {
+      "main": [
+        [
+          {
+            "node": "List courses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List courses": {
+      "main": [
+        [
+          {
+            "node": "Get users per course",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get users per course": {
+      "main": [
+        [
+          {
+            "node": "Extract user_ids",
             "type": "main",
             "index": 0
           }
