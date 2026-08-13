@@ -106,6 +106,64 @@ carry the course as well.
 
 ---
 
+## A course's chat history is empty, or holds another course's conversations
+
+**Symptom.** Conversations happened, the `chathistory-sync` executions are
+all green, and the course's `ChatHistory` count stays at zero — or a course
+that was never used holds hundreds of messages.
+
+**Cause.** Two versions of the workflow wrote the wrong course. Before the
+course lookup existed, every message was stamped with the installation's
+single `COURSE_ID`; after it was added, `Prepare messages` looked the course
+up, used it to decide whether to skip the message, and then built its output
+object without it, so the messages were written with no course at all. Both
+are fixed in the workflow — deploy it before repairing, or the repair is
+undone five minutes later:
+
+```bash
+sudo bash scripts/deploy-n8n-workflows.sh
+```
+
+**Fix.** The repair reads the truth rather than assuming it: a stored message
+names the Flowise message it came from, that message names its chatflow, and
+a chatflow belongs to one slot of one course. Report first, nothing written:
+
+```bash
+sudo bash scripts/repair-chathistory-course.sh
+```
+
+Read the report. It names each move as "from → to", and counts separately
+what it will **not** touch: objects with no `trace_id`, objects whose Flowise
+message has been deleted, and objects from a chatflow that is in no slot.
+That last group is the normal state of an older installation, and guessing a
+course for it would move one course's conversations into another. Then:
+
+```bash
+sudo bash scripts/repair-chathistory-course.sh --apply
+```
+
+Running it again is safe — what is already right is left alone. Only
+`course_id` is written; the vector is not recomputed.
+
+Counting per course, to check before and after:
+
+```bash
+set -a && . ./.env && set +a && curl -s -X POST "http://127.0.0.1:${WEAVIATE_HTTP_PORT}/v1/graphql" -H "Authorization: Bearer $WEAVIATE_API_KEY" -H 'Content-Type: application/json' -d '{"query":"{ Aggregate { ChatHistory(groupBy: [\"course_id\"]) { groupedBy { value } meta { count } } } }"}' | jq
+```
+
+Objects with no course appear in no group, so compare the sum of the groups
+against the total:
+
+```bash
+set -a && . ./.env && set +a && curl -s -X POST "http://127.0.0.1:${WEAVIATE_HTTP_PORT}/v1/graphql" -H "Authorization: Bearer $WEAVIATE_API_KEY" -H 'Content-Type: application/json' -d '{"query":"{ Aggregate { ChatHistory { meta { count } } } }"}' | jq
+```
+
+A `where` filter on `course_id` being null does not work here: `IsNull`
+requires `indexNullState` in the class definition, which this schema does not
+set. The difference between the two counts is the answer.
+
+---
+
 ## Objects are not being stored, and nothing says so
 
 **Symptom.** Uploads appear to succeed, Langfuse's dashboard stays empty, or
