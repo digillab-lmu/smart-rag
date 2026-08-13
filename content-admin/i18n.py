@@ -214,7 +214,11 @@ the link is used, and the link only works from this message.
     "course_none_active": "no course selected",
     "course_switch_label": "Switch course",
     "courses_pick_first": "That page works inside one course, and this installation has several. Pick the one to work in — the choice is remembered until you change it.",
-    "courses_state_active": "in use",
+    # The word for "this is the course you are working in" has to be far away
+    # from the word for "this course is still being built": read in a column
+    # called State, "in use" and "unfinished" are both plausible readings of
+    # a course that is halfway through something.
+    "courses_state_active": "selected",
     "courses_use": "Work in this course",
     "accounts_title": "Accounts",
     "accounts_heading": "Accounts",
@@ -620,7 +624,10 @@ dieser Nachricht.
     "course_none_active": "kein Kurs gewählt",
     "course_switch_label": "Kurs wechseln",
     "courses_pick_first": "Diese Seite arbeitet in genau einem Kurs, und hier gibt es mehrere. Wähle den Kurs, in dem du arbeiten willst — die Wahl bleibt bestehen, bis du sie änderst.",
-    "courses_state_active": "in Bearbeitung",
+    # "in Bearbeitung" hieß hier "das ist der Kurs, in dem du arbeitest" und
+    # wurde gelesen als "an diesem Kurs wird noch gebaut" — in einer Spalte
+    # namens Zustand, direkt neben "unfertig", die naheliegendere Lesart.
+    "courses_state_active": "ausgewählt",
     "courses_use": "In diesem Kurs arbeiten",
     "accounts_title": "Konten",
     "accounts_heading": "Konten",
