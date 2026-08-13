@@ -541,11 +541,44 @@ def use_course(course_id):
 
 
 # ─── Dashboard ───────────────────────────────────────────────────────────────────
-@app.route("/")
+@app.route("/", methods=["GET", "POST"])
 @auth.login_required
 @with_course
 def dashboard():
     env = read_env()
+    error = None
+    success = None
+
+    # Re-import every agent of this course. One at a time is fine for two; the
+    # plan is fifty courses with up to ten slots each, and after a change to a
+    # template that is five hundred manual imports with no way to tell which
+    # ones were done.
+    if request.method == "POST" and request.form.get("action") == "reimport":
+        client = _flowise_client()
+        if client is None:
+            error = _t("dash_reimport_no_flowise")
+        else:
+            done, failed = 0, []
+            for num, data in sorted(storage.all_slots(g.course["id"]).items(),
+                                    key=lambda kv: int(kv[0])):
+                # Never imported is not the same as behind, and re-importing
+                # is not what an empty slot needs.
+                if not data.get("archetype") or not data.get("chatflow_id"):
+                    continue
+                failure = _do_import(g.course, int(num), data["archetype"], client)
+                if failure:
+                    failed.append(f"{num}: {failure}")
+                else:
+                    done += 1
+            if failed:
+                # Partial success is reported as such. "3 done, 2 failed" with
+                # the reasons beats one red line that hides the three that
+                # worked.
+                error = _t("dash_reimport_partial", done, len(failed),
+                           " · ".join(failed))
+            else:
+                success = _t("dash_reimport_done", done)
+
     slots = storage.all_slots(g.course["id"])
 
     # One list call covers all ten slots — asking Flowise per slot would be
@@ -576,9 +609,14 @@ def dashboard():
             # outage must not replace it with an error.
             logger.error("Could not read published states: %s", exc)
 
+    import_state = _import_state(g.course, slots, env)
     return render_template(
         "dashboard.html",
         slots=slots,
+        error=error,
+        success=success,
+        import_state=import_state,
+        behind_count=sum(1 for v in import_state.values() if v == "behind"),
         archetypes=agent_templates.archetypes_for(current_language()),
         flowise_configured=flowise_live,
         # Distinguishes "never set up" from "set up, but not working now" —
@@ -813,17 +851,18 @@ def _first_course_id() -> str | None:
     return min(all_of_them, key=lambda c: c["created_at"])["id"]
 
 
-def _do_import(course: dict, slot: int, archetype: str,
-               client: FlowiseClient) -> str | None:
-    """Returns an error message, or None on success.
+def _build_flow(course: dict, slot: int, archetype: str,
+                all_slots: dict, env: dict) -> tuple[dict, list[str]]:
+    """The flow as the course, the slot's content and .env determine it —
+    everything except the credential ids, which only exist once Flowise has
+    been asked for them.
 
-    The course is a parameter, not something read from the request context:
-    this function decides which collection an agent will search, and a
-    wrong-course import produces an agent that answers plausibly from
-    somebody else's material.
+    Split out of the import so the same construction can be repeated without
+    importing: that is how a slot can be told it is behind the repository
+    without a round trip per slot, and it guarantees the comparison is against
+    what an import would actually produce rather than against a copy of the
+    logic that could drift from it.
     """
-    env = read_env()
-    all_slots = storage.all_slots(course["id"])
     slot_data = all_slots[str(slot)]
     content = dict(slot_data.get("content") or {})
 
@@ -845,8 +884,62 @@ def _do_import(course: dict, slot: int, archetype: str,
         agent_templates.set_prompt(flow, custom_prompt)
     agent_templates.auto_fill_from_env(flow, env, slot=slot, course=course)
     missing = agent_templates.substitute_content(flow, content)
+    return flow, missing
+
+
+def _import_state(course: dict, all_slots: dict, env: dict) -> dict[str, str]:
+    """Per slot: "current", "behind" or "unknown" — for the slots that have
+    been imported at all. Slots that were never imported are absent.
+
+    "unknown" is its own answer and not folded into "behind": a slot imported
+    before the digest existed, or one whose template no longer loads, has not
+    been shown to differ. Saying "behind" there would send someone to
+    re-import for no reason, which is how a warning stops being read.
+    """
+    state: dict[str, str] = {}
+    for num, data in all_slots.items():
+        if not data.get("chatflow_id"):
+            continue
+        stored = data.get("imported_digest")
+        if not stored:
+            state[num] = "unknown"
+            continue
+        try:
+            flow, missing = _build_flow(course, int(num), data["archetype"],
+                                        all_slots, env)
+        except (agent_templates.TemplateError, KeyError, ValueError) as exc:
+            logger.warning("Slot %s of %s cannot be rebuilt for comparison: %s",
+                           num, course["id"], exc)
+            state[num] = "unknown"
+            continue
+        if missing:
+            # Content was removed after the import. The agent in Flowise still
+            # works; re-importing it now would fail. "Behind" is right.
+            state[num] = "behind"
+            continue
+        state[num] = "current" if agent_templates.flow_digest(flow) == stored \
+            else "behind"
+    return state
+
+
+def _do_import(course: dict, slot: int, archetype: str,
+               client: FlowiseClient) -> str | None:
+    """Returns an error message, or None on success.
+
+    The course is a parameter, not something read from the request context:
+    this function decides which collection an agent will search, and a
+    wrong-course import produces an agent that answers plausibly from
+    somebody else's material.
+    """
+    env = read_env()
+    all_slots = storage.all_slots(course["id"])
+    flow, missing = _build_flow(course, slot, archetype, all_slots, env)
     if missing:
         return _t("slot_err_missing_content", ", ".join(missing))
+    # Taken here, before the credential ids are stamped in, because this is
+    # the part that can be recomputed later without asking Flowise anything.
+    digest = agent_templates.flow_digest(flow)
+    slot_data = all_slots[str(slot)]
 
     # Refuses rather than substituting a different provider — see
     # agent_templates._resolve_provider. The credential name is built from the
@@ -932,7 +1025,7 @@ def _do_import(course: dict, slot: int, archetype: str,
     chatflow_id, _created = client.upsert_chatflow(
         chatflow_name, flow_data_json, analytic=analytic
     )
-    storage.set_chatflow_id(course["id"], slot, chatflow_id)
+    storage.set_chatflow_id(course["id"], slot, chatflow_id, digest)
     # CHATFLOW_AGENTnn in .env is from the single-course era: one variable per
     # slot, with no room for a course. Kept for the LTI middleware, which
     # still reads it, and only written for the first course so it cannot be

@@ -117,7 +117,8 @@ def clear_slots(db):
             cur.execute(
                 "UPDATE agent_slots SET archetype = NULL, name = NULL, "
                 "content = '{}'::jsonb, system_prompt = NULL, "
-                "chatflow_id = NULL, published = false WHERE course_id = %s",
+                "chatflow_id = NULL, published = false, imported_digest = NULL, "
+                "imported_at = NULL WHERE course_id = %s",
                 (COURSE_ID,))
         conn.commit()
 
