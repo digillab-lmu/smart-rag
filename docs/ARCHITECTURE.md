@@ -278,9 +278,23 @@ have to redo the comparison.
 
 **What is built.** The graph is per course, enforced by a `course_id` on every
 node and in every statement, with the pair (course, name) folded into a
-synthetic `key` property because Neo4j Community cannot constrain two
-properties at once — a node key is Enterprise, and Community allows exactly
-one database, so neither of the two natural boundaries is available.
+synthetic `key` property.
+
+**Correction (2026-08-13).** The reason given for that synthetic key was
+wrong. It said Neo4j Community cannot constrain two properties at once. What
+is Enterprise-only is the *node key* — uniqueness **and** existence together.
+Plain composite uniqueness is not, and was confirmed against the running
+5.26.28 Community instance:
+
+```cypher
+CREATE CONSTRAINT ... FOR (c:Concept) REQUIRE (c.course_id, c.name) IS UNIQUE
+```
+
+was accepted. So the synthetic key can be replaced by a constraint the
+database enforces on the real pair. What does **not** change: Community still
+allows exactly one database, so a query that forgets `course_id` still reaches
+every course. The boundary becomes database-enforced for uniqueness and stays
+convention for isolation.
 
 **Why that is weaker than the rest of the system.** Everywhere else the
 boundary is physical: a Weaviate collection per course, a Garage bucket per
@@ -288,13 +302,34 @@ course, rows behind a foreign key. Here it is a property, and it holds
 because queries name it and a test checks that they do. That is discipline,
 not enforcement.
 
-**The three options, and what decides between them.**
+**The three options in detail.** ★★★ good, ★★☆ workable, ★☆☆ poor, — absent.
+Rows marked *(unverified)* are from documentation, not from a test here.
 
-| | Boundary | Cost |
-| --- | --- | --- |
-| Postgres | Foreign key; deleting a course takes the graph with it | The agents need an endpoint, because they cannot speak SQL from Flowise — which also removes the database password they currently hold |
-| Neo4j Community (today) | A property, checked by convention | None, but it is the weakest boundary in the system |
-| Neo4j + DozerDB | A database per course | A GPL plugin from a single sponsor, pinned to the Neo4j patch release it was built for; still no role-based access control |
+| | Neo4j CE 5.26 (today) | Neo4j + DozerDB | PostgreSQL + Apache AGE |
+| --- | --- | --- | --- |
+| **Course boundary** | property, by convention ★☆☆ | one database per course ★★★ | foreign key / one graph per course ★★★ |
+| Composite uniqueness | ★★★ (verified 2026-08-13) | ★★★ | ★★☆ unique index on the property pair |
+| Existence constraint | — Enterprise | ★★★ *(unverified)* | ★★★ `NOT NULL` |
+| Several databases | — one only | ★★★ | ★★★ schemas/graphs |
+| Roles and permissions | — single user | — not advertised | ★★★ Postgres roles, row-level security since 1.6.0 |
+| Query language | Cypher, full ★★★ | Cypher, full ★★★ | openCypher subset ★★☆ |
+| Deep traversal | ★★★ native | ★★★ native | ★★☆ weaker, but our deepest query is a prerequisite chain |
+| Graph algorithms | ★★★ GDS plugin | ★★★ GDS plugin | ★☆☆ SQL/recursive CTE or in Python |
+| Deleting a course | a `MATCH … DELETE` that must name the course ★★☆ | `DROP DATABASE` ★★★ | `DELETE … WHERE course_id` / drop the graph ★★★ |
+| Backup and restore | its own data directory, its own step ★★☆ | as Neo4j ★★☆ | inside the Postgres dump we already take ★★★ |
+| Memory | ~600 MB after the 2026-08-13 sizing ★★☆ | as Neo4j ★★☆ | shares Postgres, effectively free ★★★ |
+| Extra moving part | one container ★★☆ | container **plus** a GPL plugin ★☆☆ | a custom Postgres image with the extension ★★☆ |
+| How agents reach it | HTTP straight from Flowise ★★★ | as Neo4j ★★★ | needs an endpoint — Flowise cannot speak SQL ★☆☆ |
+| Password held in Flowise | yes ★☆☆ | yes ★☆☆ | no, if the endpoint authenticates ★★★ |
+| Provenance and lifetime | Neo4j Inc., 5.26 LTS to June 2028 ★★★ | single sponsor, tracks 5.26.27 while we pin 5.26.28, no GitHub releases ★☆☆ | Apache Software Foundation ★★★ |
+| Work from here | none; drop the synthetic key ★★★ | migrate the graph, pin a matching patch pair ★★☆ | new image, endpoint, rewrite every query and both agent nodes ★☆☆ |
+
+Read across the rows and the three are not close on the same question. Neo4j
+today costs nothing and buys the weakest boundary. DozerDB buys the physical
+boundary and pays with a dependency this project would carry alone. AGE buys
+the boundary *and* roles *and* one backup for everything, and pays for it once
+in migration work — its weakest row, the one about reaching it from Flowise,
+is the row that removes a password from Flowise.
 
 **The deciding question is not "will we ever run graph algorithms".** At a few
 hundred concepts per course, every algorithm anyone would want — prerequisite
