@@ -36,11 +36,9 @@
 #   sudo bash scripts/repair-chathistory-course.sh            # show, change nothing
 #   sudo bash scripts/repair-chathistory-course.sh --apply    # write
 #
-# Unlike migrate-add-course-id.sh, this script does nothing without --apply.
-# That one fills in a value where there is none; this one can also overwrite
-# a course that is already set, and a wrong overwrite is not visible in any
-# status output — it is found by someone reading another course's
-# conversations.
+# Nothing happens without --apply. This script can overwrite a course that is
+# already set, and a wrong overwrite is not visible in any status output — it
+# is found by someone reading another course's conversations.
 #
 # ChatHistory only. UserMemory is written by a different workflow that
 # summarises per learner, and it needs its own answer.
@@ -100,7 +98,7 @@ echo
 echo
 
 curl -sf --max-time 10 "${AUTH[@]}" "$WEAVIATE_URL/v1/.well-known/ready" >/dev/null \
-    || die "$(t migrate_course_unreachable "$WEAVIATE_URL")"
+    || die "$(t repair_chat_unreachable "$WEAVIATE_URL")"
 
 curl -s --max-time 10 "${AUTH[@]}" "$WEAVIATE_URL/v1/schema/$CLASS" \
     | jq -e '.class' >/dev/null 2>&1 \

@@ -85,24 +85,38 @@ chain throws as soon as the value before it is empty — which
 
 ---
 
-## The agents retrieve nothing after an upgrade
+## An agent retrieves nothing from its course
 
-**Symptom.** Agents answer, but never cite or use any course document. No
-error anywhere.
+**Symptom.** The agent answers, but never cites or uses any course document.
+No error anywhere — a retrieval that matches nothing is not a failure.
 
-**Cause.** Course scoping. Every retrieval now filters on `course_id`, and
-data ingested before that change does not carry one. This is deliberately a
-hard stop rather than a filter that matches everything — the alternative
-would serve one course's material to another course's students silently.
+Every retrieval filters on `course_id`, deliberately as a hard stop rather
+than a filter that matches everything: the alternative serves one course's
+material to another course's students, silently. So an empty answer means the
+filter and the data disagree, and there are three ways for that to happen.
 
-**Fix.**
+**1 · The agent is behind.** An agent in Flowise is a copy of the template
+taken at import time. If the filter, the course or the content changed since,
+the agent still carries the old one. The Agents page says so per slot —
+"behind — re-import" — and offers "Re-import every agent of this course". A
+slot that reads "imported (version unknown)" was imported before that check
+existed and has not been ruled out.
+
+**2 · Nothing has been ingested into this course.** Each course has its own
+collection, so a document in another course is not in this one. The Vector DB
+page lists what is actually there, per document.
+
+**3 · The agent belongs to another course.** Check which course's chatflow is
+answering:
 
 ```bash
-sudo smartrag        # → Upgrade — apply pending migrations
+docker exec -i smartrag-postgres psql -U "$POSTGRES_USER" -d contentadmin -c "SELECT course_id, slot, name, chatflow_id FROM agent_slots WHERE chatflow_id IS NOT NULL ORDER BY course_id, slot;"
 ```
 
-It shows a dry run first. Afterwards, re-import the agents so their filters
-carry the course as well.
+**Not a cause any more:** data ingested before course scoping existed. There
+is no upgrade path from 1.x — a 2.x installation starts fresh — and the
+script that used to tag such data has been removed rather than kept for a
+case that cannot arise.
 
 ---
 

@@ -353,22 +353,30 @@ for path in sorted(TEMPLATES.glob("*.json")):
         check(f"{label}: does not interpolate the learner id raw",
               '"${userId}"' not in code, code[:200])
 
-# ── The migration exists and is honest about being needed ───────────────────
+# ── The tagging migration is gone, and must stay gone ───────────────────────
+# It assigned .env's COURSE_ID to every object that lacked one. That was
+# right while an installation had exactly one course; on an installation with
+# three it announced "existing data now belongs to course testkurs2", which
+# was false, and the next object without a course would have been stamped
+# wrongly and silently. It only ever filled blanks, so it never did damage —
+# but there is no upgrade path from 1.x, so the case it existed for cannot
+# arise, and a script that can only be wrong is worse than no script.
 mig = REPO / "scripts" / "migrate-add-course-id.sh"
-check("a migration script exists", mig.exists(), str(mig))
-if mig.exists():
-    text = mig.read_text()
-    check("the migration supports a dry run", "--dry-run" in text)
-    # deploy-schemas.sh skips existing classes on purpose, so an upgrade
-    # would otherwise never gain the property.
-    check("it adds the property to existing classes", "/properties" in text)
-    check("it backfills existing objects", "PATCH" in text)
-    check("it is idempotent about objects that already have one",
-          "already had one" in text or "course_id // \"\"" in text)
+check("the single-course tagging migration is gone", not mig.exists(),
+      "it would stamp one course's id onto data from another")
+for path in (REPO / "scripts").glob("*.sh"):
+    check(f"{path.name} does not call it",
+          "migrate-add-course-id" not in path.read_text(), "")
+messages = (REPO / "scripts" / "lib" / "messages.sh").read_text()
+check("its messages are gone too",
+      "migrate_course_" not in messages,
+      "a catalogue entry for a script that does not exist is a promise nobody keeps")
 
 schemas = (REPO / "scripts" / "deploy-schemas.sh").read_text()
 check("deploy-schemas.sh still leaves existing classes alone",
-      "exists" in schemas.lower(), "if this changed, re-check the migration's premise")
+      "exists" in schemas.lower(),
+      "a live class is never rewritten — that is why a course's collection is "
+      "created per course rather than altered")
 
 # ─── The ingest takes the course from the request, not the environment ──────
 # Until this held, every upload landed in whichever course .env named — the
@@ -447,7 +455,9 @@ print(
     "learners inside each one, refusing to write a record with no course; every query in "
     "every archetype — enumerated from the files, not from the ones we remembered — names "
     "the course and no longer interpolates the learner id into the query text; and a "
-    "dry-runnable, idempotent migration exists for deployments "
-    "created before this, since deploy-schemas.sh deliberately never touches an existing "
-    "class."
+    "script that used to tag pre-course data with the installation's one "
+    "COURSE_ID is gone, together with its messages and every call to it, "
+    "because there is no upgrade path from 1.x and on an installation with "
+    "several courses it could only be wrong; and deploy-schemas.sh still "
+    "leaves an existing class alone."
 )
