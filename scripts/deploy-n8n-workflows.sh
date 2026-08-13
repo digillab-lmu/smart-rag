@@ -135,6 +135,13 @@ WORKFLOWS=(
     "$WORKFLOW_DIR/ingest-document.json"
     "$CORE_DIR/chathistory-sync.json"
     "$CORE_DIR/usermemory-summary.json"
+    # The error handler first, so the workflows that name it as their error
+    # workflow find it already there. n8n stores that as a plain id and does
+    # not resolve it at import, so the order is a courtesy rather than a
+    # requirement — but an operator reading the log should not see a
+    # reference to something that has not been mentioned yet.
+    "$CORE_DIR/error-handler.json"
+    "$CORE_DIR/watchdog.json"
 )
 # Only workflows with a real trigger need activating. The chunk+embed
 # sub-workflow is reached via an Execute Workflow node, which doesn't
@@ -143,7 +150,12 @@ ACTIVATE_IDS=(
     "smartrag-ingest-document"
     "smartrag-chathistory-sync"
     "smartrag-usermemory-summary"
+    "smartrag-watchdog"
 )
+# The error handler is deliberately absent: n8n calls it when another workflow
+# fails and never triggers it on its own. Activating it would suggest it runs
+# on a schedule, and an operator looking for "why did I get no mail" would
+# start in the wrong place.
 
 # The Langfuse trace patcher only makes sense where Langfuse runs. Deployed
 # and activated with the observability profile, left out otherwise — an
@@ -232,6 +244,20 @@ jq -n \
           "host": "smartrag-postgres",
           "port": 5432,
           "database": "contentadmin",
+          "user": $pg_user,
+          "password": $pg_pass,
+          "ssl": "disable",
+          "allowUnauthorizedCerts": false
+        }
+      },
+      {
+        "id": "smartrag-n8ndb-credential",
+        "name": "smartrag-n8ndb",
+        "type": "postgres",
+        "data": {
+          "host": "smartrag-postgres",
+          "port": 5432,
+          "database": "n8n",
           "user": $pg_user,
           "password": $pg_pass,
           "ssl": "disable",

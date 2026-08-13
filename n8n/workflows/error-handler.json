@@ -1,0 +1,108 @@
+{
+  "name": "Error Handler — mail when a workflow fails",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Two shapes come out of the Error Trigger: an execution that failed, and a\n// trigger that could not start the workflow at all. The second has no\n// execution, so reading d.execution.error would report \"no message\" for the\n// failures that are hardest to notice.\nconst d = $input.first().json;\nconst triggerFailure = !!d.trigger;\nconst err = triggerFailure ? (d.trigger || {}).error : (d.execution || {}).error;\n\n// Capped, and the stack left out. An error from an HTTP node routinely\n// carries the request body, and here that body is a learner's message. A\n// mail to an operator address is not the place for it; the execution in n8n\n// is, and the mail says where to look.\nconst message = String((err || {}).message || 'no message reported').slice(0, 300);\n\nreturn [{ json: {\n  workflowName: (d.workflow || {}).name || 'unknown',\n  workflowId:   (d.workflow || {}).id   || '-',\n  kind:         triggerFailure ? 'trigger failed — the workflow never started'\n                               : 'execution failed',\n  node:         (d.execution || {}).lastNodeExecuted\n                  || (((err || {}).node || {}).name) || 'unknown',\n  message,\n  executionId:  (d.execution || {}).id  || '-',\n  executionUrl: (d.execution || {}).url || '',\n  when:         new Date().toISOString(),\n}}];\n"
+      },
+      "id": "describe-the-failure",
+      "name": "Describe the failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// ─── the shared alert state ──────────────────────────────────────────────────\n// A mail per failure is a mail every five minutes for a workflow that runs\n// every five minutes: 288 a day, and after the second day nobody reads any of\n// them — including the one that matters. So a subject that is already known\n// to be broken stays quiet for a while, and the next mail says how many\n// failures it stands for.\n//\n// The state lives in Weaviate's WorkflowState under a fixed id, the same way\n// chathistory-sync keeps its cursor. The status is read from the response\n// rather than from a thrown error: a Code node runs in the task runner, and\n// an exception loses its structured fields crossing that boundary, so a 404\n// on the first run would arrive as an unexplained failure.\nconst QUIET_MINUTES = Number($env.ALERT_QUIET_MINUTES || 60);\nconst STATE_ID = 'a1e6d9c4-2f38-4b07-9c15-6de0f4a81b23';\nconst base = `http://smartrag-weaviate:${$env.WEAVIATE_HTTP_PORT || 8080}`;\nconst headers = {\n  'Authorization': `Bearer ${$env.WEAVIATE_API_KEY}`,\n  'Content-Type': 'application/json'\n};\n\nasync function readState() {\n  const res = await this.helpers.httpRequest({\n    method: 'GET',\n    url: `${base}/v1/objects/WorkflowState/${STATE_ID}`,\n    headers,\n    returnFullResponse: true,\n    ignoreHttpStatusErrors: true,\n  });\n  if (res.statusCode === 404) return {};          // first run\n  if (res.statusCode >= 400) {\n    // Not fatal: an alert that cannot read its throttle should still be sent.\n    console.log(`Alert state unreadable (HTTP ${res.statusCode}) — not throttling.`);\n    return {};\n  }\n  const body = typeof res.body === 'string' ? JSON.parse(res.body) : res.body;\n  try {\n    return JSON.parse(body?.properties?.value || '{}');\n  } catch (e) {\n    return {};\n  }\n}\n\nasync function writeState(state) {\n  const payload = { properties: { key: 'alertState', value: JSON.stringify(state) } };\n  const patched = await this.helpers.httpRequest({\n    method: 'PATCH',\n    url: `${base}/v1/objects/WorkflowState/${STATE_ID}`,\n    headers, body: payload,\n    returnFullResponse: true, ignoreHttpStatusErrors: true,\n  });\n  if (patched.statusCode !== 404) return;\n  // PATCH on something that does not exist is a 404, so the first run has to\n  // create it — without this the state could never be written even once.\n  await this.helpers.httpRequest({\n    method: 'POST',\n    url: `${base}/v1/objects`,\n    headers,\n    body: { class: 'WorkflowState', id: STATE_ID, ...payload },\n    returnFullResponse: true, ignoreHttpStatusErrors: true,\n  });\n}\n\nconst item = $input.first().json;\nconst key = `error:${item.workflowId}`;\nconst state = await readState.call(this);\nconst now = Date.now();\nconst entry = state[key] || { last: 0, suppressed: 0 };\nconst minutesSince = (now - Number(entry.last || 0)) / 60000;\n\nif (minutesSince < QUIET_MINUTES) {\n  entry.suppressed = Number(entry.suppressed || 0) + 1;\n  state[key] = entry;\n  await writeState.call(this, state);\n  console.log(`Suppressed: \"${item.workflowName}\" already reported ` +\n              `${minutesSince.toFixed(0)} minute(s) ago (${entry.suppressed} since).`);\n  return [];        // nothing downstream, so no mail\n}\n\nconst alsoFailed = Number(entry.suppressed || 0);\nstate[key] = { last: now, suppressed: 0 };\nawait writeState.call(this, state);\n\nreturn [{ json: { ...item, alsoFailed, quietMinutes: QUIET_MINUTES } }];\n"
+      },
+      "id": "throttle",
+      "name": "Throttle",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.SMTP_SENDER_EMAIL }}",
+        "toEmail": "={{ $env.ADMIN_EMAIL }}",
+        "subject": "=[SMART RAG] {{ $json.workflowName }} failed",
+        "emailFormat": "text",
+        "text": "=The workflow \"{{ $json.workflowName }}\" failed.\n\nWhen:        {{ $json.when }}\nWhat:        {{ $json.kind }}\nLast node:   {{ $json.node }}\nMessage:     {{ $json.message }}\n\n{{ $json.alsoFailed > 0 ? $json.alsoFailed + ' further failure(s) of this workflow were not mailed, to keep one broken job from filling the inbox.\\n\\n' : '' }}Execution:   {{ $json.executionUrl || $json.executionId }}\nWorkflow id: {{ $json.workflowId }}\n\nThe full error, with the data it was working on, is in the execution in n8n. It is deliberately not in this mail: an error from an HTTP node usually carries the request body, and here that is a learner's message.\n\nFurther failures of this workflow will stay quiet for {{ $json.quietMinutes }} minutes.\n",
+        "options": {}
+      },
+      "id": "send-the-alert",
+      "name": "Send the alert",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        660,
+        0
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "smartrag-smtp-credential",
+          "name": "smartrag-smtp"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Describe the failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Describe the failure": {
+      "main": [
+        [
+          {
+            "node": "Throttle",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Throttle": {
+      "main": [
+        [
+          {
+            "node": "Send the alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "id": "smartrag-error-handler",
+  "tags": []
+}

@@ -860,7 +860,8 @@
   "active": true,
   "settings": {
     "executionOrder": "v1",
-    "binaryMode": "separate"
+    "binaryMode": "separate",
+    "errorWorkflow": "smartrag-error-handler"
   },
   "versionId": "b1a1b1c1-0004-4a1a-9a1a-000000000001",
   "meta": {
