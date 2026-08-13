@@ -598,7 +598,15 @@ services:
       NODE_OPTIONS: "--max-old-space-size=4096"
       # pdf-lib was allowlisted here and is neither installed nor used by any
       # workflow, so it only produced a warning on every start. Removed.
-      NODE_FUNCTION_ALLOW_BUILTIN: "http"
+      #
+      # crypto: usermemory-summary derives each learning record's Weaviate id
+      # from the (course, learner) pair — RFC 4122 version 5, which is SHA-1
+      # over a namespace. That is what makes a duplicate impossible rather
+      # than merely cleaned up afterwards; the version that wrote a random id
+      # and deleted the previous record afterwards left one duplicate behind
+      # on every run for weeks, because the delete silently failed. Node's own
+      # module, no package to install.
+      NODE_FUNCTION_ALLOW_BUILTIN: "http,crypto"
       # Pinned deliberately. n8n warns that this default flips from false to
       # true in a future version, and our workflows read $env at 24 places —
       # the Weaviate collection name, the embedding key and model, the course

@@ -89,6 +89,34 @@ _container_ready() { container_ready "$1"; }
 
 _container_ready smartrag-n8n || die "$(t schema_container_not_healthy "smartrag-n8n")"
 
+# usermemory-summary derives each learning record's id with crypto, and a
+# Code node may only require what NODE_FUNCTION_ALLOW_BUILTIN lists. The
+# variable is set in docker-compose.yml, but an environment change does not
+# reach a container that is merely restarted — and this script restarts n8n,
+# which would make the deployment look complete while every summary run
+# failed four hours later. Checked against the running container, not the
+# file.
+_n8n_builtins="$(docker inspect -f \
+    '{{range .Config.Env}}{{println .}}{{end}}' smartrag-n8n 2>/dev/null \
+    | sed -n 's/^NODE_FUNCTION_ALLOW_BUILTIN=//p')"
+if [[ ",$_n8n_builtins," != *",crypto,"* ]]; then
+    warn "$(t n8n_needs_crypto "${_n8n_builtins:-<unset>}")"
+    # Never fatal. Four of the five workflows do not need the module, and
+    # refusing to deploy them because the fifth one will fail later helps
+    # nobody — the operator is told, precisely, and the run continues.
+    if [[ -f "$REPO_ROOT/docker/docker-compose.yml" ]] \
+       && confirm n8n_recreate_now "y"; then
+        if (cd "$REPO_ROOT/docker" && docker compose up -d smartrag-n8n) \
+           && _container_ready smartrag-n8n; then
+            ok "$(t n8n_recreated)"
+        else
+            warn "$(t n8n_recreate_failed)"
+        fi
+    else
+        warn "$(t n8n_crypto_skipped)"
+    fi
+fi
+
 WORKFLOW_DIR="$REPO_ROOT/n8n/workflows-ingest"
 [[ -d "$WORKFLOW_DIR" ]] || die "$(t n8n_workflow_dir_missing "$WORKFLOW_DIR")"
 
