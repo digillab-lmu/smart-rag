@@ -236,7 +236,70 @@ class WeaviateClient:
             return 0
         return int(((agg[0] or {}).get("meta") or {}).get("count") or 0)
 
+    # The three classes every course shares. A course's chunks live in a
+    # collection of their own and go with it; these do not, so they are the
+    # ones a deletion has to filter rather than drop.
+    SHARED_LEARNER_CLASSES = ("ChatHistory", "UserMemory", "TestResults")
+
+    def count_by_course(self, class_name: str, course_id: str) -> int:
+        """How many objects of a shared class belong to one course.
+
+        Returns 0 for a class that does not exist: TestResults is only created
+        once the knowledge-test agent has been used, and an installation that
+        never used it should read as "none", not as an error in the middle of
+        an inventory.
+        """
+        if not course_id:
+            raise WeaviateError("Refusing to count without a course id.")
+        query = f"""
+        {{
+          Aggregate {{
+            {class_name}(
+              where: {{ path: ["course_id"], operator: Equal, valueText: {json.dumps(course_id)} }}
+            ) {{ meta {{ count }} }}
+          }}
+        }}
+        """
+        try:
+            data = self._graphql(query)
+        except WeaviateError:
+            if not self.collection_exists(class_name):
+                return 0
+            raise
+        agg = (((data or {}).get("data") or {}).get("Aggregate") or {}).get(class_name) or []
+        if not agg:
+            return 0
+        return int(((agg[0] or {}).get("meta") or {}).get("count") or 0)
+
     # ─── deletion ───────────────────────────────────────────────────────────
+    def delete_by_course(self, class_name: str, course_id: str) -> int:
+        """Every object of a shared class belonging to one course.
+
+        The course id is required and checked, not defaulted: an empty one
+        here would produce a filter that matches every course, and a batch
+        delete does not ask twice.
+        """
+        if not course_id:
+            raise WeaviateError("Refusing to delete without a course id.")
+        if not self.collection_exists(class_name):
+            return 0
+        payload = {
+            "match": {
+                "class": class_name,
+                "where": {"path": ["course_id"], "operator": "Equal",
+                          "valueText": course_id},
+            },
+            "output": "minimal",
+        }
+        result = self._request("DELETE", "/v1/batch/objects", json=payload)
+        results = (result or {}).get("results") or {}
+        failed = int(results.get("failed") or 0)
+        if failed:
+            raise WeaviateError(
+                f"Weaviate reported {failed} failed deletion(s) in {class_name}."
+            )
+        return int(results.get("successful") or 0)
+
     def delete_document(
         self, collection: str, course_id: str, source_title: str, agent_id: int | None
     ) -> int:

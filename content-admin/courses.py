@@ -205,3 +205,189 @@ def unfinished() -> list[dict]:
     separately: a course that looks like the others but has no bucket is how
     an upload fails an hour later with a message about object storage."""
     return [c for c in all_courses() if not c["ready"]]
+
+
+# ─── What a course consists of ───────────────────────────────────────────────
+
+class InventoryItem(dict):
+    """One line of the inventory: a system, what it holds, and how many.
+
+    `count` is None when the number could not be established. That is not the
+    same as zero, and the difference decides whether a deletion is safe to
+    start: a service that is down answers "nothing here" to a naive
+    implementation, and the operator then confirms a deletion believing there
+    is nothing to lose.
+    """
+
+    def __init__(self, system: str, label: str, count: int | None = None,
+                 error: str = "", note: str = ""):
+        super().__init__(system=system, label=label, count=count,
+                         error=error, note=note)
+
+
+def inventory(course_id: str,
+              weaviate: WeaviateClient | None = None,
+              garage: GarageClient | None = None,
+              neo4j=None,
+              flowise=None) -> dict:
+    """Everything that belongs to one course, counted where it can be counted.
+
+    Read-only. Called before a deletion so the operator confirms a number
+    rather than a name, and callable on its own — "what is in this course"
+    is a fair question with no intention behind it.
+
+    Every system is asked separately and a failure in one is recorded against
+    that line rather than raised: an inventory that stops at the first
+    unreachable service tells the operator less than one that says which
+    single line is unknown.
+    """
+    course = get_course(course_id)
+    if course is None:
+        raise CourseError(f"No course '{course_id}' is recorded.")
+
+    env = read_env()
+    items: list[InventoryItem] = []
+
+    # ── Postgres: rows that go automatically ────────────────────────────────
+    # agent_slots and user_courses reference courses(id) ON DELETE CASCADE, so
+    # these need no deletion step — but they are listed, because "the course
+    # row disappears and so do ten slots" is part of what is being confirmed.
+    try:
+        with db.connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT count(*) FILTER (WHERE archetype IS NOT NULL), "
+                    "       count(*) FILTER (WHERE chatflow_id IS NOT NULL) "
+                    "FROM agent_slots WHERE course_id = %s", (course_id,))
+                configured, imported = cur.fetchone()
+                cur.execute("SELECT count(*) FROM user_courses WHERE course_id = %s",
+                            (course_id,))
+                (members,) = cur.fetchone()
+                # An account whose only course this is keeps existing and can
+                # then reach nothing. Deleting it is a separate decision — a
+                # person is not a property of a course — so it is reported,
+                # not acted on.
+                cur.execute(
+                    "SELECT count(*) FROM user_courses uc "
+                    "WHERE uc.course_id = %s AND NOT EXISTS ("
+                    "  SELECT 1 FROM user_courses o "
+                    "  WHERE o.user_id = uc.user_id AND o.course_id <> uc.course_id)",
+                    (course_id,))
+                (stranded,) = cur.fetchone()
+            conn.commit()
+        items.append(InventoryItem("postgres", "agent slots configured", configured))
+        items.append(InventoryItem("postgres", "agents imported into Flowise", imported))
+        items.append(InventoryItem("postgres", "maintainers assigned", members))
+        if stranded:
+            items.append(InventoryItem(
+                "postgres", "maintainers who would be left with no course", stranded,
+                note="their accounts stay; removing them is a separate decision"))
+    except db.DatabaseError as exc:
+        items.append(InventoryItem("postgres", "slots and maintainers", None, str(exc)))
+
+    # ── Weaviate: one collection of its own, three shared classes ───────────
+    weaviate = weaviate or WeaviateClient(
+        os.getenv("SMARTRAG_WEAVIATE_URL",
+                  f"http://smartrag-weaviate:{env.get('WEAVIATE_HTTP_PORT', '8080')}"),
+        env.get("WEAVIATE_API_KEY", ""))
+    try:
+        if weaviate.collection_exists(course["collection"]):
+            items.append(InventoryItem(
+                "weaviate", f"document chunks in {course['collection']}",
+                weaviate.count_chunks(course["collection"], course_id),
+                note="the whole collection goes"))
+        else:
+            items.append(InventoryItem(
+                "weaviate", f"collection {course['collection']}", 0,
+                note="does not exist — nothing to remove"))
+    except WeaviateError as exc:
+        items.append(InventoryItem("weaviate", "document chunks", None, str(exc)))
+
+    for cls in WeaviateClient.SHARED_LEARNER_CLASSES:
+        try:
+            items.append(InventoryItem(
+                "weaviate", f"{cls} records", weaviate.count_by_course(cls, course_id),
+                note="shared with other courses — removed by filter"))
+        except WeaviateError as exc:
+            items.append(InventoryItem("weaviate", f"{cls} records", None, str(exc)))
+
+    # ── Garage: the bucket, counted by Garage itself ────────────────────────
+    # No S3 client is needed to count: GetBucketInfo reports objects and
+    # bytes. Emptying it is another matter — the admin API has no object
+    # operations and refuses to delete a bucket that is not empty.
+    garage = garage or GarageClient()
+    try:
+        info = garage.bucket_info(course["bucket"])
+        if info is None:
+            items.append(InventoryItem("garage", f"bucket {course['bucket']}", 0,
+                                       note="does not exist — nothing to remove"))
+        else:
+            items.append(InventoryItem(
+                "garage", f"objects in {course['bucket']}",
+                int(info.get("objects") or 0),
+                note=f"{int(info.get('bytes') or 0)} bytes"))
+            unfinished_uploads = int(info.get("unfinishedUploads") or 0)
+            if unfinished_uploads:
+                items.append(InventoryItem(
+                    "garage", "unfinished uploads", unfinished_uploads,
+                    note="these also keep the bucket from being deleted"))
+    except GarageError as exc:
+        items.append(InventoryItem("garage", "object storage", None, str(exc)))
+
+    # ── Neo4j: the course's part of the graph ───────────────────────────────
+    if neo4j is None:
+        from neo4j_client import Neo4jClient
+        neo4j = Neo4jClient(
+            os.getenv("SMARTRAG_NEO4J_URL",
+                      f"http://smartrag-neo4j:{env.get('NEO4J_HTTP_PORT', '7474')}"),
+            "neo4j", env.get("NEO4J_PASSWORD", ""))
+    try:
+        counts = neo4j.counts(course_id)
+        items.append(InventoryItem("neo4j", "concepts", int(counts.get("concepts") or 0)))
+        items.append(InventoryItem("neo4j", "prerequisite links",
+                                   int(counts.get("edges") or 0)))
+    except Exception as exc:  # noqa: BLE001 — Neo4jError, and requests' own
+        items.append(InventoryItem("neo4j", "concept graph", None, str(exc)))
+
+    # ── Flowise: the chatflows, and whether they are still there ────────────
+    # The slot table knows which chatflow it created; only Flowise knows
+    # whether it still exists. The difference matters at deletion time — an
+    # id that is gone is not a failure, it is already done — and it is the
+    # one thing here the database cannot answer.
+    if flowise is not None:
+        try:
+            live = {cf.get("id") for cf in flowise.list_chatflows()}
+            with db.connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT chatflow_id FROM agent_slots "
+                        "WHERE course_id = %s AND chatflow_id IS NOT NULL",
+                        (course_id,))
+                    ids = [r[0] for r in cur.fetchall()]
+                conn.commit()
+            present = [i for i in ids if i in live]
+            items.append(InventoryItem(
+                "flowise", "chatflows to delete", len(present),
+                note="their conversations, feedback and uploaded files go with "
+                     "them — Flowise removes those itself"))
+            if len(ids) > len(present):
+                items.append(InventoryItem(
+                    "flowise", "chatflows already gone", len(ids) - len(present),
+                    note="recorded here but not in Flowise; nothing to do"))
+        except Exception as exc:  # noqa: BLE001 — FlowiseError, and requests' own
+            items.append(InventoryItem("flowise", "chatflows", None, str(exc)))
+
+    # ── What this inventory deliberately does not count ─────────────────────
+    # Langfuse traces carry a userId and Flowise's chatId, and no course. The
+    # only route from a course to its traces runs through Flowise's chat
+    # records — which Flowise deletes together with the chatflow, so after a
+    # deletion the mapping no longer exists either. Saying so is the honest
+    # answer; a zero here would read as "there are none".
+    if "observability" in (env.get("COMPOSE_PROFILES") or ""):
+        items.append(InventoryItem(
+            "langfuse", "traces", None,
+            error="not attributable to a course — traces carry a learner id and "
+                  "Flowise's chat id, never a course id",
+            note="reachable per learner, which is what an erasure request needs"))
+
+    return {"course": course, "items": items}
