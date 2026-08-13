@@ -18,6 +18,7 @@ guessed — a wrong node-type name silently produces an agent that can't be
 configured in the Flowise UI at all.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -662,6 +663,23 @@ def load_template(archetype_file: str) -> dict[str, Any]:
     if not path.is_file():
         raise TemplateError(f"Unknown agent template: {archetype_file}")
     return json.loads(path.read_text())
+
+
+def flow_digest(flow_data: dict[str, Any]) -> str:
+    """A stable fingerprint of a built flow.
+
+    An agent in Flowise is a copy of this structure, not a reference to it, so
+    "was this imported" is not the useful question — "was *this version*
+    imported" is. Taken before credential ids are stamped in, so it can be
+    recomputed at any time without asking Flowise anything, which is what lets
+    a page say "behind" for ten slots without ten round trips.
+
+    sort_keys, because Python preserves insertion order and a template edit
+    that only moves a key would otherwise read as a change.
+    """
+    canonical = json.dumps(flow_data, sort_keys=True, separators=(",", ":"),
+                           ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _walk_strings(obj: Any, fn):

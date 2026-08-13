@@ -2,6 +2,7 @@
 {% block title %}{{ t('dash_title') }} — {{ t('app_name') }} {{ t('app_subtitle') }}{% endblock %}
 {% block content %}
 <h1>{{ t('dash_heading') }}</h1>
+<p class="note">{{ t('dash_intro') }}</p>
 
 {% if not flowise_configured %}
   {% if flowise_key_stored %}
@@ -9,6 +10,21 @@
   {% else %}
 <div class="error">{{ t('dash_not_connected', url_for('flowise_setup'))|safe }}</div>
   {% endif %}
+{% endif %}
+
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+{% if success %}<div class="success">{{ success }}</div>{% endif %}
+
+{# An agent in Flowise is a copy of the template, not a reference to it. Two
+   cross-course leaks survived their own fix here because nothing said so. #}
+{% if behind_count %}
+<div class="error">
+  {{ t('dash_behind_warning', behind_count) }}
+  <form method="post" style="margin:0.6em 0 0">
+    <input type="hidden" name="action" value="reimport">
+    <button type="submit">{{ t('dash_reimport') }}</button>
+  </form>
+</div>
 {% endif %}
 
 <table>
@@ -22,12 +38,16 @@
   </tr>
   {% for num in range(1, 11) %}
   {% set s = slots[num|string] %}
+  {% set state = import_state.get(num|string) %}
   <tr>
     <td>{{ num }}</td>
     <td>{{ s.get('name') or '—' }}</td>
     <td>{{ archetypes.get(s.get('archetype'), '—') }}</td>
     <td>
-      {% if s.get('chatflow_id') %}{{ t('dash_status_imported') }}
+      {% if s.get('chatflow_id') %}
+        {% if state == 'behind' %}<strong>{{ t('dash_status_behind') }}</strong>
+        {% elif state == 'unknown' %}{{ t('dash_status_unknown') }}
+        {% else %}{{ t('dash_status_imported') }}{% endif %}
       {% elif s.get('archetype') %}{{ t('dash_status_saved') }}
       {% else %}{{ t('dash_status_empty') }}{% endif %}
     </td>
@@ -42,4 +62,14 @@
   </tr>
   {% endfor %}
 </table>
+
+{# Available even when nothing is behind: after a change nobody has noticed
+   yet, "re-import everything" is the action, not a diagnosis. #}
+{% if not behind_count %}
+<form method="post" style="margin-top:1em">
+  <input type="hidden" name="action" value="reimport">
+  <button type="submit">{{ t('dash_reimport') }}</button>
+</form>
+<p class="note">{{ t('dash_reimport_help') }}</p>
+{% endif %}
 {% endblock %}

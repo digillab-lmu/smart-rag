@@ -42,6 +42,11 @@ def _row_to_slot(row) -> dict:
         "system_prompt": row[3],
         "chatflow_id": row[4],
         "published": row[5],
+        # What the flow looked like when it was last imported. NULL for a slot
+        # imported before the digest existed, which must read as "unknown",
+        # never as "up to date".
+        "imported_digest": row[6],
+        "imported_at": row[7],
     }
 
 
@@ -53,7 +58,7 @@ def all_slots(course_id: str) -> dict[str, dict]:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT slot, archetype, name, content, system_prompt, "
-                "       chatflow_id, published "
+                "       chatflow_id, published, imported_digest, imported_at "
                 "FROM agent_slots WHERE course_id = %s", (course_id,))
             rows = {r[0]: _row_to_slot(r[1:]) for r in cur.fetchall()}
         conn.commit()
@@ -111,13 +116,19 @@ def save_slot(course_id: str, slot: int, archetype: str,
         conn.commit()
 
 
-def set_chatflow_id(course_id: str, slot: int, chatflow_id: str) -> None:
+def set_chatflow_id(course_id: str, slot: int, chatflow_id: str,
+                    digest: str | None = None) -> None:
+    """Record the import. The digest travels with the chatflow id because the
+    two are one fact — this flow, as it was at this moment, is now that
+    chatflow. Writing them separately would allow a state where the agent
+    exists and nothing knows what it was built from."""
     with db.connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE agent_slots SET chatflow_id = %s, updated_at = now() "
+                "UPDATE agent_slots SET chatflow_id = %s, imported_digest = %s, "
+                "       imported_at = now(), updated_at = now() "
                 "WHERE course_id = %s AND slot = %s AND archetype IS NOT NULL",
-                (chatflow_id, course_id, slot))
+                (chatflow_id, digest, course_id, slot))
             if cur.rowcount == 0:
                 raise SlotError(f"slot {slot} has no saved content yet")
         conn.commit()
