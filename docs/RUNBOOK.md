@@ -187,6 +187,30 @@ sudo bash scripts/deploy-n8n-workflows.sh
 
 Then, in the Content Admin, re-import each agent of each course.
 
+**A learner has several records, and the runs are all red.** That is the
+older shape of the same area, and it is worth recognising: the workflow used
+to let Weaviate assign a random id, write the new record and then delete the
+previous one. The delete node's URL contained an unevaluated expression, so
+it failed every time — the run was marked as an error nobody read, and one
+duplicate stayed behind on each run. On the machine this was found on, the
+most active learner had ten.
+
+Both are gone by construction rather than by cleanup: a record's id is now
+derived from the (course, learner) pair, everything that exists for that pair
+is deleted before the write, and there is no delete-afterwards step left to
+fail. The first run after the upgrade removes the duplicates it finds, so
+nothing has to be deleted by hand.
+
+That id is an RFC 4122 version-5 UUID, which is SHA-1 — so the n8n container
+has to allow Node's `crypto` module in Code nodes. `docker-compose.yml` asks
+for it, but an environment change only reaches a container that is
+**recreated**; restarting is not enough. `deploy-n8n-workflows.sh` checks the
+running container and offers to do it. By hand:
+
+```bash
+cd docker && docker compose up -d smartrag-n8n
+```
+
 **The old records.** They carry whatever `COURSE_ID` the `.env` held when they
 were written — the installation's single course — regardless of which course
 the learner was actually talking about. So they are not invisible: they sit

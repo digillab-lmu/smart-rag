@@ -624,6 +624,11 @@ declare -A MSG_EN=(
     [ts_client_check]="To verify, this must answer with a 100.x address rather than a public one:"
     [ts_done]="Tailscale deployment complete."
     # --- migration: course_id ------------------------------------------------
+    [n8n_needs_crypto]="The running n8n container does not allow the crypto module in Code nodes (NODE_FUNCTION_ALLOW_BUILTIN=%s). The learning-record workflow derives each record's id with it and would fail on every run. docker-compose.yml already asks for it — the container has to be recreated for an environment change to reach it, which a restart does not do."
+    [n8n_recreate_now]="Recreate the n8n container now? (running executions are ended)"
+    [n8n_recreated]="n8n recreated with the module allowed."
+    [n8n_recreate_failed]="The n8n container could not be recreated. Run: docker compose up -d smartrag-n8n"
+    [n8n_crypto_skipped]="Skipped. The workflows are deployed, but the learning-record summary will fail until the container is recreated: docker compose up -d smartrag-n8n"
     [migrate_course_title]="Migration · Add course_id to existing data"
     [migrate_course_no_id]="COURSE_ID is not set in .env and no --course-id was given — nothing to assign."
     [migrate_course_target]="Assigning course_id=\"%s\" to existing objects in %s"
@@ -1414,6 +1419,11 @@ declare -A MSG_DE=(
     [ts_client_check]="Zum Prüfen muss hier eine 100.x-Adresse kommen, keine öffentliche:"
     [ts_done]="Tailscale-Einrichtung abgeschlossen."
     # --- migration: course_id ------------------------------------------------
+    [n8n_needs_crypto]="Der laufende n8n-Container erlaubt das crypto-Modul in Code-Knoten nicht (NODE_FUNCTION_ALLOW_BUILTIN=%s). Der Lerngedächtnis-Workflow leitet damit die ID jedes Datensatzes ab und würde bei jedem Lauf scheitern. In der docker-compose.yml steht es bereits — eine Umgebungsänderung erreicht den Container aber erst beim Neuerstellen, ein Neustart genügt nicht."
+    [n8n_recreate_now]="Den n8n-Container jetzt neu erstellen? (laufende Ausführungen werden beendet)"
+    [n8n_recreated]="n8n neu erstellt, das Modul ist freigegeben."
+    [n8n_recreate_failed]="Der n8n-Container konnte nicht neu erstellt werden. Führe aus: docker compose up -d smartrag-n8n"
+    [n8n_crypto_skipped]="Übersprungen. Die Workflows sind eingespielt, aber die Lerngedächtnis-Zusammenfassung scheitert, bis der Container neu erstellt ist: docker compose up -d smartrag-n8n"
     [migrate_course_title]="Migration · course_id für bestehende Daten ergänzen"
     [migrate_course_no_id]="In der .env ist COURSE_ID nicht gesetzt und --course-id wurde nicht angegeben — es gibt nichts zuzuordnen."
     [migrate_course_target]="Ordne die course_id \"%s\" bestehenden Objekten in %s zu"
