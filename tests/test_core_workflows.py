@@ -45,6 +45,8 @@ FLOWS = {
     "chathistory-sync.json": "smartrag-chathistory-sync",
     "usermemory-summary.json": "smartrag-usermemory-summary",
     "langfuse-userid-patch.json": "smartrag-langfuse-userid-patch",
+    "error-handler.json": "smartrag-error-handler",
+    "watchdog.json": "smartrag-watchdog",
 }
 
 loaded = {}
@@ -377,6 +379,101 @@ check("the chain itself is exercised, not only its two ends",
       (REPO / "tests" / "test_chathistory_chain.sh").exists(),
       "nothing checks what the nodes between them carry")
 
+# ─── Somebody has to be told when a workflow stops ───────────────────────────
+# usermemory-summary failed on every scheduled run for at least two days —
+# ten red executions — and was found only because its output was being
+# examined for another reason. Nothing in this system reported it.
+eh = loaded.get("error-handler.json", {})
+eh_nodes = {n["name"]: n for n in eh.get("nodes", [])}
+check("an error workflow exists",
+      any(n["type"].endswith("errorTrigger") for n in eh.get("nodes", [])),
+      sorted(eh_nodes))
+
+# n8n calls an error workflow; it never triggers itself. Activating it would
+# suggest it runs, and someone asking "why no mail" would start in the wrong
+# place.
+check("the error handler is deployed", "error-handler.json" in DEPLOYER, "")
+check("…and not activated", '"smartrag-error-handler"' not in
+      DEPLOYER.split("ACTIVATE_IDS=(")[1].split(")")[0], "")
+check("the watchdog is activated", '"smartrag-watchdog"' in
+      DEPLOYER.split("ACTIVATE_IDS=(")[1].split(")")[0], "")
+
+# Naming the error workflow is per workflow in n8n, and a new workflow that
+# forgets to is silent in exactly the way this whole change is about. It lives
+# in the file rather than being stamped on at deploy time, so the file says
+# what will happen — and this check is what stops the next one forgetting.
+for path in ALL:
+    d = json.loads(path.read_text())
+    if d.get("id") == "smartrag-error-handler":
+        continue
+    check(f"{path.name} names the error workflow",
+          d.get("settings", {}).get("errorWorkflow") == "smartrag-error-handler",
+          d.get("settings"))
+
+# ─── An alert that arrives 288 times a day is not an alert ───────────────────
+# chathistory-sync runs every five minutes. Without throttling, one broken run
+# is 288 mails a day, and after the second day nobody reads any of them.
+for fname in ("error-handler.json", "watchdog.json"):
+    d = loaded.get(fname, {})
+    code = " ".join(n.get("parameters", {}).get("jsCode", "")
+                    for n in d.get("nodes", []))
+    check(f"{fname} throttles", "ALERT_QUIET_MINUTES" in code, "")
+    check(f"{fname} stays silent by producing nothing",
+          "return [];" in code, "a mail node downstream would still send")
+    check(f"{fname} counts what it suppressed",
+          "suppressed" in code, "the next mail must say how many it stands for")
+    # The state has to survive the execution, or every run is the first.
+    check(f"{fname} keeps its state outside the run",
+          "WorkflowState" in code, "")
+
+# ─── The address is configuration, not a name in a file ──────────────────────
+# The vhb installation's version had one person's address and one provider's
+# credential compiled into the nodes.
+for fname in ("error-handler.json", "watchdog.json"):
+    blob = json.dumps(loaded.get(fname, {}), ensure_ascii=False)
+    check(f"{fname} sends to the configured address",
+          "$env.ADMIN_EMAIL" in blob, "")
+    check(f"{fname} has no address written into it",
+          not re.search(r"[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}", blob, re.I),
+          re.findall(r"[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}", blob, re.I))
+
+# A failure from an HTTP node carries the request body, and here that body is
+# a learner's message. The mail says where to look instead of quoting it.
+error_blob = json.dumps(loaded.get("error-handler.json", {}), ensure_ascii=False)
+# ".stack", not "stack": the node's own comment explains why the stack is
+# left out, and a check that cannot tell an explanation from an occurrence
+# flags the explanation.
+check("the alert does not mail the stack trace",
+      ".stack" not in error_blob, "")
+check("…and caps the message it does include",
+      ".slice(0, 300)" in error_blob, "")
+
+# ─── The watchdog watches something that exists ──────────────────────────────
+# The vhb watchdog has an entry reading workflowId: 'BITTE_PRUEFEN'. That id
+# matches nothing, so it reports "no successful execution found" every hour,
+# for ever — which is how a watchdog stops being read.
+wd = loaded.get("watchdog.json", {})
+wd_code = " ".join(n.get("parameters", {}).get("jsCode", "")
+                   for n in wd.get("nodes", []))
+watched = set(re.findall(r"id:\s*'(smartrag-[a-z0-9-]+)'", wd_code))
+known = {json.loads(p.read_text()).get("id") for p in ALL}
+check("the watchdog watches at least the two scheduled workflows",
+      {"smartrag-chathistory-sync", "smartrag-usermemory-summary"} <= watched,
+      watched)
+for wid in sorted(watched):
+    check(f"the watchdog's {wid} is a workflow that exists", wid in known,
+          sorted(known))
+
+# The failure that has no error: green executions that write nothing. Neither
+# an error trigger nor a liveness check sees it, and it is what chathistory-sync
+# did for hours on 2026-08-13.
+check("the watchdog also checks that work is actually being done",
+      "Settled messages" in wd_code and "Aggregate" in wd_code,
+      "a workflow can succeed and do nothing")
+check("…and reads n8n's own database rather than its API",
+      "smartrag-n8ndb" in json.dumps(wd, ensure_ascii=False),
+      "an API key would be a credential with full access, for two counts")
+
 # ─── Credentials the deployer must create ───────────────────────────────────
 # Every credential referenced by a workflow has to be one the deployer
 # creates, or the workflow imports and fails at run time with a message about
@@ -464,5 +561,13 @@ print(
     "and its SQL takes the value as a parameter, the trace patcher ships only "
     "with the observability profile, every credential a workflow references "
     "is one the deployer creates, every $env it reads is declared, and the "
-    "README no longer describes an import that never happened."
+    "README no longer describes an import that never happened. And a failure "
+    "now reaches a person: every workflow names the error handler, which "
+    "mails the configured address rather than one written into a file and "
+    "quotes no learner text; both alert paths go quiet after the first mail "
+    "and count what they suppressed, so one broken five-minute schedule is "
+    "not 288 mails a day; and an hourly watchdog covers what neither can see "
+    "— a workflow switched off, one that stopped being triggered, and one "
+    "that reports success while writing nothing — watching only ids that "
+    "exist."
 )

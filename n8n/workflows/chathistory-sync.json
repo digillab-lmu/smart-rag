@@ -468,7 +468,8 @@
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate",
-    "availableInMCP": false
+    "availableInMCP": false,
+    "errorWorkflow": "smartrag-error-handler"
   },
   "meta": {
     "templateCredsSetupCompleted": true

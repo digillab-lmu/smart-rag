@@ -1,0 +1,181 @@
+{
+  "name": "Watchdog — a workflow that stopped, or runs and does nothing",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "id": "every-hour",
+      "name": "Every hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT w.id, w.name, w.active, max(e.\"stoppedAt\") AS last_success\nFROM workflow_entity w\nLEFT JOIN execution_entity e\n  ON e.\"workflowId\" = w.id AND e.status = 'success'\nGROUP BY w.id, w.name, w.active\n",
+        "options": {}
+      },
+      "id": "last-success-per-workflow",
+      "name": "Last success per workflow",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        220,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "smartrag-n8ndb-credential",
+          "name": "smartrag-n8ndb"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Messages old enough that the five-minute sync must have moved them.\nSELECT count(*) AS n FROM chat_message\nWHERE \"createdDate\" < now() - interval '15 minutes'\n",
+        "options": {}
+      },
+      "id": "settled-messages",
+      "name": "Settled messages",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        440,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "smartrag-postgres-credential",
+          "name": "smartrag-postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Three questions, one answer. The first two are about workflows that stopped;\n// the third is about a workflow that runs, reports success, and does nothing —\n// which neither an error handler nor a liveness check can see, and which is\n// exactly what happened on 2026-08-13: chathistory-sync wrote every message\n// with no course for hours, in green executions.\nconst WATCHED = [\n  { id: 'smartrag-chathistory-sync',  label: 'ChatHistory Sync',      maxHours: 1 },\n  { id: 'smartrag-usermemory-summary', label: 'UserMemory Summary',   maxHours: 9 },\n  { id: 'smartrag-ingest-document',   label: 'Document Ingest',       maxHours: null },\n  { id: 'smartrag-langfuse-userid-patch', label: 'Langfuse userId patch', maxHours: 2 },\n];\n\nconst problems = [];\n\n// ── 1. every watched workflow still exists and is active ────────────────────\nconst rows = $('Last success per workflow').all().map(i => i.json);\nconst byId = Object.fromEntries(rows.map(r => [String(r.id), r]));\n\nfor (const w of WATCHED) {\n  const row = byId[w.id];\n  if (!row) {\n    problems.push(`${w.label}: not present in n8n (id ${w.id}). Deploy the workflows.`);\n    continue;\n  }\n  if (row.active === false) {\n    problems.push(`${w.label}: deactivated. It will never run again until it is switched on.`);\n    continue;\n  }\n  // ── 2. …and produced a success recently enough ────────────────────────────\n  // A workflow with no schedule (the ingest runs on a webhook) has no\n  // expected interval, so silence is not a fault and maxHours is null.\n  if (w.maxHours === null) continue;\n  if (!row.last_success) {\n    problems.push(`${w.label}: has never completed successfully.`);\n    continue;\n  }\n  const hours = (Date.now() - new Date(row.last_success).getTime()) / 3600000;\n  if (hours > w.maxHours) {\n    problems.push(\n      `${w.label}: last success ${hours.toFixed(1)} h ago, expected within ` +\n      `${w.maxHours} h (${new Date(row.last_success).toISOString()}).`);\n  }\n}\n\n// ── 3. green, and nothing happened ──────────────────────────────────────────\n// Messages that have been in Flowise for longer than the sync's interval plus\n// a margin must be in Weaviate. If they are not, the sync is running and\n// failing to do its job — the failure shape that has no error.\nconst settled = Number(($('Settled messages').first().json || {}).n || 0);\nif (settled > 0) {\n  const url = `http://smartrag-weaviate:${$env.WEAVIATE_HTTP_PORT || 8080}/v1/graphql`;\n  const res = await this.helpers.httpRequest({\n    method: 'POST', url,\n    headers: { 'Authorization': `Bearer ${$env.WEAVIATE_API_KEY}`,\n               'Content-Type': 'application/json' },\n    body: { query: '{ Aggregate { ChatHistory { meta { count } } } }' },\n    json: true, returnFullResponse: true, ignoreHttpStatusErrors: true,\n  });\n  const body = typeof res.body === 'string' ? JSON.parse(res.body) : res.body;\n  const stored = body?.data?.Aggregate?.ChatHistory?.[0]?.meta?.count;\n  if (res.statusCode >= 400 || stored === undefined) {\n    problems.push(`Weaviate did not answer the ChatHistory count (HTTP ${res.statusCode}).`);\n  } else if (stored < settled) {\n    // Less than, not \"not equal\": Weaviate also holds messages whose Flowise\n    // rows were deleted, so more stored than sent is normal and only fewer is\n    // a symptom.\n    problems.push(\n      `${settled - stored} chat message(s) have been in Flowise for over 15 ` +\n      `minutes and are not in Weaviate (${stored} stored, ${settled} sent). ` +\n      `The sync may be running and writing nothing.`);\n  }\n}\n\nif (problems.length === 0) return [];\nreturn [{ json: { count: problems.length, report: problems.join('\\n'),\n                  when: new Date().toISOString() } }];\n"
+      },
+      "id": "evaluate",
+      "name": "Evaluate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// ─── the shared alert state ──────────────────────────────────────────────────\n// A mail per failure is a mail every five minutes for a workflow that runs\n// every five minutes: 288 a day, and after the second day nobody reads any of\n// them — including the one that matters. So a subject that is already known\n// to be broken stays quiet for a while, and the next mail says how many\n// failures it stands for.\n//\n// The state lives in Weaviate's WorkflowState under a fixed id, the same way\n// chathistory-sync keeps its cursor. The status is read from the response\n// rather than from a thrown error: a Code node runs in the task runner, and\n// an exception loses its structured fields crossing that boundary, so a 404\n// on the first run would arrive as an unexplained failure.\nconst QUIET_MINUTES = Number($env.ALERT_QUIET_MINUTES || 60);\nconst STATE_ID = 'a1e6d9c4-2f38-4b07-9c15-6de0f4a81b23';\nconst base = `http://smartrag-weaviate:${$env.WEAVIATE_HTTP_PORT || 8080}`;\nconst headers = {\n  'Authorization': `Bearer ${$env.WEAVIATE_API_KEY}`,\n  'Content-Type': 'application/json'\n};\n\nasync function readState() {\n  const res = await this.helpers.httpRequest({\n    method: 'GET',\n    url: `${base}/v1/objects/WorkflowState/${STATE_ID}`,\n    headers,\n    returnFullResponse: true,\n    ignoreHttpStatusErrors: true,\n  });\n  if (res.statusCode === 404) return {};          // first run\n  if (res.statusCode >= 400) {\n    // Not fatal: an alert that cannot read its throttle should still be sent.\n    console.log(`Alert state unreadable (HTTP ${res.statusCode}) — not throttling.`);\n    return {};\n  }\n  const body = typeof res.body === 'string' ? JSON.parse(res.body) : res.body;\n  try {\n    return JSON.parse(body?.properties?.value || '{}');\n  } catch (e) {\n    return {};\n  }\n}\n\nasync function writeState(state) {\n  const payload = { properties: { key: 'alertState', value: JSON.stringify(state) } };\n  const patched = await this.helpers.httpRequest({\n    method: 'PATCH',\n    url: `${base}/v1/objects/WorkflowState/${STATE_ID}`,\n    headers, body: payload,\n    returnFullResponse: true, ignoreHttpStatusErrors: true,\n  });\n  if (patched.statusCode !== 404) return;\n  // PATCH on something that does not exist is a 404, so the first run has to\n  // create it — without this the state could never be written even once.\n  await this.helpers.httpRequest({\n    method: 'POST',\n    url: `${base}/v1/objects`,\n    headers,\n    body: { class: 'WorkflowState', id: STATE_ID, ...payload },\n    returnFullResponse: true, ignoreHttpStatusErrors: true,\n  });\n}\n\nconst item = $input.first().json;\nconst state = await readState.call(this);\nconst now = Date.now();\nconst entry = state['watchdog'] || { last: 0, suppressed: 0 };\nconst minutesSince = (now - Number(entry.last || 0)) / 60000;\n\n// An unattended problem is reported once and then hourly silence, not an\n// hourly mail — the vhb installation sent one every hour for a placeholder id\n// that had never been filled in, which is how its watchdog stopped being read.\nif (minutesSince < QUIET_MINUTES) {\n  entry.suppressed = Number(entry.suppressed || 0) + 1;\n  state['watchdog'] = entry;\n  await writeState.call(this, state);\n  console.log(`Suppressed: watchdog reported ${minutesSince.toFixed(0)} minute(s) ago.`);\n  return [];\n}\n\nconst quietChecks = Number(entry.suppressed || 0);\nstate['watchdog'] = { last: now, suppressed: 0 };\nawait writeState.call(this, state);\nreturn [{ json: { ...item, quietChecks, quietMinutes: QUIET_MINUTES } }];\n"
+      },
+      "id": "throttle-the-report",
+      "name": "Throttle the report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.SMTP_SENDER_EMAIL }}",
+        "toEmail": "={{ $env.ADMIN_EMAIL }}",
+        "subject": "=[SMART RAG] watchdog: {{ $json.count }} problem(s)",
+        "emailFormat": "text",
+        "text": "=The watchdog found {{ $json.count }} problem(s).\n\nChecked at: {{ $json.when }}\n\n{{ $json.report }}\n\n{{ $json.quietChecks > 0 ? $json.quietChecks + ' earlier check(s) since the last mail also found problems.\\n\\n' : '' }}This check catches what the error handler cannot: a workflow that was switched off, one that has stopped being triggered, and one that reports success while writing nothing.\n",
+        "options": {}
+      },
+      "id": "send-the-report",
+      "name": "Send the report",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1100,
+        0
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "smartrag-smtp-credential",
+          "name": "smartrag-smtp"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every hour": {
+      "main": [
+        [
+          {
+            "node": "Last success per workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Last success per workflow": {
+      "main": [
+        [
+          {
+            "node": "Settled messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settled messages": {
+      "main": [
+        [
+          {
+            "node": "Evaluate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate": {
+      "main": [
+        [
+          {
+            "node": "Throttle the report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Throttle the report": {
+      "main": [
+        [
+          {
+            "node": "Send the report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "errorWorkflow": "smartrag-error-handler"
+  },
+  "id": "smartrag-watchdog",
+  "tags": []
+}
