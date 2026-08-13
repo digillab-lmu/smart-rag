@@ -198,8 +198,13 @@ most active learner had ten.
 Both are gone by construction rather than by cleanup: a record's id is now
 derived from the (course, learner) pair, everything that exists for that pair
 is deleted before the write, and there is no delete-afterwards step left to
-fail. The first run after the upgrade removes the duplicates it finds, so
-nothing has to be deleted by hand.
+fail. Nothing has to be deleted by hand.
+
+Existing duplicates go on the next run, including for a pair with nothing new
+to summarise — that path writes no record but still removes every copy except
+the one it is skipping on. Without that it would have been the common case
+that keeps them: a learner who has stopped writing in a course is skipped on
+every run for ever.
 
 That id is an RFC 4122 version-5 UUID, which is SHA-1 — so the n8n container
 has to allow Node's `crypto` module in Code nodes. `docker-compose.yml` asks

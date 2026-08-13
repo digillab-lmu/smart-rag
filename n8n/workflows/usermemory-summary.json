@@ -93,7 +93,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const response = $input.item.json;\nconst { user_id, course_id } = $('Extract user_ids').item.json;\nconst found = response?.data?.Get?.UserMemory || [];\n\n// Every record that exists for this learner in this course. All of them are\n// replaced by the one this run writes, so all of their ids are stale — the\n// duplicates that a failed delete left behind included.\nconst stale_ids = found.map(m => m._additional?.id).filter(Boolean);\n\n// The newest one is the only one whose cursor can be trusted: an older\n// duplicate carries an older last_updated, and starting from that would\n// summarise the same messages again. The query sorts descending, but the\n// sort is repeated here so the choice does not depend on it.\nconst newest = found.slice().sort(\n  (a, b) => new Date(b.last_updated || 0) - new Date(a.last_updated || 0)\n)[0] || null;\n\nlet last_updated = '1970-01-01T00:00:00.000Z';\nlet existing = {\n  concepts_mastered: [],\n  concepts_struggling: [],\n  open_questions: [],\n  learning_patterns: '',\n  summary: ''\n};\n\nif (newest) {\n  last_updated = newest.last_updated || '1970-01-01T00:00:00.000Z';\n  existing = {\n    concepts_mastered: newest.concepts_mastered || [],\n    concepts_struggling: newest.concepts_struggling || [],\n    open_questions: newest.open_questions || [],\n    learning_patterns: newest.learning_patterns || '',\n    summary: newest.summary || ''\n  };\n}\n\n// The cursor is per course as well. Shared, a learner active in one course\n// would move the other course's cursor past messages that are then never\n// summarised.\nconst ch_query_body = {\n  query: `{ Get { ChatHistory(\n    where: { operator: And operands: [\n      { path: [\"user_id\"]   operator: Equal valueText: ${JSON.stringify(String(user_id ?? ''))} }\n      { path: [\"course_id\"] operator: Equal valueText: ${JSON.stringify(String(course_id ?? ''))} }\n      { path: [\"timestamp\"] operator: GreaterThan valueText: ${JSON.stringify(String(last_updated ?? ''))} }\n    ] }\n    sort: [{ path: [\"timestamp\"], order: asc }]\n    limit: 500\n  ) { user_id course_id role text timestamp chapter concepts_mentioned } } }`\n};\n\nreturn {\n  json: {\n    user_id,\n    course_id,\n    stale_ids,\n    last_updated,\n    existing,\n    ch_query_body\n  }\n};\n"
+        "jsCode": "const response = $input.item.json;\nconst { user_id, course_id } = $('Extract user_ids').item.json;\nconst found = response?.data?.Get?.UserMemory || [];\n\n// Every record that exists for this learner in this course. All of them are\n// replaced by the one this run writes, so all of their ids are stale — the\n// duplicates that a failed delete left behind included.\nconst stale_ids = found.map(m => m._additional?.id).filter(Boolean);\n\n// The newest one is the only one whose cursor can be trusted: an older\n// duplicate carries an older last_updated, and starting from that would\n// summarise the same messages again. The query sorts descending, but the\n// sort is repeated here so the choice does not depend on it.\nconst newest = found.slice().sort(\n  (a, b) => new Date(b.last_updated || 0) - new Date(a.last_updated || 0)\n)[0] || null;\n\nlet last_updated = '1970-01-01T00:00:00.000Z';\nlet existing = {\n  concepts_mastered: [],\n  concepts_struggling: [],\n  open_questions: [],\n  learning_patterns: '',\n  summary: ''\n};\n\nif (newest) {\n  last_updated = newest.last_updated || '1970-01-01T00:00:00.000Z';\n  existing = {\n    concepts_mastered: newest.concepts_mastered || [],\n    concepts_struggling: newest.concepts_struggling || [],\n    open_questions: newest.open_questions || [],\n    learning_patterns: newest.learning_patterns || '',\n    summary: newest.summary || ''\n  };\n}\n\n// The cursor is per course as well. Shared, a learner active in one course\n// would move the other course's cursor past messages that are then never\n// summarised.\nconst ch_query_body = {\n  query: `{ Get { ChatHistory(\n    where: { operator: And operands: [\n      { path: [\"user_id\"]   operator: Equal valueText: ${JSON.stringify(String(user_id ?? ''))} }\n      { path: [\"course_id\"] operator: Equal valueText: ${JSON.stringify(String(course_id ?? ''))} }\n      { path: [\"timestamp\"] operator: GreaterThan valueText: ${JSON.stringify(String(last_updated ?? ''))} }\n    ] }\n    sort: [{ path: [\"timestamp\"], order: asc }]\n    limit: 500\n  ) { user_id course_id role text timestamp chapter concepts_mentioned } } }`\n};\n\nreturn {\n  json: {\n    user_id,\n    course_id,\n    stale_ids,\n    // Which of them is the one worth keeping, for the path that does not\n    // write: a pair with nothing new to summarise still has to lose its\n    // duplicates, and this is the record they are duplicates of.\n    newest_id: newest?._additional?.id || null,\n    last_updated,\n    existing,\n    ch_query_body\n  }\n};\n"
       },
       "id": "baef8b11-952b-46cc-acb0-79ecbebaccfe",
       "name": "Process Memory",
@@ -135,7 +135,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const response = $input.item.json;\nconst vars = $('Process Memory').item.json;\nconst { user_id, course_id, stale_ids, existing } = vars;\nconst chatData = response?.data?.Get?.ChatHistory || [];\n\n// [A] Keine neuen Messages\nif (chatData.length === 0) {\n  return { json: { skip: true, reason: 'no_new_messages', user_id, course_id } };\n}\n\n// [B] Session noch aktiv (< 30 Min Inaktivität)\nconst timestamps = chatData.map(m => new Date(m.timestamp).getTime());\nconst maxTimestamp = Math.max(...timestamps);\nconst diffMin = (Date.now() - maxTimestamp) / 60000;\nif (diffMin < 30) {\n  return { json: { skip: true, reason: 'session_active', user_id, course_id, inactive_min: Math.round(diffMin) } };\n}\n\nconst maxChapter = Math.max(...chatData.map(m => m.chapter || 0));\n\nconst messagesText = chatData\n  .map(m => m.role === 'user'\n    ? `[user]: ${m.text}`\n    : `[assistant]: ${m.text.slice(0, 200)}`)\n  .join('\\n');\n\nreturn {\n  json: {\n    skip: false,\n    user_id,\n    course_id,\n    stale_ids,\n    existing,\n    max_chapter: maxChapter,\n    last_updated_now: new Date().toISOString(),\n    messagesText\n  }\n};"
+        "jsCode": "const response = $input.item.json;\nconst vars = $('Process Memory').item.json;\nconst { user_id, course_id, stale_ids, newest_id, existing } = vars;\nconst chatData = response?.data?.Get?.ChatHistory || [];\n\n// [A] Keine neuen Messages\nif (chatData.length === 0) {\n  return { json: { skip: true, reason: 'no_new_messages', user_id, course_id,\n                 stale_ids, newest_id } };\n}\n\n// [B] Session noch aktiv (< 30 Min Inaktivität)\nconst timestamps = chatData.map(m => new Date(m.timestamp).getTime());\nconst maxTimestamp = Math.max(...timestamps);\nconst diffMin = (Date.now() - maxTimestamp) / 60000;\nif (diffMin < 30) {\n  return { json: { skip: true, reason: 'session_active', user_id, course_id,\n                 stale_ids, newest_id, inactive_min: Math.round(diffMin) } };\n}\n\nconst maxChapter = Math.max(...chatData.map(m => m.chapter || 0));\n\nconst messagesText = chatData\n  .map(m => m.role === 'user'\n    ? `[user]: ${m.text}`\n    : `[assistant]: ${m.text.slice(0, 200)}`)\n  .join('\\n');\n\nreturn {\n  json: {\n    skip: false,\n    user_id,\n    course_id,\n    stale_ids,\n    newest_id,\n    existing,\n    max_chapter: maxChapter,\n    last_updated_now: new Date().toISOString(),\n    messagesText\n  }\n};"
       },
       "id": "5c81e7f5-582b-4710-8d1e-09b03bf47be3",
       "name": "Check and Prepare",
@@ -375,6 +375,12 @@
               "name": "course_id",
               "value": "={{ $json.course_id }}",
               "type": "string"
+            },
+            {
+              "id": "sk10",
+              "name": "duplicates_removed",
+              "value": "={{ $json.duplicates_removed }}",
+              "type": "number"
             }
           ]
         },
@@ -574,6 +580,19 @@
         -440,
         368
       ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Nothing to summarise for this pair — but its duplicates are still there,\n// and skipping is the normal state for a learner who has stopped writing in\n// a course. Left alone they would never go: the write path is the only thing\n// that used to clear them, and it does not run here. So a pair that is\n// skipped still loses everything except the record it is skipping on.\n//\n// The kept record keeps its old, randomly assigned id. That is fine: it is\n// found by its properties, and the next run that actually writes replaces it\n// with the derived one.\nconst WEAVIATE = `http://smartrag-weaviate:${$env.WEAVIATE_HTTP_PORT || 8080}`;\nconst KEY = $env.WEAVIATE_API_KEY || '';\nconst results = [];\n\nfor (const item of $input.all()) {\n  const keep = item.json.newest_id;\n  const extras = (item.json.stale_ids || []).filter(id => id && id !== keep);\n\n  let removed = 0;\n  for (const id of extras) {\n    const res = await this.helpers.httpRequest({\n      method: 'DELETE',\n      url: `${WEAVIATE}/v1/objects/UserMemory/${id}`,\n      headers: { Authorization: `Bearer ${KEY}` },\n      returnFullResponse: true,\n      ignoreHttpStatusErrors: true,\n    });\n    // 404 means somebody else got there first, which is the desired state.\n    if (res.statusCode === 404) continue;\n    if (res.statusCode >= 400) {\n      // Reported, not thrown: this run had nothing to write anyway, and\n      // failing it would turn a tidy-up into a red execution that hides the\n      // reason the pair was skipped.\n      console.log(`Could not remove duplicate ${id}: HTTP ${res.statusCode}`);\n      continue;\n    }\n    removed++;\n  }\n\n  if (removed > 0) {\n    console.log(`${item.json.course_id}/${item.json.user_id}: removed ${removed} duplicate record(s).`);\n  }\n  results.push({ json: { ...item.json, duplicates_removed: removed } });\n}\n\nreturn results;\n"
+      },
+      "id": "e1f7a208-5b64-4c39-9d80-7ac5b1e2f406",
+      "name": "Remove duplicates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1820,
+        464
+      ]
     }
   ],
   "connections": {
@@ -647,7 +666,7 @@
       "main": [
         [
           {
-            "node": "Log Skip",
+            "node": "Remove duplicates",
             "type": "main",
             "index": 0
           }
@@ -779,6 +798,17 @@
         [
           {
             "node": "POST UserMemory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove duplicates": {
+      "main": [
+        [
+          {
+            "node": "Log Skip",
             "type": "main",
             "index": 0
           }

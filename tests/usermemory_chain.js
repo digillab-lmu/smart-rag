@@ -272,6 +272,51 @@ function answerUserMemory(body) {
   check('the course survives the preparation',
         prepared.every(p => p.json.course_id), prepared.map(p => p.json.course_id));
 
+  // ─── The path that writes nothing still tidies up ──────────────────────────
+  // A learner who has stopped writing in a course is skipped on every run,
+  // and the write path is the only thing that used to clear duplicates. On
+  // the machine this was found on, three pairs kept 4, 4 and 2 copies for
+  // exactly that reason while the pairs that were rewritten collapsed to one.
+  OUT['Process Memory'] = withMemory;
+  const idle = await runCode('Check and Prepare', withMemory.map(i => ({
+    json: { data: { Get: { ChatHistory: [] } } },   // nothing new to summarise
+  })));
+  check('a pair with no new messages is skipped',
+        idle.every(p => p.json.skip === true && p.json.reason === 'no_new_messages'),
+        idle.map(p => p.json.reason));
+  check('the skip still carries the duplicates and the one to keep',
+        idle.every(p => Array.isArray(p.json.stale_ids) && 'newest_id' in p.json),
+        idle.map(p => Object.keys(p.json)));
+
+  deleted.length = 0;
+  const tidied = await runCode('Remove duplicates', idle);
+  check('the duplicates of a skipped pair are removed',
+        deleted.includes('dup-older') && deleted.includes('dup-oldest'), deleted);
+  check('…but the record it is skipping on is kept',
+        !deleted.includes('dup-newest'), deleted);
+  check('…and the run says how many it cleared',
+        tidied.some(t => t.json.duplicates_removed === 2),
+        tidied.map(t => t.json.duplicates_removed));
+  check('a pair with a single record has nothing to clear',
+        tidied.filter(t => t.json.course_id === 'chemie-1')
+              .every(t => t.json.duplicates_removed === 0),
+        tidied.map(t => [t.json.course_id, t.json.duplicates_removed]));
+
+  // A failed delete here must not turn a skipped pair into a red run: there
+  // was nothing to write, and the reason for the skip is the useful output.
+  deleted.length = 0;
+  failStatusFor = 'dup-older';
+  let tidyThrew = false;
+  try {
+    await runCode('Remove duplicates', idle);
+  } catch (e) {
+    tidyThrew = true;
+  }
+  check('a failed tidy-up does not fail the run', !tidyThrew, 'it threw');
+  failStatusFor = null;
+
+  // ─── Back to the writing path ──────────────────────────────────────────────
+  OUT['Check and Prepare'] = prepared;
   const merged = await runCode('Parse and Merge', prepared.map(() => ({
     json: { choices: [{ message: { content: LLM_ANSWER } }] },
   })));
@@ -389,8 +434,10 @@ function answerUserMemory(body) {
     'across runs and differs between a learner\'s two courses; every existing ' +
     'record including that id is deleted before the write, a missing one is ' +
     'not an error and a delete that fails for another reason stops the item ' +
-    'instead of writing a duplicate beside it; and a record with no course is ' +
-    'refused rather than written.'
+    'instead of writing a duplicate beside it; a pair with nothing new to ' +
+    'summarise is skipped but still loses every copy except the one it is ' +
+    'skipping on, and a tidy-up that fails does not turn that into a red run; ' +
+    'and a record with no course is refused rather than written.'
   );
 })().catch(e => {
   console.error('The chain could not be run:', (e && e.stack) || e);
