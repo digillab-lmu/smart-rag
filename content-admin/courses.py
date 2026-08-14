@@ -221,9 +221,15 @@ class InventoryItem(dict):
     """
 
     def __init__(self, system: str, label: str, count: int | None = None,
-                 error: str = "", note: str = ""):
+                 error: str = "", note: str = "", unknowable: bool = False):
+        # `unknowable` separates two things that both leave count at None and
+        # mean opposite things to the operator: a system that did not answer,
+        # which may hold data and warrants stopping — and a number that cannot
+        # exist, like Langfuse traces, which carry no course by design.
+        # Counting the second as a failure sends somebody to fix a service
+        # that is working.
         super().__init__(system=system, label=label, count=count,
-                         error=error, note=note)
+                         error=error, note=note, unknowable=unknowable)
 
 
 def inventory(course_id: str,
@@ -390,10 +396,12 @@ def inventory(course_id: str,
     # answer; a zero here would read as "there are none".
     if "observability" in (env.get("COMPOSE_PROFILES") or ""):
         items.append(InventoryItem(
-            "langfuse", "traces", None,
+            "langfuse", "traces", None, unknowable=True,
             error="not attributable to a course — traces carry a learner id and "
                   "Flowise's chat id, never a course id",
-            note="reachable per learner, which is what an erasure request needs"))
+            note="deleted anyway, by way of the chat sessions read from Flowise "
+                 "before its chatflows go; reachable per learner, which is what "
+                 "an erasure request needs"))
 
     return {"course": course, "items": items}
 
