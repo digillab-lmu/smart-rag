@@ -31,6 +31,7 @@ import re
 
 import db
 from garage_client import GarageClient, GarageError
+from langfuse_client import LangfuseClient, LangfuseError
 from weaviate_client import WeaviateClient, WeaviateError
 from env_file import read_env
 
@@ -391,3 +392,227 @@ def inventory(course_id: str,
             note="reachable per learner, which is what an erasure request needs"))
 
     return {"course": course, "items": items}
+
+
+# ─── Deleting a course ───────────────────────────────────────────────────────
+
+class DeletionStep(dict):
+    """One thing that was done, or not, and what it did.
+
+    `ok` False means the step failed; the course row then stays, and so does
+    the course in the list — a half-deleted course that still exists is
+    recoverable, one whose record is gone is only findable by someone who
+    knows all six systems.
+    """
+
+    def __init__(self, system: str, action: str, ok: bool = True,
+                 detail: str = "", error: str = ""):
+        super().__init__(system=system, action=action, ok=ok,
+                         detail=detail, error=error)
+
+
+def delete_course(course_id: str,
+                  weaviate: WeaviateClient | None = None,
+                  garage: GarageClient | None = None,
+                  neo4j=None, flowise=None, langfuse=None,
+                  s3=None) -> dict:
+    """Remove a course and everything that belongs to it.
+
+    **The order is not a preference.** A Langfuse trace carries a learner id
+    and Flowise's chat id, never a course, so the only route from a course to
+    its traces runs through Flowise's chat records — and Flowise deletes those
+    together with the chatflow. The session ids are therefore collected first,
+    before anything is removed, or the traces become unreachable in the same
+    moment the course does.
+
+    **The course row goes last, and only if everything else succeeded.** While
+    it exists the course is still listed, still has its slots, and the whole
+    operation can simply be run again. Deleting it first would turn a failed
+    step into orphaned data that nothing points at.
+
+    Returns {"steps": [...], "deleted": bool}. Nothing raises: a deletion that
+    aborts on the first problem leaves the operator with less information than
+    one that tries everything and says which parts did not work.
+    """
+    course = get_course(course_id)
+    if course is None:
+        raise CourseError(f"No course '{course_id}' is recorded.")
+
+    env = read_env()
+    steps: list[DeletionStep] = []
+
+    # ── 1. The bridge to Langfuse, while it still exists ────────────────────
+    session_ids: list[str] = []
+    chatflow_ids: list[str] = []
+    try:
+        with db.connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT chatflow_id FROM agent_slots "
+                    "WHERE course_id = %s AND chatflow_id IS NOT NULL",
+                    (course_id,))
+                chatflow_ids = [r[0] for r in cur.fetchall()]
+            conn.commit()
+    except db.DatabaseError as exc:
+        steps.append(DeletionStep("postgres", "read the course's chatflows",
+                                  False, error=str(exc)))
+
+    langfuse_on = (langfuse is not None) or LangfuseClient.configured(env)
+    if langfuse_on and flowise is not None and chatflow_ids:
+        try:
+            for chatflow_id in chatflow_ids:
+                session_ids.extend(flowise.chat_session_ids(chatflow_id))
+            steps.append(DeletionStep(
+                "flowise", "collected the chat sessions for Langfuse",
+                detail=f"{len(session_ids)} session(s)"))
+        except Exception as exc:  # noqa: BLE001 — FlowiseError and requests'
+            steps.append(DeletionStep(
+                "flowise", "collect the chat sessions for Langfuse", False,
+                error=str(exc)))
+
+    # ── 2. Langfuse, which deletes on its own time ──────────────────────────
+    if not langfuse_on:
+        steps.append(DeletionStep(
+            "langfuse", "skipped — this installation runs no Langfuse",
+            detail="the observability profile is off"))
+    else:
+        langfuse = langfuse or LangfuseClient()
+        try:
+            trace_ids: list[str] = []
+            for session_id in session_ids:
+                trace_ids.extend(langfuse.trace_ids_for_session(session_id))
+            asked = langfuse.delete_traces(trace_ids)
+            steps.append(DeletionStep(
+                "langfuse", "asked for the traces to be deleted",
+                detail=f"{asked} trace(s) — Langfuse removes them within about "
+                       "15 minutes and does not confirm"))
+        except LangfuseError as exc:
+            steps.append(DeletionStep("langfuse", "delete the traces", False,
+                                      error=str(exc)))
+
+    # ── 3. Flowise: the agents, and the conversations it keeps with them ────
+    if flowise is None:
+        if chatflow_ids:
+            steps.append(DeletionStep(
+                "flowise", "delete the chatflows", False,
+                error="not connected to Flowise, so its agents and their "
+                      "conversations are still there"))
+    else:
+        removed, absent = 0, 0
+        failures = []
+        for chatflow_id in chatflow_ids:
+            try:
+                if flowise.delete_chatflow(chatflow_id):
+                    removed += 1
+                else:
+                    absent += 1
+            except Exception as exc:  # noqa: BLE001
+                failures.append(f"{chatflow_id}: {exc}")
+        steps.append(DeletionStep(
+            "flowise", "deleted the chatflows", not failures,
+            detail=f"{removed} deleted, {absent} already gone",
+            error="; ".join(failures)))
+
+    # ── 4. Weaviate: one collection of its own, three shared classes ────────
+    weaviate = weaviate or WeaviateClient(
+        os.getenv("SMARTRAG_WEAVIATE_URL",
+                  f"http://smartrag-weaviate:{env.get('WEAVIATE_HTTP_PORT', '8080')}"),
+        env.get("WEAVIATE_API_KEY", ""))
+    try:
+        if weaviate.collection_exists(course["collection"]):
+            weaviate.delete_collection(course["collection"])
+            steps.append(DeletionStep("weaviate", "deleted the collection",
+                                      detail=course["collection"]))
+        else:
+            steps.append(DeletionStep("weaviate", "collection was already gone",
+                                      detail=course["collection"]))
+    except WeaviateError as exc:
+        steps.append(DeletionStep("weaviate", "delete the collection", False,
+                                  error=str(exc)))
+
+    for cls in WeaviateClient.SHARED_LEARNER_CLASSES:
+        try:
+            n = weaviate.delete_by_course(cls, course_id)
+            steps.append(DeletionStep("weaviate", f"deleted from {cls}",
+                                      detail=f"{n} record(s)"))
+        except WeaviateError as exc:
+            steps.append(DeletionStep("weaviate", f"delete from {cls}", False,
+                                      error=str(exc)))
+
+    # ── 5. Garage: empty it, then remove it ─────────────────────────────────
+    # Both halves, because Garage refuses a bucket that is not empty and its
+    # admin API cannot empty one. A bucket left behind is worse than a stray
+    # file: create_bucket is idempotent, so the next course of the same name
+    # adopts it and its documents.
+    garage = garage or GarageClient()
+    try:
+        if garage.bucket_info(course["bucket"]) is None:
+            steps.append(DeletionStep("garage", "bucket was already gone",
+                                      detail=course["bucket"]))
+        else:
+            from s3_client import S3Client, S3Error
+            try:
+                s3 = s3 or S3Client()
+                emptied = s3.empty_bucket(course["bucket"])
+                garage.delete_bucket(course["bucket"])
+                steps.append(DeletionStep(
+                    "garage", "emptied and deleted the bucket",
+                    detail=f"{course['bucket']}, {emptied} object(s)"))
+            except S3Error as exc:
+                steps.append(DeletionStep(
+                    "garage", "empty the bucket", False, error=str(exc)))
+    except GarageError as exc:
+        steps.append(DeletionStep("garage", "delete the bucket", False,
+                                  error=str(exc)))
+
+    # ── 6. The course's part of the graph ───────────────────────────────────
+    if neo4j is None:
+        from neo4j_client import Neo4jClient
+        neo4j = Neo4jClient(
+            os.getenv("SMARTRAG_NEO4J_URL",
+                      f"http://smartrag-neo4j:{env.get('NEO4J_HTTP_PORT', '7474')}"),
+            "neo4j", env.get("NEO4J_PASSWORD", ""))
+    try:
+        removed = neo4j.clear_course(course_id)
+        steps.append(DeletionStep("neo4j", "deleted the concepts",
+                                  detail=f"{removed} concept(s) and their links"))
+    except Exception as exc:  # noqa: BLE001 — Neo4jError and requests'
+        steps.append(DeletionStep("neo4j", "delete the concepts", False,
+                                  error=str(exc)))
+
+    # ── 7. Progress rows, which no page would ever show again ───────────────
+    try:
+        import ingest_status
+        forgotten = ingest_status.forget_course(course_id)
+        if forgotten:
+            steps.append(DeletionStep("content-admin", "cleared progress rows",
+                                      detail=f"{forgotten} row(s)"))
+    except OSError as exc:
+        steps.append(DeletionStep("content-admin", "clear progress rows", False,
+                                  error=str(exc)))
+
+    # ── 8. The record, last, and only if the rest worked ────────────────────
+    if any(not s["ok"] for s in steps):
+        steps.append(DeletionStep(
+            "postgres", "kept the course record", False,
+            error="something above did not work, so the course stays in the "
+                  "list and the deletion can be run again — removing the "
+                  "record now would leave data nothing points at"))
+        return {"steps": steps, "deleted": False}
+
+    try:
+        with db.connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM courses WHERE id = %s", (course_id,))
+            conn.commit()
+        steps.append(DeletionStep(
+            "postgres", "deleted the course record",
+            detail="its slots and its maintainer assignments went with it"))
+    except db.DatabaseError as exc:
+        steps.append(DeletionStep("postgres", "delete the course record", False,
+                                  error=str(exc)))
+        return {"steps": steps, "deleted": False}
+
+    logger.info("Course %s deleted: %s", course_id,
+                "; ".join(f"{s['system']} {s['action']}" for s in steps))
+    return {"steps": steps, "deleted": True}

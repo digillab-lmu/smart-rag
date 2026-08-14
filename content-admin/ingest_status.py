@@ -196,6 +196,25 @@ def active(course_id: str = "", now: float | None = None) -> list[dict]:
     return rows
 
 
+def forget_course(course_id: str) -> int:
+    """Drop a course's progress rows. Returns how many went.
+
+    Called when the course itself goes. Without it the table keeps rows
+    pointing at a course that no longer exists — and the page that renders
+    them filters by the selected course, so they would simply never be shown
+    again and never be cleaned up either.
+    """
+    if not course_id:
+        return 0
+    data = _load()
+    keep = {job: row for job, row in data.items()
+            if row.get("course_id", "") != course_id}
+    removed = len(data) - len(keep)
+    if removed:
+        _save(keep)
+    return removed
+
+
 def any_running(course_id: str = "") -> bool:
     """Whether the page has a reason to keep refreshing itself."""
     return any(not r["finished"] for r in active(course_id))
