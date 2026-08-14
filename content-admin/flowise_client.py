@@ -107,6 +107,53 @@ class FlowiseClient:
                 return None
             raise
 
+    def chat_session_ids(self, chatflow_id: str) -> list[str]:
+        """The distinct chat ids of one chatflow's conversations.
+
+        Needed before the chatflow is deleted, and only then: a Langfuse trace
+        is keyed by Flowise's chatId and carries no course, so this is the
+        only bridge from a course to its traces — and Flowise removes these
+        records together with the chatflow, which closes the bridge at the
+        same moment.
+
+        An empty list for a chatflow nobody ever talked to, and for one that
+        no longer exists: both mean "no sessions to carry over", and neither
+        is a reason to stop a deletion.
+        """
+        try:
+            messages = self._request("GET", f"/chatmessage/{chatflow_id}") or []
+        except FlowiseError as exc:
+            if "HTTP 404" in str(exc):
+                return []
+            raise
+        seen: dict[str, None] = {}
+        for message in messages:
+            chat_id = (message or {}).get("chatId")
+            if chat_id:
+                seen[chat_id] = None
+        return list(seen)
+
+    def delete_chatflow(self, chatflow_id: str) -> bool:
+        """Remove a chatflow. True when it was there, False when it was not.
+
+        Flowise deletes more than the flow: its own deleteChatflow removes the
+        ChatMessage, ChatMessageFeedback and UpsertHistory rows and the
+        uploaded files belonging to it — read in the 3.1.3 source rather than
+        inferred from the API documentation, which does not say. That is why
+        the Content Admin never needs to reach into Flowise's database, and
+        why anything that needs those records must read them first.
+        """
+        try:
+            self._request("DELETE", f"/chatflows/{chatflow_id}")
+            return True
+        except FlowiseError as exc:
+            # Already gone is the desired state, not a failure: a deletion is
+            # re-runnable after a partial one, and the second run must not
+            # stop on the half that succeeded.
+            if "HTTP 404" in str(exc):
+                return False
+            raise
+
     def set_chatflow_public(self, chatflow_id: str, is_public: bool) -> None:
         """Toggles public access for one chatflow.
 

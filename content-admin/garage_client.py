@@ -109,6 +109,25 @@ class GarageClient:
             "permissions": {"read": read, "write": write, "owner": owner},
         })
 
+    def delete_bucket(self, name: str) -> bool:
+        """Remove a bucket. True when it was there, False when it was not.
+
+        Garage refuses a bucket that still holds objects, and its admin API
+        has no way to remove them — that is what s3_client exists for. The
+        refusal is deliberately not translated into something softer here: a
+        bucket that survives a course deletion is a bucket the next course of
+        the same name would silently adopt, because create_bucket is
+        idempotent.
+        """
+        info = self.bucket_info(name)
+        if info is None:
+            return False
+        bucket_id = info.get("id")
+        if not bucket_id:
+            raise GarageError(f"Garage returned no id for bucket {name}.")
+        self._request("POST", "/v2/DeleteBucket", params={"id": bucket_id})
+        return True
+
     def key_can_write(self, name: str, access_key_id: str) -> bool:
         """Whether that key actually has write on that bucket.
 
