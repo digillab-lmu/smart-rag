@@ -1,0 +1,225 @@
+"""
+The little bit of S3 this application needs, signed by hand.
+
+Only two operations exist here: list the keys in a bucket, and delete one.
+They are needed because Garage's admin API — which this application already
+speaks, and which creates the buckets — has no object operations at all and
+refuses to delete a bucket that is not empty. Without them a deleted course
+leaves its documents behind, and the next course created with the same id
+silently adopts them, because `create_bucket` is idempotent by design.
+
+**Why not a library.** boto3 brings some ninety megabytes for two calls.
+Signature Version 4 is, by contrast, a specification with no room for
+interpretation: a canonical request, a string to sign, four nested HMACs. It
+is written out below rather than imported, and it is checked against AWS's own
+published test vector — the one whose expected signature is printed in the
+signing documentation — so a mistake shows up as a failing test rather than as
+a 403 during a deletion.
+
+**What is deliberately absent.** No put, no get, no multipart, no presigned
+URLs. Everything that writes to these buckets is n8n, which has a real S3
+node; this module exists for the one thing n8n cannot be asked to do, because
+the person waiting for it is looking at a web page.
+"""
+
+import datetime
+import hashlib
+import hmac
+import os
+import urllib.parse
+import xml.etree.ElementTree as ET
+
+import requests
+
+from env_file import read_env
+
+ALGORITHM = "AWS4-HMAC-SHA256"
+SERVICE = "s3"
+# S3's XML namespace. Element names come back prefixed with it, and matching
+# on the local name only would break the moment a response nests something.
+NS = {"s3": "http://s3.amazonaws.com/doc/2006-03-01/"}
+
+
+class S3Error(RuntimeError):
+    """Phrased for the operator: what could not be done, and to which bucket."""
+
+
+def _sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _hmac(key: bytes, message: str) -> bytes:
+    return hmac.new(key, message.encode("utf-8"), hashlib.sha256).digest()
+
+
+def _quote(value: str) -> str:
+    """RFC 3986, which is not what urlencode does by default.
+
+    `safe=""` on the segment matters: a key containing a slash is one key with
+    a slash in it, and the canonical URI encodes the path but not its
+    separators — so the caller joins encoded segments rather than encoding a
+    joined path.
+    """
+    return urllib.parse.quote(value, safe="")
+
+
+def sign(secret_key: str, method: str, canonical_uri: str,
+         canonical_query: str, headers: dict[str, str], payload_hash: str,
+         amz_date: str, region: str, service: str) -> str:
+    """Signature Version 4, as a function of its inputs and nothing else.
+
+    Separated from the request building so it can be checked against AWS's
+    own published test vectors — which use a different service and a
+    different header set than this application ever sends. A signer that can
+    only be exercised through the one call site it has is a signer whose
+    correctness rests on a 403 not happening.
+
+    `headers` are the ones to sign, lower-cased by the caller.
+    """
+    date_stamp = amz_date[:8]
+    signed = ";".join(sorted(headers))
+    canonical_headers = "".join(f"{k}:{headers[k]}\n" for k in sorted(headers))
+
+    canonical_request = "\n".join([
+        method, canonical_uri, canonical_query,
+        canonical_headers, signed, payload_hash,
+    ])
+    scope = f"{date_stamp}/{region}/{service}/aws4_request"
+    to_sign = "\n".join([ALGORITHM, amz_date, scope,
+                         _sha256(canonical_request.encode("utf-8"))])
+
+    key = _hmac(f"AWS4{secret_key}".encode("utf-8"), date_stamp)
+    key = _hmac(key, region)
+    key = _hmac(key, service)
+    key = _hmac(key, "aws4_request")
+    return hmac.new(key, to_sign.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+class S3Client:
+    """Path-style S3 against Garage. Path style because that is how the
+    buckets are addressed everywhere else in this stack (the n8n credential
+    sets forcePathStyle), and because virtual-host style would need DNS for
+    every bucket."""
+
+    def __init__(self, endpoint: str = "", access_key: str = "",
+                 secret_key: str = "", region: str = "", timeout: int = 30):
+        env = read_env()
+        self.endpoint = (endpoint
+                         or os.getenv("SMARTRAG_GARAGE_S3_URL",
+                                      "http://smartrag-garage:3900")).rstrip("/")
+        self.access_key = access_key or env.get("GARAGE_ACCESS_KEY", "").strip()
+        self.secret_key = secret_key or env.get("GARAGE_SECRET_KEY", "").strip()
+        self.region = region or env.get("GARAGE_REGION", "").strip() or "garage"
+        self.timeout = timeout
+        if not self.access_key or not self.secret_key:
+            raise S3Error(
+                "GARAGE_ACCESS_KEY or GARAGE_SECRET_KEY is missing from .env, "
+                "so the object store cannot be reached. They are generated by "
+                "the installer."
+            )
+
+    # ─── signing ────────────────────────────────────────────────────────────
+    def _signed_headers(self, method: str, canonical_uri: str,
+                        query: dict[str, str], payload: bytes,
+                        now: datetime.datetime | None = None) -> dict[str, str]:
+        now = now or datetime.datetime.now(datetime.timezone.utc)
+        amz_date = now.strftime("%Y%m%dT%H%M%SZ")
+        date_stamp = now.strftime("%Y%m%d")
+        host = urllib.parse.urlparse(self.endpoint).netloc
+        payload_hash = _sha256(payload)
+
+        # Query parameters are sorted by name and each part encoded. An
+        # unsorted query is the classic reason a signature verifies locally
+        # and is rejected by the server.
+        canonical_query = "&".join(
+            f"{_quote(k)}={_quote(v)}" for k, v in sorted(query.items()))
+
+        headers = {
+            "host": host,
+            "x-amz-content-sha256": payload_hash,
+            "x-amz-date": amz_date,
+        }
+        signed = ";".join(sorted(headers))
+        scope = f"{date_stamp}/{self.region}/{SERVICE}/aws4_request"
+        signature = sign(self.secret_key, method, canonical_uri,
+                         canonical_query, headers, payload_hash,
+                         amz_date, self.region, SERVICE)
+
+        headers["Authorization"] = (
+            f"{ALGORITHM} Credential={self.access_key}/{scope}, "
+            f"SignedHeaders={signed}, Signature={signature}")
+        return headers
+
+    def _request(self, method: str, canonical_uri: str,
+                 query: dict[str, str] | None = None, payload: bytes = b""):
+        query = query or {}
+        headers = self._signed_headers(method, canonical_uri, query, payload)
+        url = f"{self.endpoint}{canonical_uri}"
+        try:
+            resp = requests.request(method, url, params=query, headers=headers,
+                                    data=payload or None, timeout=self.timeout)
+        except requests.RequestException as exc:
+            raise S3Error(f"The object store is not reachable: {exc}") from exc
+        if resp.status_code == 403:
+            raise S3Error(
+                "The object store refused the request (403). The key in .env "
+                "may not be allowed on this bucket — provisioning grants it, "
+                "and a bucket created by hand does not.")
+        if resp.status_code == 404:
+            return None
+        if not resp.ok:
+            raise S3Error(f"The object store answered HTTP {resp.status_code}: "
+                          f"{resp.text[:200]}")
+        return resp
+
+    # ─── operations ─────────────────────────────────────────────────────────
+    def list_keys(self, bucket: str, limit: int = 100_000) -> list[str]:
+        """Every key in the bucket, following continuation tokens.
+
+        The limit is a stop, not a page size: a runaway loop against a bucket
+        that keeps answering "there is more" would hang the request the
+        operator is waiting on, and an inventory that says 100 000 is as
+        actionable as one that says a million.
+        """
+        keys: list[str] = []
+        token = ""
+        while True:
+            query = {"list-type": "2", "max-keys": "1000"}
+            if token:
+                query["continuation-token"] = token
+            resp = self._request("GET", f"/{_quote(bucket)}", query)
+            if resp is None:
+                return keys        # no such bucket — nothing in it
+            root = ET.fromstring(resp.content)
+            for contents in root.findall("s3:Contents", NS):
+                key = contents.findtext("s3:Key", default="", namespaces=NS)
+                if key:
+                    keys.append(key)
+            truncated = root.findtext("s3:IsTruncated", default="false",
+                                      namespaces=NS)
+            token = root.findtext("s3:NextContinuationToken", default="",
+                                  namespaces=NS)
+            if truncated.lower() != "true" or not token or len(keys) >= limit:
+                return keys
+
+    def delete_key(self, bucket: str, key: str) -> None:
+        """One object. Deleting a key that is not there is a success in S3 and
+        is treated as one here — a re-run after a partial failure must not
+        fail on the half that already worked."""
+        # The key is encoded segment by segment: a key is allowed to contain
+        # slashes, and they are path separators in the URL, not data.
+        path = "/".join(_quote(part) for part in key.split("/"))
+        self._request("DELETE", f"/{_quote(bucket)}/{path}")
+
+    def empty_bucket(self, bucket: str) -> int:
+        """Remove every object. Returns how many were removed.
+
+        One request per object rather than the batch DeleteObjects call: that
+        one takes an XML body and a Content-MD5 header, and this runs against
+        a few hundred archived documents at most. Fewer moving parts is worth
+        more here than fewer round trips.
+        """
+        keys = self.list_keys(bucket)
+        for key in keys:
+            self.delete_key(bucket, key)
+        return len(keys)
