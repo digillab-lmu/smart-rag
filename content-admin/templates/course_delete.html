@@ -47,14 +47,20 @@
       {# An unknown count is not a zero. A service that is down would
          otherwise read as "nothing here", and the confirmation below would be
          given on that basis. #}
-      <td>{% if item.count is none %}<strong>{{ t('courses_delete_unknown_count') }}</strong>
-          <br><span class="note">{{ item.error }}</span>
+      <td>{% if item.count is none %}
+            {% if item.unknowable %}{{ t('courses_delete_not_countable') }}
+            {% else %}<strong>{{ t('courses_delete_unknown_count') }}</strong>{% endif %}
+            <br><span class="note">{{ item.error }}</span>
           {% else %}{{ item.count }}{% endif %}</td>
     </tr>
     {% endfor %}
   </table>
 
-  {% set unknown = inventory['items'] | selectattr('count', 'none') | list %}
+  {# Only genuine failures. A number that cannot exist is not a reason to
+   hesitate, and warning about it would teach the operator to ignore the
+   banner that matters. #}
+  {% set unknown = inventory['items'] | selectattr('count', 'none')
+                                      | rejectattr('unknowable') | list %}
   {% if unknown %}
   <div class="error">{{ t('courses_delete_unknown_warning', unknown|length) }}</div>
   {% endif %}

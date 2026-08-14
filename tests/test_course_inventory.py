@@ -178,6 +178,16 @@ check("…without an error", absent and not absent["error"], absent)
 lf = line(inv, "langfuse", "traces")
 check("Langfuse traces are reported as not attributable",
       lf is not None and lf["count"] is None and lf["error"], lf)
+# Two different things both leave count at None, and they mean opposite
+# things: a system that did not answer may hold data and is a reason to
+# hesitate; a number that cannot exist is not. The page warned about both
+# and sent the operator to fix a Langfuse that was working.
+check("…and marked as a number that cannot exist, not as a failure",
+      lf and lf["unknowable"] is True, lf)
+for item in inv["items"]:
+    if item["system"] != "langfuse":
+        check(f"{item['system']}/{item['label']} is not marked unknowable",
+              item["unknowable"] is False, item)
 
 # ─── 5. The inventory only reads ─────────────────────────────────────────────
 # It is offered as "what is in this course", not only as a step before
