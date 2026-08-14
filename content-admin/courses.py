@@ -287,11 +287,11 @@ def inventory(course_id: str,
         items.append(InventoryItem("postgres", "slots and maintainers", None, str(exc)))
 
     # ── Weaviate: one collection of its own, three shared classes ───────────
-    weaviate = weaviate or WeaviateClient(
-        os.getenv("SMARTRAG_WEAVIATE_URL",
-                  f"http://smartrag-weaviate:{env.get('WEAVIATE_HTTP_PORT', '8080')}"),
-        env.get("WEAVIATE_API_KEY", ""))
     try:
+        weaviate = weaviate or WeaviateClient(
+            os.getenv("SMARTRAG_WEAVIATE_URL",
+                      f"http://smartrag-weaviate:{env.get('WEAVIATE_HTTP_PORT', '8080')}"),
+            env.get("WEAVIATE_API_KEY", ""))
         if weaviate.collection_exists(course["collection"]):
             items.append(InventoryItem(
                 "weaviate", f"document chunks in {course['collection']}",
@@ -316,8 +316,12 @@ def inventory(course_id: str,
     # No S3 client is needed to count: GetBucketInfo reports objects and
     # bytes. Emptying it is another matter — the admin API has no object
     # operations and refuses to delete a bucket that is not empty.
-    garage = garage or GarageClient()
     try:
+        # Constructed inside the try, not before it: GarageClient raises when
+        # the admin token is missing, and a construction failure outside would
+        # turn one unknown line into a page that does not render — the exact
+        # opposite of what this function is for.
+        garage = garage or GarageClient()
         info = garage.bucket_info(course["bucket"])
         if info is None:
             items.append(InventoryItem("garage", f"bucket {course['bucket']}", 0,
@@ -336,13 +340,13 @@ def inventory(course_id: str,
         items.append(InventoryItem("garage", "object storage", None, str(exc)))
 
     # ── Neo4j: the course's part of the graph ───────────────────────────────
-    if neo4j is None:
-        from neo4j_client import Neo4jClient
-        neo4j = Neo4jClient(
-            os.getenv("SMARTRAG_NEO4J_URL",
-                      f"http://smartrag-neo4j:{env.get('NEO4J_HTTP_PORT', '7474')}"),
-            "neo4j", env.get("NEO4J_PASSWORD", ""))
     try:
+        if neo4j is None:
+            from neo4j_client import Neo4jClient
+            neo4j = Neo4jClient(
+                os.getenv("SMARTRAG_NEO4J_URL",
+                          f"http://smartrag-neo4j:{env.get('NEO4J_HTTP_PORT', '7474')}"),
+                "neo4j", env.get("NEO4J_PASSWORD", ""))
         counts = neo4j.counts(course_id)
         items.append(InventoryItem("neo4j", "concepts", int(counts.get("concepts") or 0)))
         items.append(InventoryItem("neo4j", "prerequisite links",
@@ -514,11 +518,11 @@ def delete_course(course_id: str,
             error="; ".join(failures)))
 
     # ── 4. Weaviate: one collection of its own, three shared classes ────────
-    weaviate = weaviate or WeaviateClient(
-        os.getenv("SMARTRAG_WEAVIATE_URL",
-                  f"http://smartrag-weaviate:{env.get('WEAVIATE_HTTP_PORT', '8080')}"),
-        env.get("WEAVIATE_API_KEY", ""))
     try:
+        weaviate = weaviate or WeaviateClient(
+            os.getenv("SMARTRAG_WEAVIATE_URL",
+                      f"http://smartrag-weaviate:{env.get('WEAVIATE_HTTP_PORT', '8080')}"),
+            env.get("WEAVIATE_API_KEY", ""))
         if weaviate.collection_exists(course["collection"]):
             weaviate.delete_collection(course["collection"])
             steps.append(DeletionStep("weaviate", "deleted the collection",
@@ -544,8 +548,8 @@ def delete_course(course_id: str,
     # admin API cannot empty one. A bucket left behind is worse than a stray
     # file: create_bucket is idempotent, so the next course of the same name
     # adopts it and its documents.
-    garage = garage or GarageClient()
     try:
+        garage = garage or GarageClient()
         if garage.bucket_info(course["bucket"]) is None:
             steps.append(DeletionStep("garage", "bucket was already gone",
                                       detail=course["bucket"]))
@@ -566,13 +570,13 @@ def delete_course(course_id: str,
                                   error=str(exc)))
 
     # ── 6. The course's part of the graph ───────────────────────────────────
-    if neo4j is None:
-        from neo4j_client import Neo4jClient
-        neo4j = Neo4jClient(
-            os.getenv("SMARTRAG_NEO4J_URL",
-                      f"http://smartrag-neo4j:{env.get('NEO4J_HTTP_PORT', '7474')}"),
-            "neo4j", env.get("NEO4J_PASSWORD", ""))
     try:
+        if neo4j is None:
+            from neo4j_client import Neo4jClient
+            neo4j = Neo4jClient(
+                os.getenv("SMARTRAG_NEO4J_URL",
+                          f"http://smartrag-neo4j:{env.get('NEO4J_HTTP_PORT', '7474')}"),
+                "neo4j", env.get("NEO4J_PASSWORD", ""))
         removed = neo4j.clear_course(course_id)
         steps.append(DeletionStep("neo4j", "deleted the concepts",
                                   detail=f"{removed} concept(s) and their links"))

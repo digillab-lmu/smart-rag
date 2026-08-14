@@ -122,7 +122,10 @@ check("an assignment withdrawn mid-session takes effect at once",
 # has, so a new one without the decorator shows up here.
 COURSE_BOUND = {"dashboard", "slot_view", "slot_optimize", "upload",
                 "documents", "getting_started", "graph_guidance"}
-ADMIN_ONLY = {"accounts_page", "flowise_setup"}
+# Deleting a course removes a collection, a bucket, a graph and every
+# conversation held in it. Creating one is already administrators only,
+# and undoing that act cannot be less.
+ADMIN_ONLY = {"accounts_page", "flowise_setup", "delete_course_view"}
 # Logged in, but not tied to one course: a citation lookup and a keyword
 # suggestion act on text the caller typed, not on stored material.
 LOGIN_ONLY = {"upload_lookup", "upload_keywords"}

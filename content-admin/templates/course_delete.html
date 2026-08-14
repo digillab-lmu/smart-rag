@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}{{ t('courses_delete_title', course.name) }} — {{ t('app_name') }}{% endblock %}
+{% block content %}
+<h1>{{ t('courses_delete_heading', course.name) }}</h1>
+
+{% if result %}
+  {# Done, or partly done. The steps are shown either way: a deletion that
+     touched five systems and failed in the sixth is not summarised by one
+     word, and the operator's next action depends on which line is red. #}
+  <p class="note">{{ t('courses_delete_report_intro') }}</p>
+  <table>
+    <tr>
+      <th>{{ t('courses_delete_col_system') }}</th>
+      <th>{{ t('courses_delete_col_step') }}</th>
+      <th>{{ t('courses_delete_col_detail') }}</th>
+    </tr>
+    {% for s in result.steps %}
+    <tr>
+      <td><code>{{ s.system }}</code></td>
+      <td>{% if s.ok %}{{ s.action }}{% else %}<strong>{{ s.action }}</strong>{% endif %}</td>
+      <td class="note">{{ s.detail or s.error }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% if result.deleted %}
+  <p><a href="{{ url_for('courses') }}">{{ t('courses_delete_back') }} →</a></p>
+  {% else %}
+  <div class="error">{{ t('courses_delete_incomplete') }}</div>
+  <p><a href="{{ url_for('delete_course_view', course_id=course.id) }}">{{ t('courses_delete_retry') }} →</a></p>
+  {% endif %}
+
+{% else %}
+  <p class="note">{{ t('courses_delete_intro') }}</p>
+
+  {% if inventory %}
+  <h2>{{ t('courses_delete_inventory_heading') }}</h2>
+  <table>
+    <tr>
+      <th>{{ t('courses_delete_col_system') }}</th>
+      <th>{{ t('courses_delete_col_what') }}</th>
+      <th>{{ t('courses_delete_col_count') }}</th>
+    </tr>
+    {% for item in inventory['items'] %}
+    <tr>
+      <td><code>{{ item.system }}</code></td>
+      <td>{{ item.label }}{% if item.note %}<br><span class="note">{{ item.note }}</span>{% endif %}</td>
+      {# An unknown count is not a zero. A service that is down would
+         otherwise read as "nothing here", and the confirmation below would be
+         given on that basis. #}
+      <td>{% if item.count is none %}<strong>{{ t('courses_delete_unknown_count') }}</strong>
+          <br><span class="note">{{ item.error }}</span>
+          {% else %}{{ item.count }}{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  {% set unknown = inventory['items'] | selectattr('count', 'none') | list %}
+  {% if unknown %}
+  <div class="error">{{ t('courses_delete_unknown_warning', unknown|length) }}</div>
+  {% endif %}
+  {% endif %}
+
+  <h2>{{ t('courses_delete_confirm_heading') }}</h2>
+  <p class="note">{{ t('courses_delete_confirm_help') }}</p>
+  <form method="post">
+    <label for="confirm">{{ t('courses_delete_confirm_label', course.id) }}</label>
+    <input type="text" id="confirm" name="confirm" autocomplete="off" required>
+    <button type="submit">{{ t('courses_delete_button', course.name) }}</button>
+  </form>
+  <p><a href="{{ url_for('courses') }}">{{ t('courses_delete_cancel') }}</a></p>
+{% endif %}
+{% endblock %}

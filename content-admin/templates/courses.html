@@ -46,6 +46,7 @@
     <th>{{ t('courses_col_id') }}</th>
     <th>{{ t('courses_col_storage') }}</th>
     <th>{{ t('courses_col_state') }}</th>
+    <th></th>
   </tr>
   {% for c in courses %}
   <tr>
@@ -64,6 +65,9 @@
         {% endif %}
       {% else %}<strong>{{ t('courses_state_unfinished') }}</strong>{% endif %}
     </td>
+    {# Administrators only, and never a one-click affair: the link leads to a
+       page that counts what the course consists of before it asks. #}
+    <td>{% if is_admin %}<a href="{{ url_for('delete_course_view', course_id=c.id) }}">{{ t('courses_delete_link') }}</a>{% endif %}</td>
   </tr>
   {% endfor %}
 </table>

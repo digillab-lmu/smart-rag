@@ -1406,6 +1406,53 @@ def courses():
                            form=form, needs_pick=needs_pick, is_admin=is_admin)
 
 
+# ─── Deleting a course ───────────────────────────────────────────────────────
+# Two pages, not one. The first counts what a course consists of and asks; the
+# second does it. A single confirm dialog on a list row would be one careless
+# click away from removing a collection, a bucket, a graph and every
+# conversation ever held in a course — and the dialog could not say how much
+# that is, because counting it takes six requests.
+@app.route("/courses/<course_id>/delete", methods=["GET", "POST"])
+@auth.admin_required
+def delete_course_view(course_id: str):
+    course = courses_service.get_course(course_id)
+    if course is None:
+        return _t("courses_delete_unknown", course_id), 404
+
+    client = _flowise_client()
+    error = None
+    result = None
+
+    if request.method == "POST":
+        # The course id has to be typed. Not because a mistyped id is likely,
+        # but because it is the one confirmation that cannot be given by
+        # muscle memory — and this is irreversible in six systems at once.
+        typed = (request.form.get("confirm") or "").strip()
+        if typed != course_id:
+            error = _t("courses_delete_mistyped", course_id)
+        else:
+            try:
+                result = courses_service.delete_course(course_id, flowise=client)
+            except courses_service.CourseError as exc:
+                error = str(exc)
+            except db.DatabaseError as exc:
+                error = str(exc)
+            if result and result["deleted"]:
+                # The selected course may be the one that just went.
+                if session.get("course_id") == course_id:
+                    session.pop("course_id", None)
+
+    inventory = None
+    if result is None:
+        try:
+            inventory = courses_service.inventory(course_id, flowise=client)
+        except (courses_service.CourseError, db.DatabaseError) as exc:
+            error = error or str(exc)
+
+    return render_template("course_delete.html", course=course,
+                           inventory=inventory, result=result, error=error)
+
+
 # ─── Documents: what is indexed, and removing it ─────────────────────────────────
 @app.route("/documents", methods=["GET", "POST"])
 @auth.login_required

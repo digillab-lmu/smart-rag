@@ -255,6 +255,36 @@ check("with no Langfuse the step is skipped", skipped is not None,
       [s["action"] for s in result["steps"]])
 check("…and the deletion still completes", result["deleted"], result["steps"])
 
+# ─── 7. The page asks for the id, and a near miss changes nothing ────────────
+# The one confirmation that cannot be given by muscle memory. Everything else
+# on this page is a button, and a button next to a course name is one careless
+# click away from removing six systems' worth of data.
+import accounts  # noqa: E402
+import app as flask_app  # noqa: E402
+
+fresh_course()
+accounts.create_account("chefin", "a-strong-test-password", accounts.ROLE_ADMIN)
+client = flask_app.app.test_client()
+client.post("/login", data={"username": "chefin",
+                            "password": "a-strong-test-password"})
+
+page = client.get(f"/courses/{CID}/delete")
+check("the page renders for an administrator", page.status_code == 200,
+      page.status_code)
+body = page.get_data(as_text=True)
+check("…and counts before it asks", CID in body and "Wie viel" in body or "How much" in body,
+      body[:200])
+
+before = courses_service.get_course(CID)
+answer = client.post(f"/courses/{CID}/delete", data={"confirm": CID + "x"})
+check("a mistyped id deletes nothing",
+      courses_service.get_course(CID) is not None, "the course is gone")
+check("…and says so", "confirm" in answer.get_data(as_text=True).lower()
+      or answer.status_code == 200, answer.status_code)
+check("nothing about the course changed", courses_service.get_course(CID) == before,
+      "")
+
+
 if failures:
     print("FAILURES:")
     for f in failures:
@@ -272,5 +302,5 @@ print(
     "every other system is still cleared; a chatflow or bucket that is "
     "already gone is counted rather than treated as a failure; and on an "
     "installation without Langfuse the trace step is reported as skipped, not "
-    "as done."
+    "as done; and the page that offers all this asks for the course id to be typed, so a near miss changes nothing."
 )
