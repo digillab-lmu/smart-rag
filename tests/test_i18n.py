@@ -74,6 +74,9 @@ IDENTICAL_OK = {
     # "GitHub:" plus the repository URL — a label and an address, neither of
     # which has a German form.
     "footer_repo",
+    # "System" is spelled the same in German, and the column heads a list of
+    # service names.
+    "courses_delete_col_system",
 }
 same = [
     k for k in i18n.MSG_EN
