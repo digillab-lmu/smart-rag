@@ -287,6 +287,71 @@ rather than an inference from an absence.
 
 ---
 
+## Deleting a course
+
+**When.** A retention period has expired, a course was created by mistake, or
+a test course has served its purpose. Administrators only — creating a course
+provisions a collection, a bucket and a storage grant, and undoing that cannot
+be a smaller act than doing it.
+
+**Where.** Content Admin → *Courses* → *Delete* on the course's row. The first
+page counts what the course consists of; the second reports what each system
+answered. The course id has to be typed, which is the one confirmation that
+cannot be given by muscle memory.
+
+**Read the inventory before confirming.** A line that says **unknown** rather
+than a number means that system did not answer. That is not "nothing there" —
+it may hold data the page cannot see. Deleting anyway removes what can be
+reached and reports the rest as failed; the course then stays in the list.
+
+**What goes, in this order, and why the order.**
+
+1. The chat sessions of the course's agents are read from Flowise. A Langfuse
+   trace carries a learner id and Flowise's chat id, never a course, so this
+   is the only bridge from a course to its traces — and step 3 burns it.
+2. Langfuse is asked to delete those traces. **Asked**: Langfuse removes trace
+   data within about fifteen minutes and confirms nothing. Scores and
+   observations go with them. On an installation without the observability
+   profile this step is reported as skipped.
+3. The chatflows are deleted in Flowise, which removes their chat messages,
+   feedback and uploaded files itself.
+4. The course's chunk collection is dropped whole; its records in
+   `ChatHistory`, `UserMemory` and `TestResults` are deleted by filter,
+   because those three are shared between courses.
+5. The bucket is emptied and then removed. Both halves are needed: Garage
+   refuses a bucket that is not empty and its admin API cannot empty one.
+6. The course's concepts and their links are deleted from Neo4j.
+7. Its progress rows are cleared.
+8. **Last**, the course record — which takes its agent slots and its
+   maintainer assignments with it by cascade.
+
+**If a step fails, the course record is kept.** That is deliberate: while it
+exists the course is still listed and the deletion can simply be run again,
+picking up where it stopped. Every step is safe to repeat — an already-deleted
+chatflow or bucket is counted as such, not treated as an error. Removing the
+record after a failed step would turn a recoverable half-deletion into data in
+five systems that nothing points at.
+
+**What deletion does not touch.**
+
+* **An account whose only course this was.** It survives and can then reach
+  nothing. The inventory says how many such accounts there are; removing a
+  person because a course ended is not a decision this should make on its own.
+* **n8n's execution data**, which can contain message content and is pruned by
+  n8n's own retention.
+
+**Afterwards, measure the other course rather than assuming isolation:**
+
+```bash
+set -a && . ./.env && set +a && curl -s -X POST "http://127.0.0.1:${WEAVIATE_HTTP_PORT}/v1/graphql" -H "Authorization: Bearer $WEAVIATE_API_KEY" -H 'Content-Type: application/json' -d '{"query":"{ Aggregate { ChatHistory(groupBy: [\"course_id\"]) { groupedBy { value } meta { count } } } }"}' | jq
+```
+
+The deleted course must be gone from the grouping and every other course's
+count unchanged. A collection that is still there is visible in
+`GET /v1/schema`, and a bucket that survived in Garage's bucket list.
+
+---
+
 ## Objects are not being stored, and nothing says so
 
 **Symptom.** Uploads appear to succeed, Langfuse's dashboard stays empty, or

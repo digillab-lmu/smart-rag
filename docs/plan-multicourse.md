@@ -168,14 +168,31 @@ have passed for an undecorated route, so the decorators now set an explicit
 marker. And `flowise-setup` moved from any logged-in user to administrators
 only: the API key it stores is installation-wide, not a course's.
 
-## Phase 6 · Deleting a course
+## Phase 6 · Deleting a course (built 2026-08-14, live proof outstanding)
 
-Inventory first ("3 agents, 78 chunks, 12 objects, 431 chat messages"), then
-the question about learner data with no pre-selected answer, then execution.
+Inventory first, then the confirmation, then execution — as planned. Three
+things the plan did not know, each established rather than assumed:
+
+  * **The order is forced.** A Langfuse trace carries a learner id and
+    Flowise's chat id and never a course, so the only route from a course to
+    its traces runs through Flowise's chat records — which Flowise deletes
+    together with the chatflow. The session ids are collected first or the
+    traces become unreachable in the same moment the course does.
+  * **Garage cannot empty a bucket** and refuses to delete one that is not
+    empty, which is why the Content Admin gained a small hand-written S3
+    signer. It also closes an older hole: removing a single document in the
+    GUI left its archived markdown behind for ever.
+  * **The course record goes last**, and only if every other step worked.
+    While it exists the deletion is repeatable; removing it after a failed
+    step leaves orphans in five systems.
+
+The question about learner data has no pre-selected answer because it is no
+longer a question: the data protection officer approved the processing, so
+deleting a course deletes its learner data with it.
 
 **Proven by** deleting one course and measuring the other separately —
 collection, bucket, slots and chunk count — rather than assuming isolation
-that has never been observed.
+that has never been observed. **Still outstanding.**
 
 ## Phase 7 · The installer
 
