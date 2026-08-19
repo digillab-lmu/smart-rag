@@ -67,8 +67,11 @@
          agent slots — so the page uses the window it is given and the reader
          decides how wide that is. What keeps it readable is the rule below:
          running text stays inside a character-based measure, so a wide
-         window widens the tables and not the paragraphs. */
-      max-width: 100%;
+         window widens the tables and not the paragraphs. 80% rather
+         than the full width so the page keeps a margin on a large
+         monitor — a table that runs into both bezels is harder to
+         read across, not easier. */
+      max-width: 80%;
       margin: 0 auto;
       padding: 1.5rem;
       line-height: 1.5;
