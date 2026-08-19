@@ -116,21 +116,21 @@ class LangfuseClient:
                 f"Langfuse answered something that is not JSON: {resp.text[:120]}"
             ) from exc
 
-    def trace_ids_for_session(self, session_id: str, cap: int = 10_000) -> list[str]:
-        """Every trace of one chat session, following the page count.
+    def _trace_ids(self, key: str, value: str, cap: int) -> list[str]:
+        """Every trace matching one filter, following the page count.
 
         A client that reads the first page only would leave most of a long
-        conversation's traces behind while reporting the session done — the
-        same shape as a bucket listing that ignores its continuation token.
+        conversation's traces behind while reporting it done — the same shape
+        as a bucket listing that ignores its continuation token.
         """
-        if not session_id:
+        if not value:
             return []
         ids: list[str] = []
         page = 1
         while True:
             answer = self._request(
                 "GET", "/api/public/traces",
-                params={"sessionId": session_id, "page": page, "limit": PAGE})
+                params={key: value, "page": page, "limit": PAGE})
             for trace in (answer or {}).get("data") or []:
                 if trace.get("id"):
                     ids.append(trace["id"])
@@ -139,6 +139,44 @@ class LangfuseClient:
             if page >= total_pages or len(ids) >= cap:
                 return ids
             page += 1
+
+    def trace_ids_for_session(self, session_id: str, cap: int = 10_000) -> list[str]:
+        """Every trace of one session id.
+
+        **Which string is the session id depends on how the chat was
+        opened**, which is why callers here pass more than one:
+
+          * Opened through the LTI middleware, Flowise receives
+            `overrideConfig.analytics.langFuse = {userId, sessionId}`, and
+            both handler sites in Flowise 3.1.3 spread that object *over*
+            their defaults. So the trace's sessionId is the middleware's
+            string, `<sub>|<given name>|<agent>|<timestamp>|<full name>`.
+          * Opened without it, nothing overrides anything and the default
+            stands: `sessionId = options.chatId`, Flowise's own conversation
+            id.
+
+        Both are stored in Flowise's chat records — as `sessionId` and
+        `chatId` respectively — so asking for both covers either deployment
+        without having to detect which one this is.
+        """
+        return self._trace_ids("sessionId", session_id, cap)
+
+    def trace_ids_for_user(self, user_id: str, cap: int = 10_000) -> list[str]:
+        """Every trace of one learner, where the learner is on the trace.
+
+        Only true on an installation that launches its chats through the LTI
+        middleware: that is what sends a `userId` for Flowise to spread into
+        the Langfuse options. Without it a trace carries no learner at all,
+        and this returns nothing — which is correct, and is why it is never
+        the only route an erasure takes.
+
+        `userId` is a documented filter of `GET /api/public/traces`, read from
+        Langfuse's own OpenAPI specification. The endpoint is deprecated on
+        Langfuse Cloud from November 2026; self-hosted deployments — which is
+        every installation of this system — keep it until they move to
+        Langfuse v4.
+        """
+        return self._trace_ids("userId", user_id, cap)
 
     def delete_traces(self, trace_ids: list[str]) -> int:
         """Ask for these traces to be deleted. Returns how many were asked for.

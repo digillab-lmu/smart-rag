@@ -476,11 +476,24 @@ def delete_course(course_id: str,
     langfuse_on = (langfuse is not None) or LangfuseClient.configured(env)
     if langfuse_on and flowise is not None and chatflow_ids:
         try:
+            # Both ids of every record, not just one of them. Which of the two
+            # a Langfuse trace is keyed by depends on how the chat was opened:
+            # through the LTI middleware the trace's sessionId is the
+            # middleware's own string, because Flowise spreads
+            # overrideConfig.analytics.langFuse over its defaults; without it
+            # the default stands and the trace's sessionId is Flowise's chatId.
+            # This step used to collect chatIds alone, which on an LTI
+            # installation — the deployment this system is built for — matched
+            # no trace at all and reported "0 traces" as a success.
             for chatflow_id in chatflow_ids:
-                session_ids.extend(flowise.chat_session_ids(chatflow_id))
+                for record in flowise.chat_records(chatflow_id):
+                    session_ids.extend(
+                        v for v in (record.get("session_id"), record.get("chat_id"))
+                        if v)
+            session_ids = list(dict.fromkeys(session_ids))
             steps.append(DeletionStep(
                 "flowise", "collected the chat sessions for Langfuse",
-                detail=f"{len(session_ids)} session(s)"))
+                detail=f"{len(session_ids)} id(s)"))
         except Exception as exc:  # noqa: BLE001 — FlowiseError and requests'
             steps.append(DeletionStep(
                 "flowise", "collect the chat sessions for Langfuse", False,

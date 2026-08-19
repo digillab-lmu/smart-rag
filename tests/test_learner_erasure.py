@@ -108,6 +108,12 @@ class Langfuse:
         self.log.append(("langfuse.list", session_id))
         return [f"trace-{session_id}"]
 
+    def trace_ids_for_user(self, user_id):
+        # Only an LTI-launched chat puts the learner on the trace. This stub
+        # answers as such an installation would.
+        self.log.append(("langfuse.by_user", user_id))
+        return [f"trace-user-{user_id}"]
+
     def delete_traces(self, ids):
         self.log.append(("langfuse.delete", tuple(sorted(ids))))
         if self.fail:
@@ -206,10 +212,19 @@ check("Langfuse is asked before Flowise loses the records",
       None not in (del_flowise, del_langfuse) and del_langfuse < del_flowise, kinds)
 
 traces = ([e[1] for e in log if e[0] == "langfuse.delete"] or [()])[0]
+# Three routes, because which one finds anything depends on how the chat was
+# opened and an erasure may not depend on knowing that: the learner on the
+# trace (LTI only), the middleware's session string, and Flowise's chat id.
+check("the learner is looked up on the trace directly",
+      "trace-user-" + LEARNER in traces, traces)
 check("every chat of the learner's sessions became a trace deletion",
-      set(traces) == {"trace-chat-a", "trace-chat-b", "trace-chat-e"}, traces)
+      {"trace-chat-a", "trace-chat-b", "trace-chat-e"} <= set(traces), traces)
+check("the session ids were looked up as well",
+      f"trace-{LEARNER}|mathe" in traces and f"trace-{LEARNER}" in traces, traces)
 check("no other learner's chat was included",
       "trace-chat-c" not in traces and "trace-chat-d" not in traces, traces)
+check("no other learner's session was included",
+      not any(OTHER in t for t in traces), traces)
 
 # Langfuse deletes asynchronously and confirms nothing, so the wording must
 # not claim the traces are gone.

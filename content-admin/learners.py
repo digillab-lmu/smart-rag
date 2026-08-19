@@ -20,18 +20,23 @@ Not inferred: every agent derives it that way
 chathistory-sync workflow stores the same split as `user_id`. A session id
 with no "|" is the whole id, which is what the split does too.
 
-**A Langfuse trace does not carry the learner.** It carries `sessionId`, set
-by Flowise to the *chatId* — read in Flowise 3.1.3's AnalyticHandler, which
-builds `langfuse.trace({ name, sessionId: this.options.chatId })` and sets no
-userId at all. So there is no query from a person to their traces. The only
-route is
+**What a Langfuse trace is keyed by depends on how the chat was opened**, and
+there is no way to tell after the fact. Flowise 3.1.3 builds its trace with
+`{ name, sessionId: this.options.chatId, ...nodeData.inputs.analytics.langFuse }`
+— the override is spread *over* the defaults, at both of the two places that
+construct one, and `analytics` is the one overrideConfig key Flowise applies
+without it having to be enabled per node. So:
 
-    learner → Flowise chat records → the chatIds of their sessions → traces
+  * launched by the LTI middleware, which sends
+    `analytics.langFuse = {userId, sessionId}`, the trace carries the learner
+    as `userId` and the middleware's own string as `sessionId`;
+  * launched without it, the trace carries no learner at all and its
+    `sessionId` is Flowise's `chatId`.
 
-which has to be walked *before* anything in Flowise is deleted, exactly as a
-course deletion does. An earlier version of langfuse_client's docstring said a
-trace carries a learner id; it does not, and the difference decides whether
-this module works.
+So an erasure asks along all three routes, and none of them may be the only
+one. Two of the three run through Flowise's chat records, which means they
+have to be read *before* anything in Flowise is deleted — exactly as a course
+deletion does.
 
 What is deliberately **not** here:
 
@@ -272,10 +277,26 @@ def erase(user_id: str, course_id: str | None = None,
     else:
         try:
             langfuse = langfuse or LangfuseClient()
-            trace_ids: list[str] = []
-            for chat_id in {s["chat_id"] for s in sessions if s["chat_id"]}:
-                trace_ids.extend(langfuse.trace_ids_for_session(chat_id))
-            asked = langfuse.delete_traces(trace_ids) if trace_ids else 0
+            # Three routes, because which one finds anything depends on how
+            # the learner opened the chat, and an erasure may not depend on
+            # knowing that.
+            #
+            #   userId     — only set when the LTI middleware launched the
+            #                chat, which sends
+            #                overrideConfig.analytics.langFuse = {userId,
+            #                sessionId} and Flowise spreads it over its
+            #                defaults. The direct route, when it exists.
+            #   sessionId  — the middleware's own string, which is what the
+            #                trace's sessionId then is.
+            #   chatId     — Flowise's default when nothing overrode it.
+            #
+            # Overlapping on purpose: the same trace found twice costs one id
+            # in a set, and a route missing costs the whole erasure.
+            trace_ids: set[str] = set(langfuse.trace_ids_for_user(user_id))
+            for key in ("session_id", "chat_id"):
+                for value in {s[key] for s in sessions if s.get(key)}:
+                    trace_ids.update(langfuse.trace_ids_for_session(value))
+            asked = langfuse.delete_traces(sorted(trace_ids)) if trace_ids else 0
             # "asked to delete", never "deleted": Langfuse removes trace data
             # asynchronously, within about fifteen minutes, and confirms
             # nothing.
