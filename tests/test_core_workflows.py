@@ -425,6 +425,13 @@ for fname in ("error-handler.json", "watchdog.json"):
     # The state has to survive the execution, or every run is the first.
     check(f"{fname} keeps its state outside the run",
           "WorkflowState" in code, "")
+    # An installation without a mail relay is the normal state of a test
+    # machine and a real possibility on a production one. Sending anyway
+    # fails the run, and a red run is what nobody looks at — which is the
+    # problem this whole channel exists to solve. The report goes to the log
+    # and the execution stays green.
+    check(f"{fname} logs instead of failing when there is no mail relay",
+          "$env.SMTP_HOST" in code, "the send would fail and redden the run")
 
 # ─── The address is configuration, not a name in a file ──────────────────────
 # The vhb installation's version had one person's address and one provider's
