@@ -168,7 +168,7 @@ have passed for an undecorated route, so the decorators now set an explicit
 marker. And `flowise-setup` moved from any logged-in user to administrators
 only: the API key it stores is installation-wide, not a course's.
 
-## Phase 6 · Deleting a course (built 2026-08-14, live proof outstanding)
+## Phase 6 · Deleting a course (completed 2026-08-19)
 
 Inventory first, then the confirmation, then execution — as planned. Three
 things the plan did not know, each established rather than assumed:
@@ -190,9 +190,24 @@ The question about learner data has no pre-selected answer because it is no
 longer a question: the data protection officer approved the processing, so
 deleting a course deletes its learner data with it.
 
-**Proven by** deleting one course and measuring the other separately —
-collection, bucket, slots and chunk count — rather than assuming isolation
-that has never been observed. **Still outstanding.**
+**Proven by** deleting a throwaway course that had been filled first — a
+document, an imported agent, a conversation — and then measuring the others.
+Before: testkurs2 159, mathe-1 16, chemie-1 14 chat records. After: 159, 16,
+14, with `Chunks_loeschtest` gone from the schema and the course absent from
+every grouping. Not "the deletion did something" but "the deletion did only
+that", which is the statement this phase was written to produce.
+
+Two things the run taught that no stub had:
+
+  * **A step failed the first time** — the Flowise key could create and update
+    chatflows but not delete them (HTTP 403). The course record was kept, the
+    course stayed in the list, and the second run picked up exactly where the
+    first stopped, reporting everything already removed as already gone. The
+    design behaving as intended under a real failure.
+  * **The report hid the reason** behind the count of what the step managed:
+    "0 deleted, 0 already gone" with no word about the 403. Both are shown
+    now, and failures are logged as well, because the page is gone as soon as
+    somebody navigates away from it.
 
 ## Phase 7 · The installer
 

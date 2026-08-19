@@ -11,6 +11,38 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ## Unreleased
 
+### Added
+
+- **A course can be deleted.** Two pages: the first counts what the course
+  consists of across six systems, the second reports what each of them
+  answered. The course id has to be typed, because it is the one confirmation
+  that cannot be given by muscle memory. Proven on a live installation by
+  filling a throwaway course, deleting it, and measuring the others: their
+  chat-record counts were identical before and after. **The Flowise API key
+  now needs Delete on chatflows** — the installer's permission list says so,
+  and an installation set up earlier will see a 403 on that one step until it
+  is granted.
+- **A small S3 client** (`content-admin/s3_client.py`), Signature Version 4
+  written out against stdlib and checked against AWS's published get-vanilla
+  vector. Garage's admin API cannot empty a bucket and refuses to delete one
+  that is not empty, so without this a deleted course would leave its
+  documents behind for the next course of the same name to adopt. It also
+  closes an older hole: removing a single document in the GUI used to leave
+  its archived markdown in the bucket for ever.
+
+### Fixed
+
+- **The inventory answered a German operator in English.** Its labels are
+  built in Python rather than in a template, which is how that one table
+  escaped the rule that every operator-facing string exists in both
+  languages.
+- **A failed deletion step hid its reason** behind the count of what it
+  managed.
+- **"Not countable" and "did not answer" were the same state**, so a line
+  that cannot have a number warned as if a service were down.
+- The Content Admin's pages use 80% of the window rather than a 900-pixel
+  column, while running text stays at a readable measure.
+
 ---
 
 ## 2.0.0-beta.1 — 2026-08-13
