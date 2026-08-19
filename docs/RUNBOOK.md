@@ -675,19 +675,35 @@ answers at a different address, `--rename new.example.edu` rewrites `DOMAIN`
 and states what it does not reach: the TLS certificates, the LTI registration
 in the LMS, and any chat link already given out.
 
-**A restore that starts every container is not a restore that works.** Check
-chunk counts per course and object counts per bucket on the Courses page, then
-ask one agent a question and see that it answers with a citation.
+**A restore that starts every container is not a restore that works**, and
+neither is a backup the restore script declined to refuse. To find out whether
+an archive actually opens, without a second machine and without touching the
+running installation:
+
+```bash
+sudo bash scripts/verify-backup.sh /path/to/smartrag-….tar.gz
+```
+
+It unpacks the archive into a scratch directory and starts throwaway
+containers against that copy — own names, own high loopback-only ports, no
+shared network — and asks each one whether it can read its own data: Postgres
+with the archived password, Garage for its buckets, Weaviate for its
+collections. Everything is removed afterwards, including after a failure.
+
+After a real restore, check the same things through the application: chunk
+counts per course and object counts per bucket on the Courses page, then ask
+one agent a question and see that it answers with a citation.
 
 **Garage, and the one thing not yet settled on real hardware.** Garage's
 layout carries a node id created on the machine it was laid out on. This
 installation runs a single node with `replication_factor = 1` and a fixed
 `rpc_public_addr`, so a copied metadata directory should bring the same node
-id and the same layout with it — *should*, because it has not yet been proved
-on a second machine, and that proof is the remaining piece of this. If after a
-restore the buckets are missing while their objects are on disk, the layout
-did not travel: lay out a fresh cluster and copy the objects back at S3 level,
-which is slower and known to work.
+id and the same layout with it — *should*, because it was reasoning and not a
+measurement. `verify-backup.sh` measures it: it starts Garage against the
+archive's copied metadata directory and lists the buckets. If they are there,
+the layout travelled. If it reports no usable layout, the fallback is to lay
+out a fresh cluster and copy the objects back at S3 level — slower, and known
+to work.
 
 ### What an archive contains, if you would rather do it by hand
 
