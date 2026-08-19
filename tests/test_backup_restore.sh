@@ -260,6 +260,23 @@ for lang in en de; do
     check "a missing archive is reported in $lang" $? "$out"
 done
 
+# ─── The closing text must not deny what now exists ──────────────────────────
+# The installer's reference section told every new operator there was no
+# backup command. It was true when written and false the moment backup.sh
+# landed, and a sentence like that is read once, at the only moment somebody
+# is deciding how to look after the installation.
+for lang in EN DE; do
+    line="$(grep -A1 "\[ref_admin_items\]" "$REPO/scripts/lib/messages.sh" \
+            | grep -m1 "$lang" || true)"
+done
+catalog="$(cat "$REPO/scripts/lib/messages.sh")"
+grep -q 'no backup command yet' <<<"$catalog"
+check "the reference no longer says there is no backup command" $(( $? == 0 ? 1 : 0 )) ""
+grep -q 'Ein Backup-Befehl fehlt noch' <<<"$catalog"
+check "…in German either" $(( $? == 0 ? 1 : 0 )) ""
+grep -qE '\[ref_admin_items\]=.*[Bb]ackup' <<<"$catalog"
+check "and mentions the backup command that exists" $? ""
+
 if (( ${#FAILURES[@]} > 0 )); then
     echo "FAILURES:"; printf '  - %s\n' "${FAILURES[@]}"; exit 1
 fi

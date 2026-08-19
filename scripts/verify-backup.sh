@@ -85,6 +85,7 @@ WEAVIATE_PORT=48080
 
 SCRATCH=""
 RESULTS=()
+EXPECTED_BUCKETS=()
 record() { RESULTS+=("$1|$2|$3"); }   # system|ok/fail/skip|detail
 
 cleanup() {
@@ -123,8 +124,30 @@ ok "$(t vfyb_unpacked)"
 
 # Images come from the compose file, so this verifies against the versions
 # this installation actually runs rather than whatever :latest is today.
-image_for() {   # $1 = service key in docker-compose.yml
-    grep -m1 -oE "image: $1[^ ]*" "$REPO_ROOT/docker/docker-compose.yml" | sed 's/image: //'
+#
+# Read out of the service's own block rather than by matching a fragment of
+# the image name. The first version matched "semitechnologies/weaviate" and
+# found nothing, because the image is "cr.weaviate.io/semitechnologies/
+# weaviate:1.38.6" — docker run was then handed an empty image name and
+# failed, which this script reported as "the container would not start", i.e.
+# as a fault in the backup rather than in itself.
+image_for() {   # $1 = service key, e.g. smartrag-weaviate
+    awk -v svc="  $1:" '
+        $0 == svc { in_svc = 1; next }
+        in_svc && /^  [a-z]/ { exit }
+        in_svc && /^ *image: / { sub(/^ *image: /, ""); print; exit }
+    ' "$REPO_ROOT/docker/docker-compose.yml"
+}
+
+# Reading a service's environment from the compose file the same way, so this
+# starts each container the way the installation does. Guessing at it is how
+# Weaviate got a CLUSTER_HOSTNAME it had never seen.
+env_for() {   # $1 = service key, $2 = variable
+    awk -v svc="  $1:" -v key="$2" '
+        $0 == svc { in_svc = 1; next }
+        in_svc && /^  [a-z]/ { exit }
+        in_svc && $1 == key ":" { sub(/^ *[A-Z_]+: */, ""); gsub(/^"|"$/, ""); print; exit }
+    ' "$REPO_ROOT/docker/docker-compose.yml"
 }
 
 wait_for() {   # $1 = name, $2 = seconds, $3.. = command
@@ -139,7 +162,7 @@ wait_for() {   # $1 = name, $2 = seconds, $3.. = command
 
 # ─── Postgres ────────────────────────────────────────────────────────────────
 header "$(t vfyb_postgres_heading)"
-PG_IMAGE="$(image_for postgres)"
+PG_IMAGE="$(image_for smartrag-postgres)"
 PG_USER="$(env_value POSTGRES_USER)"
 PG_PASS="$(env_value POSTGRES_PASSWORD)"
 PG_DB="$(env_value POSTGRES_DB)"
@@ -174,6 +197,14 @@ else
                 if [[ "$courses" =~ ^[0-9]+$ ]]; then
                     ok "$(t vfyb_postgres_courses "$courses")"
                     record postgres ok "$courses course(s)"
+                    # The bucket names, for the Garage step below. Asking the
+                    # database that owns them beats parsing a table Garage
+                    # prints for humans — the first version counted indented
+                    # lines and reported "no buckets" against an installation
+                    # that has two.
+                    mapfile -t EXPECTED_BUCKETS < <(docker exec -e PGPASSWORD="$PG_PASS" "$PG_NAME" \
+                        psql -U "$PG_USER" -d contentadmin -tAc \
+                        "SELECT bucket FROM courses ORDER BY bucket" 2>/dev/null | sed '/^$/d')
                 else
                     warn "$(t vfyb_postgres_no_contentadmin)"
                     record postgres ok "databases open; contentadmin not readable"
@@ -197,7 +228,7 @@ fi
 # ─── Garage — the question this script exists for ────────────────────────────
 header "$(t vfyb_garage_heading)"
 info "$(t vfyb_garage_why)"
-GARAGE_IMAGE="$(image_for dxflrs/garage)"
+GARAGE_IMAGE="$(image_for smartrag-garage)"
 
 if [[ ! -f "$DATA/garage/garage.toml" ]]; then
     warn "$(t vfyb_garage_no_config)"
@@ -225,20 +256,44 @@ else
         elif wait_for "$GARAGE_NAME" 45 docker exec "$GARAGE_NAME" "$GARAGE_BIN" status; then
             layout="$(docker exec "$GARAGE_NAME" "$GARAGE_BIN" layout show 2>&1)"
             buckets="$(docker exec "$GARAGE_NAME" "$GARAGE_BIN" bucket list 2>&1)"
-            n="$(grep -cE '^ ' <<<"$buckets" || true)"
             echo "$layout" | sed 's/^/    /' | head -12
+            # Always shown, in every outcome. The first version printed this
+            # only when it believed there were buckets, so the one run where
+            # it was wrong gave nothing to look at.
+            echo "$buckets" | sed 's/^/    /' | head -20
+
             if grep -qiE 'no layout|not configured|role.*unassigned' <<<"$layout"; then
-                # The fallback the plan named, and now with a measurement
-                # behind it rather than a worry.
                 err "$(t vfyb_garage_layout_lost)"
                 record garage fail "the layout did not travel — S3-level copy needed"
-            elif (( n > 0 )); then
-                ok "$(t vfyb_garage_ok "$n")"
-                echo "$buckets" | sed 's/^/    /' | head -12
-                record garage ok "$n bucket(s), layout intact"
             else
-                warn "$(t vfyb_garage_no_buckets)"
-                record garage fail "layout present but no buckets listed"
+                # The layout survived the copy. That was the open question, and
+                # it is answered by the layout alone.
+                ok "$(t vfyb_garage_layout_ok)"
+
+                # Whether the buckets came with it is a second question, and it
+                # is asked by name rather than by counting rows in a table
+                # meant for humans: the names come from the archive's own
+                # database, and `bucket info` either finds one or does not.
+                if (( ${#EXPECTED_BUCKETS[@]} == 0 )); then
+                    warn "$(t vfyb_garage_no_expected)"
+                    record garage ok "layout intact; no bucket names to check against"
+                else
+                    found=0; missing=()
+                    for b in "${EXPECTED_BUCKETS[@]}"; do
+                        if docker exec "$GARAGE_NAME" "$GARAGE_BIN" bucket info "$b" >/dev/null 2>&1; then
+                            found=$((found+1))
+                        else
+                            missing+=("$b")
+                        fi
+                    done
+                    if (( ${#missing[@]} == 0 )); then
+                        ok "$(t vfyb_garage_ok "$found")"
+                        record garage ok "$found bucket(s) named by the database, all present"
+                    else
+                        err "$(t vfyb_garage_missing "${missing[*]}")"
+                        record garage fail "missing bucket(s): ${missing[*]}"
+                    fi
+                fi
             fi
         else
             err "$(t vfyb_garage_no_start)"
@@ -253,7 +308,7 @@ fi
 
 # ─── Weaviate ────────────────────────────────────────────────────────────────
 header "$(t vfyb_weaviate_heading)"
-WEAVIATE_IMAGE="$(image_for semitechnologies/weaviate)"
+WEAVIATE_IMAGE="$(image_for smartrag-weaviate)"
 WEAVIATE_KEY="$(env_value WEAVIATE_API_KEY)"
 
 if [[ ! -d "$DATA/weaviate/data" ]]; then
@@ -261,18 +316,28 @@ if [[ ! -d "$DATA/weaviate/data" ]]; then
     record weaviate skip "no data directory in the archive"
 else
     docker rm -f "$WEAVIATE_NAME" >/dev/null 2>&1
+    # CLUSTER_HOSTNAME and the module list come from the compose file, not
+    # from a guess: Weaviate records the cluster hostname in its own data, and
+    # a schema referencing a module that is not enabled is not loadable. The
+    # first version invented a hostname and left the modules out.
+    W_HOSTNAME="$(env_for smartrag-weaviate CLUSTER_HOSTNAME)"
+    W_MODULES="$(env_for smartrag-weaviate ENABLE_MODULES)"
     if docker run -d --name "$WEAVIATE_NAME" \
         -p "127.0.0.1:$WEAVIATE_PORT:8080" \
         -v "$DATA/weaviate/data:/var/lib/weaviate" \
         -e PERSISTENCE_DATA_PATH=/var/lib/weaviate \
-        -e AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true \
-        -e DEFAULT_VECTORIZER_MODULE=none \
-        -e CLUSTER_HOSTNAME=verify \
+        -e CLUSTER_HOSTNAME="${W_HOSTNAME:-smartrag-weaviate}" \
+        -e ENABLE_MODULES="$W_MODULES" \
+        -e AUTHENTICATION_APIKEY_ENABLED=true \
+        -e AUTHENTICATION_APIKEY_ALLOWED_KEYS="$WEAVIATE_KEY" \
+        -e AUTHENTICATION_APIKEY_USERS=smartrag \
+        -e QUERY_DEFAULTS_LIMIT=1 \
         "$WEAVIATE_IMAGE" >/dev/null 2>&1
     then
         if wait_for "$WEAVIATE_NAME" 90 \
                curl -fsS "http://127.0.0.1:$WEAVIATE_PORT/v1/.well-known/ready"; then
-            schema="$(curl -fsS "http://127.0.0.1:$WEAVIATE_PORT/v1/schema" 2>/dev/null)"
+            schema="$(curl -fsS -H "Authorization: Bearer $WEAVIATE_KEY" \
+                      "http://127.0.0.1:$WEAVIATE_PORT/v1/schema" 2>/dev/null)"
             classes="$(grep -oE '"class":"[^"]+"' <<<"$schema" | cut -d'"' -f4 | tr '\n' ' ')"
             if [[ -n "$classes" ]]; then
                 ok "$(t vfyb_weaviate_ok "$classes")"
@@ -288,7 +353,12 @@ else
         fi
     else
         err "$(t vfyb_weaviate_no_start)"
-        record weaviate fail "container would not start"
+        # Repeated without swallowing the output. "would not start" was
+        # reported once for an empty image name, and the reason was on stderr
+        # where nobody could see it.
+        docker run --rm --name "$WEAVIATE_NAME-why" "$WEAVIATE_IMAGE" --version 2>&1 \
+            | tail -3 | sed 's/^/    /'
+        record weaviate fail "container would not start (image: ${WEAVIATE_IMAGE:-<empty>})"
     fi
 fi
 
