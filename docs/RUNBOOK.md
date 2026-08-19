@@ -287,6 +287,23 @@ rather than an inference from an absence.
 
 ---
 
+## A deletion stops at "deleted the chatflows" with HTTP 403
+
+**Symptom.** The deletion report shows every other step done and this one in
+bold: `DELETE /chatflows/… → HTTP 403: {"message":"Forbidden"}`. The course
+stays in the list, which is correct — the record is kept whenever a step
+fails.
+
+**Cause.** The Flowise API key may create and update chatflows but not delete
+them. Installations set up before course deletion existed were told to grant
+Create and Update, because nothing needed more.
+
+**Fix.** In Flowise, open the API key's permissions and add **Chatflows:
+Delete**, then run the deletion again. Everything already removed stays
+removed; each step is safe to repeat.
+
+---
+
 ## Deleting a course
 
 **When.** A retention period has expired, a course was created by mistake, or
