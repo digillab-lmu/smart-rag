@@ -589,7 +589,7 @@ ask_reranker_config() {
 }
 
 
-# ─── Section: Mail relay (SMTP) ──────────────────────────────────────────────
+# ─── Section: Mail service (SMTP) ────────────────────────────────────────────
 # Strongly recommended, not required — a user can decline and fix it later by
 # editing .env directly. Two paths:
 #   a) Local Postfix (recommended): collects the *upstream* smarthost's
@@ -667,7 +667,11 @@ _ask_mail_provider() {
 
 ask_mail_config() {
     header "$(t cfg_section_mail)"
-    printf "  ${DIM}%s${RESET}\n\n" "$(t cfg_mail_intro)"
+    local _intro_line
+    while IFS= read -r _intro_line; do
+        printf "  ${DIM}%s${RESET}\n" "$_intro_line"
+    done < <(wrap_lines "$(t cfg_mail_intro)" $(( $(term_width) - 2 )))
+    printf "\n"
 
     # Detection first, so the menu can say "we found one" rather than making
     # the operator remember. See detect_existing_mail_relay in preflight.sh.
@@ -783,11 +787,11 @@ show_config_summary() {
   Weaviate coll:    $CFG_WEAVIATE_COLLECTION_NAME
 EOF
     if [[ "$CFG_INSTALL_POSTFIX" == "true" ]]; then
-        echo "  Mail relay:       local Postfix → $CFG_SMTP_RELAY_HOST:$CFG_SMTP_RELAY_PORT"
+        echo "  Mail service:     local Postfix → $CFG_SMTP_RELAY_HOST:$CFG_SMTP_RELAY_PORT"
     elif [[ -n "$CFG_SMTP_HOST" ]]; then
-        echo "  Mail relay:       direct → $CFG_SMTP_HOST:$CFG_SMTP_PORT"
+        echo "  Mail service:     direct → $CFG_SMTP_HOST:$CFG_SMTP_PORT"
     else
-        echo "  Mail relay:       disabled (no password-reset emails)"
+        echo "  Mail service:     none (nothing this system sends can leave it)"
     fi
     if [[ "$CFG_ENABLE_LTI" == "yes" ]]; then
         echo "  LMS URL:          $CFG_LMS_URL"
@@ -826,7 +830,7 @@ run_config_wizard() {
         if confirm cfg_review_confirm "y"; then
             return 0
         elif (( WIZARD_BACK )); then
-            _wizard_step_loop 6   # re-enter at the last section (mail relay)
+            _wizard_step_loop 6   # re-enter at the last section (mail service)
         else
             die "$(t cfg_aborted)"
         fi
