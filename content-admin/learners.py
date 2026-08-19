@@ -74,6 +74,28 @@ class LearnerError(RuntimeError):
     requests' own wording where we already know the cause."""
 
 
+def lti_configured(env: dict | None = None) -> bool:
+    """Whether chats are launched through the LTI middleware.
+
+    This decides what an erasure can honestly promise. With LTI, the learner
+    id is the platform's `sub` claim — one pseudonym per person, stable across
+    logins, browsers and devices, so "everything about this person" is a set
+    that exists. Without it, Flowise falls back to its own chat id, which the
+    embed keeps in the browser's localStorage: a new browser, a private
+    window or cleared site data is a new person as far as every record here is
+    concerned, and nothing links the old ones to the new.
+
+    So an erasure on a non-LTI installation removes what that one id touched
+    and cannot claim to have removed everything about a human being. The page
+    that offers it has to say so rather than imply completeness.
+
+    Detected from the compose profile, as the observability profile is: the
+    middleware only runs when "lti" is among them.
+    """
+    env = env if env is not None else read_env()
+    return "lti" in (env.get("COMPOSE_PROFILES") or "")
+
+
 def learner_of(session_id: str) -> str:
     """The learner behind one Flowise session id.
 

@@ -125,7 +125,11 @@ COURSE_BOUND = {"dashboard", "slot_view", "slot_optimize", "upload",
 # Deleting a course removes a collection, a bucket, a graph and every
 # conversation held in it. Creating one is already administrators only,
 # and undoing that act cannot be less.
-ADMIN_ONLY = {"accounts_page", "flowise_setup", "delete_course_view"}
+ADMIN_ONLY = {"accounts_page", "flowise_setup", "delete_course_view",
+              # Erasing a person reaches four systems at once and is not
+              # scoped to a course — a maintainer of one course could
+              # otherwise erase someone's records in another.
+              "learners_page"}
 # Logged in, but not tied to one course: a citation lookup and a keyword
 # suggestion act on text the caller typed, not on stored material.
 LOGIN_ONLY = {"upload_lookup", "upload_keywords"}

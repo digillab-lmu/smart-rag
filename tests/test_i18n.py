@@ -1,4 +1,5 @@
 import os
+import pathlib
 import sys
 import tempfile
 from pathlib import Path
@@ -223,6 +224,47 @@ for empty_key in [k for k, v in i18n.MSG_EN.items() if v == ""]:
 check("an unknown key falls back to the key",
       i18n.t("definitely_not_a_key") == "definitely_not_a_key",
       i18n.t("definitely_not_a_key"))
+
+# ─── Every key a template asks for actually exists ───────────────────────────
+# t() falls back to the key itself, deliberately: a missing translation must
+# degrade to something readable rather than raise mid-render. The cost is that
+# a mistyped key is invisible in review and renders as "learners_hedaing" to
+# whoever opens the page. Nothing checked this until a page was added with
+# sixty new keys at once.
+import re  # noqa: E402
+TEMPLATES = pathlib.Path(__file__).resolve().parent.parent / "content-admin" / "templates"
+# A literal key, and separately a key built by concatenation — t('guide_' ~
+# c.key ~ '_title'), whose value is only known at render time. The prefix of
+# one of those is still worth checking: it cannot be matched against a
+# catalogue entry, but if *nothing* in the catalogue starts with it, the
+# concatenation cannot produce a real key either, which is what a renamed
+# family of keys looks like.
+KEY_CALL = re.compile(r"""\bt\(\s*['"]([a-z0-9_]+)['"]\s*([,)])""")
+KEY_BUILT = re.compile(r"""\bt\(\s*['"]([a-z0-9_]+)['"]\s*~""")
+template_keys: dict[str, set[str]] = {}
+built_prefixes: dict[str, set[str]] = {}
+for tpl in sorted(TEMPLATES.glob("*.html")):
+    text = tpl.read_text()
+    for key, _ in KEY_CALL.findall(text):
+        template_keys.setdefault(key, set()).add(tpl.name)
+    for prefix in KEY_BUILT.findall(text):
+        built_prefixes.setdefault(prefix, set()).add(tpl.name)
+
+orphan_prefixes = {p: v for p, v in built_prefixes.items()
+                   if not any(k.startswith(p) for k in i18n.MSG_EN)}
+check("every key built by concatenation has a family in the catalogue",
+      not orphan_prefixes, {k: sorted(v) for k, v in orphan_prefixes.items()})
+check("some concatenated keys were seen at all", bool(built_prefixes),
+      "the pattern for t('prefix' ~ …) matched nothing — has the syntax changed?")
+
+missing_en = {k: v for k, v in template_keys.items() if k not in i18n.MSG_EN}
+check("every key used in a template exists in English", not missing_en,
+      {k: sorted(v) for k, v in sorted(missing_en.items())})
+missing_de = {k: v for k, v in template_keys.items() if k not in i18n.MSG_DE}
+check("every key used in a template exists in German", not missing_de,
+      {k: sorted(v) for k, v in sorted(missing_de.items())})
+check("the templates were actually scanned", len(template_keys) > 100,
+      len(template_keys))
 
 if failures:
     print("FAILURES:")
