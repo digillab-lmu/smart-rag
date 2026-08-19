@@ -110,6 +110,39 @@ dupes="$(awk '
 [[ -z "$dupes" ]]
 check "no key is assigned twice within one catalogue" $? "$dupes"
 
+# ─── The mail dialogue does not accept a mail server that is not there ───────
+# Option 1 says "a mail server already runs on this machine". The detection
+# that could tell ran two lines above and was not consulted, so on a machine
+# with no MTA the option was accepted in silence — and the installation
+# finished believing it could send mail. Reported from a real install.
+out="$(timeout 30 bash -c '
+    source "'"$REPO"'/scripts/lib/messages.sh"
+    source "'"$REPO"'/scripts/lib/common.sh"
+    source "'"$REPO"'/scripts/lib/config-wizard.sh"
+    LANG_CHOICE=en
+    detect_existing_mail_relay() { echo "none:0"; }
+    printf "1\nn\n" | ask_mail_config' 2>&1)"
+rc=$?
+# Two answers and then EOF, which is the case both wrong shapes fail: a
+# recursive call runs out of stack, and an unbounded loop spins because at EOF
+# the menu returns its default and the confirmation returns its own, forever.
+check "the mail dialogue terminates on an exhausted stdin" $(( rc == 124 ? 1 : 0 )) \
+      "it timed out — the decline path recursed, or looped without a bound"
+grep -qi 'No mail server was found' <<<"$out"
+check "choosing the existing-server option with no server warns" $? "$out"
+grep -qi 'nothing is configured' <<<"$out"
+check "and declining ends in no mail rather than in a false setting" $? "$out"
+
+out="$(timeout 30 bash -c '
+    source "'"$REPO"'/scripts/lib/messages.sh"
+    source "'"$REPO"'/scripts/lib/common.sh"
+    source "'"$REPO"'/scripts/lib/config-wizard.sh"
+    LANG_CHOICE=en
+    detect_existing_mail_relay() { echo "postfix:1"; }
+    printf "1\n" | ask_mail_config' 2>&1)"
+grep -qi 'No mail server was found' <<<"$out"
+check "a machine that does have one is not warned" $(( $? == 0 ? 1 : 0 )) "$out"
+
 if (( ${#FAILURES[@]} > 0 )); then
     echo "FAILURES:"; printf '  - %s\n' "${FAILURES[@]}"; exit 1
 fi

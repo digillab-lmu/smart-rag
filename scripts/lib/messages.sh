@@ -489,7 +489,7 @@ declare -A MSG_EN=(
     [ref_credentials_why]="Every generated password is in this file. It stays on the server, readable only by root, and the Secrets entry in sudo smartrag shows it again at any time — so nothing is lost if you close this window. Still worth copying into your password manager: whoever can read this file holds every account in the deployment, so it should not travel into backups or shared drives unencrypted."
     [ref_admin_title]="Day-to-day administration"
     [ref_admin_why]="Run this as root for a menu — you never need to remember individual commands."
-    [ref_admin_items]="It covers: service status, start/stop/restart, log viewing, SSL certificates, the stored passwords, applying updates after a git pull, and re-running the n8n import. There is no backup command yet — see the runbook for what has to be copied."
+    [ref_admin_items]="It covers: service status, start/stop/restart, log viewing, SSL certificates, the stored passwords, applying updates after a git pull, re-running the n8n import, and making a backup — which stops the services for the duration, because a copy taken while the databases are writing is not one that restores."
     [ref_docs_title]="Documentation"
     [ref_docs_why]="docs/RUNBOOK.md for operating procedures, docs/ARCHITECTURE.md for how the parts fit together."
     [verify_title]="Checking whether the three steps worked"
@@ -911,6 +911,9 @@ declare -A MSG_EN=(
     [vfyb_kept]="--keep: the containers and %s are still there. Remove them with:"
     [restore_dry_run_would_replace]="A real run would move the installation now at %s aside and put the archive in its place. Nothing would be deleted, but this machine would be serving the archive's data afterwards, not its own."
     [restore_dry_run_would_rename]="A real run would also rename %s to %s."
+    [cfg_mail_none_detected]="No mail server was found on this machine: nothing identifiable is installed, and nothing is listening on port 25. This option assumes one is there, so choosing it now would produce an installation that believes it can send mail and cannot — noticed the first time somebody waits for a password reset."
+    [cfg_mail_none_detected_anyway]="Use it anyway? (yes only if a mail server is about to be installed, or if it listens somewhere this check cannot see)"
+    [cfg_mail_gave_up]="Asked three times without a workable answer, so nothing is configured: this installation will not send mail. That is a real setting, not a failure — set it up whenever you like with sudo smartrag, Mail service."
 )
 
 
@@ -1392,7 +1395,7 @@ declare -A MSG_DE=(
     [ref_credentials_why]="Alle erzeugten Passwörter stehen in dieser Datei. Sie bleibt auf dem Server liegen, nur für root lesbar, und sudo smartrag → Secrets zeigt sie jederzeit wieder an — es geht also nichts verloren, wenn du dieses Fenster schließt. Trotzdem sinnvoll, sie in den Passwortmanager zu übertragen: Wer diese Datei lesen kann, hat sämtliche Konten der Installation, sie sollte also nicht unverschlüsselt in Backups oder auf geteilten Laufwerken landen."
     [ref_admin_title]="Laufender Betrieb"
     [ref_admin_why]="Als root aufgerufen öffnet sich ein Menü — einzelne Befehle musst du dir nicht merken."
-    [ref_admin_items]="Enthalten sind: Service-Status, Start/Stop/Neustart, Logs ansehen, SSL-Zertifikate, die hinterlegten Passwörter, Updates nach einem git pull einspielen und den n8n-Import erneut ausführen. Ein Backup-Befehl fehlt noch — was zu sichern ist, steht im Runbook."
+    [ref_admin_items]="Enthalten sind: Service-Status, Start/Stop/Neustart, Logs ansehen, SSL-Zertifikate, die hinterlegten Passwörter, Updates nach einem git pull einspielen, den n8n-Import erneut ausführen und eine Sicherung erstellen — die stoppt die Dienste so lange, denn eine Kopie, die während des Schreibens entsteht, lässt sich nicht wiederherstellen."
     [ref_docs_title]="Dokumentation"
     [ref_docs_why]="docs/RUNBOOK.md für den Betrieb, docs/ARCHITECTURE.md für das Zusammenspiel der Komponenten."
     [verify_title]="Prüfung, ob die drei Schritte geklappt haben"
@@ -1812,6 +1815,9 @@ declare -A MSG_DE=(
     [vfyb_kept]="--keep: die Container und %s stehen noch. Entfernen mit:"
     [restore_dry_run_would_replace]="Ein echter Lauf würde die Installation, die jetzt unter %s liegt, beiseitelegen und das Archiv an ihre Stelle setzen. Gelöscht würde nichts, aber diese Maschine bediente danach die Daten des Archivs, nicht ihre eigenen."
     [restore_dry_run_would_rename]="Ein echter Lauf würde außerdem %s in %s umbenennen."
+    [cfg_mail_none_detected]="Auf dieser Maschine wurde kein Mailserver gefunden: es ist nichts Erkennbares installiert, und auf Port 25 lauscht nichts. Diese Option setzt einen voraus — sie jetzt zu wählen ergäbe eine Installation, die glaubt, Mail verschicken zu können, und es nicht kann. Auffallen wird das beim ersten Menschen, der auf ein zurückgesetztes Passwort wartet."
+    [cfg_mail_none_detected_anyway]="Trotzdem verwenden? (ja nur, wenn gleich noch ein Mailserver installiert wird oder er dort lauscht, wo diese Prüfung nicht hinsieht)"
+    [cfg_mail_gave_up]="Dreimal gefragt, ohne brauchbare Antwort — also wird nichts eingerichtet: diese Installation verschickt keine Mail. Das ist eine echte Einstellung, kein Fehlschlag; nachholen lässt es sich jederzeit mit sudo smartrag, E-Mail-Dienst."
 )
 
 

@@ -690,7 +690,24 @@ ask_mail_config() {
     # "configure a relay?", then "install Postfix?", and a no to the second
     # silently meant "then an external server" — after which a bare "SMTP
     # host:" appeared with nothing saying whose host it wanted.
-    local choice
+    # A bounded loop, and both halves of that matter. Not a recursive call:
+    # the first version re-entered ask_mail_config when the operator declined
+    # the warning below, which on an exhausted stdin recursed until the stack
+    # gave out. And bounded, because a plain loop has the same defect in a
+    # different shape — at EOF select_one_index returns its default and
+    # confirm returns its own, so the pair would spin forever agreeing with
+    # each other. After three passes the question stops being asked and the
+    # answer is "no mail", which is the one outcome that is always true and
+    # always fixable later.
+    local choice attempts=0
+    while true; do
+    if (( attempts >= 3 )); then
+        warn "$(t cfg_mail_gave_up)"
+        _reset_mail_config_disabled
+        CFG_INSTALL_POSTFIX="false"
+        return 0
+    fi
+    attempts=$(( attempts + 1 ))
     choice="$(select_one_index cfg_mail_how \
         "$(t cfg_mail_how_existing)" \
         "$(t cfg_mail_how_postfix)" \
@@ -703,6 +720,18 @@ ask_mail_config() {
             # institution's own. We install nothing and point the containers
             # at the Docker gateway, because from inside a container
             # "localhost" is the container.
+            #
+            # But only if something *is* running. The detection above already
+            # knew; it just was not consulted, so on a machine with no MTA at
+            # all this option was accepted in silence and the installation
+            # finished believing it could send mail. It cannot, and the first
+            # sign is a password reset that never arrives.
+            if [[ "$mta" == "none" && "$port_listening" != "1" ]]; then
+                warn "$(t cfg_mail_none_detected)"
+                # Back to the question rather than onwards with a setting the
+                # operator has just been told is wrong.
+                confirm cfg_mail_none_detected_anyway "n" || continue
+            fi
             _reset_mail_config_disabled
             CFG_INSTALL_POSTFIX="false"
             CFG_SMTP_HOST="$SMARTRAG_DOCKER_GATEWAY"
@@ -747,6 +776,8 @@ ask_mail_config() {
             return 0
             ;;
     esac
+    break
+    done
 
     CFG_N8N_EMAIL_MODE="smtp"
 
