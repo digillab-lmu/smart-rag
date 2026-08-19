@@ -249,7 +249,7 @@ question that is still with the data protection officer.
 nothing, with the "nothing" counted and visible — a silent 40% miss rate
 would make every number computed on top of it wrong in the same direction.
 
-## Phase 8 · Moving the installation to another server
+## Phase 8 · Moving the installation to another server (built 2026-08-19, one proof outstanding)
 
 Asked for while phase 4 was being proven: this deployment will move to
 different hardware within a year or so. Also the missing backup story — the
@@ -301,6 +301,22 @@ work.
 project already trusts: chunk counts per course, an object count per bucket,
 one trace through Langfuse, and one agent answering with a citation. A
 restore that starts every container is not a restore that works.
+
+**Where this stands (2026-08-19).** `scripts/backup.sh` and
+`scripts/restore.sh` exist, with the four refusals the shape above asks for —
+Postgres major, halves that were not taken together, a failed checksum, an
+occupied target — each of them before anything is unpacked, each verified by
+mutation in `tests/test_backup_restore.sh`, which runs against a fake
+installation with compose stubbed and needs no Docker.
+
+**Outstanding, and it is the part that matters:** none of this has been run
+against a real installation or restored onto a second machine. The Garage
+question in particular is still open — the reasoning that a single node with
+`replication_factor = 1` and a fixed `rpc_public_addr` carries its layout in
+the copied metadata directory is reasoning, not a measurement, and this file
+said from the start that it had to be established against the real thing.
+Until that restore has happened, this phase is written but not proven, and
+the backups it produces should be treated as untested.
 
 **Out of scope until then:** nothing about this depends on the multi-course
 work, so it can be built before or after phase 5–7. Doing it *before* the

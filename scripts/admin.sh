@@ -834,6 +834,55 @@ action_config() {
     esac
 }
 
+action_backup() {
+    clear
+    header "$(t admin_backup_title)"
+    info "$(t admin_backup_intro)"
+    echo
+
+    local existing=() dest
+    dest="$(dirname "${BASE_DATA_PATH:-/srv/smart-rag-data}")/backups"
+    mapfile -t existing < <(ls -1t "$dest"/smartrag-*.tar.gz 2>/dev/null | head -5)
+    if (( ${#existing[@]} )); then
+        echo "$(t admin_backup_existing "$dest")"
+        local a
+        for a in "${existing[@]}"; do
+            dim "  $(basename "$a")  ($(( $(stat -c%s "$a" 2>/dev/null || echo 0) / 1048576 )) MB)"
+        done
+        echo
+    else
+        dim "$(t admin_backup_none "$dest")"
+        echo
+    fi
+
+    local choice
+    choice="$(select_one_index admin_backup_what         "$(t admin_backup_do)"         "$(t admin_backup_restore)"         "$(t admin_backup_back)")" || return 0
+
+    case "$choice" in
+        1)
+            # Says the outage out loud before it starts one. The stop is what
+            # makes the copy restorable, so it is not optional — but an
+            # operator who learns about it afterwards is right to be annoyed.
+            confirm admin_backup_confirm "y" || return 0
+            bash "$REPO_ROOT/scripts/backup.sh" --lang "$LANG_CHOICE" || true
+            ;;
+        2)
+            # Deliberately not a picker. A restore replaces an installation,
+            # and the archive is named on the command line so that choosing
+            # the wrong one takes a typo rather than an arrow key.
+            echo
+            warn "$(t admin_backup_restore_manual)"
+            echo "    sudo bash $REPO_ROOT/scripts/restore.sh ARCHIVE.tar.gz --dry-run"
+            echo "    sudo bash $REPO_ROOT/scripts/restore.sh ARCHIVE.tar.gz"
+            echo
+            dim "$(t admin_backup_restore_hint)"
+            ;;
+        *) return 0 ;;
+    esac
+    echo
+    read -rp "$(t admin_press_enter)" _ || true
+}
+
 action_handover() {
     clear
     header "$(t admin_menu_handover)"
@@ -907,11 +956,12 @@ while true; do
     # Box height, width, visible list rows. The list must be tall enough for
     # every entry — a scrolling menu hides the destructive one below the fold
     # — and the box needs roughly seven rows more than the list for its
-    # title, prompt, buttons and borders. 22 is the ceiling here: it still
-    # fits an 80x24 terminal, so a sixteenth entry needs the list trimmed or
-    # split, not the box grown.
+    # title, prompt, buttons and borders. 16 entries therefore need a box of
+    # 23, which still fits an 80x24 terminal with a row to spare. That is the
+    # ceiling: a seventeenth entry needs the list split into groups, not the
+    # box grown, because 24 leaves whiptail nothing to draw its border on.
     if ! choice=$(whiptail --title "$(t admin_title)" --menu "$(t admin_menu_prompt)" \
-        22 78 15 \
+        23 78 16 \
         "1"  "$(t admin_menu_status)" \
         "2"  "$(t admin_menu_logs)" \
         "3"  "$(t admin_menu_update)" \
@@ -923,10 +973,11 @@ while true; do
         "9"  "$(t admin_menu_secrets)" \
         "10" "$(t admin_menu_config)" \
         "11" "$(t admin_menu_migrate)" \
-        "12" "$(t admin_menu_reset_ca)" \
-        "13" "$(t admin_menu_handover)" \
-        "14" "$(t admin_menu_uninstall)" \
-        "15" "$(t admin_menu_exit)" \
+        "12" "$(t admin_menu_backup)" \
+        "13" "$(t admin_menu_reset_ca)" \
+        "14" "$(t admin_menu_handover)" \
+        "15" "$(t admin_menu_uninstall)" \
+        "16" "$(t admin_menu_exit)" \
         3>&1 1>&2 2>&3); then
         clear
         break
@@ -944,9 +995,10 @@ while true; do
         9)  action_secrets ;;
         10) action_config ;;
         11) action_migrate ;;
-        12) action_reset_content_admin ;;
-        13) action_handover ;;
-        14) action_uninstall ;;
-        15) clear; break ;;
+        12) action_backup ;;
+        13) action_reset_content_admin ;;
+        14) action_handover ;;
+        15) action_uninstall ;;
+        16) clear; break ;;
     esac
 done
