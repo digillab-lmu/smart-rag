@@ -23,11 +23,19 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
   which is exactly the confusion that makes an erasure request unanswerable.
   It was also broken: it referenced a node by a name that had been changed.
 
-  **On an existing installation the workflow stays in n8n until it is deleted
-  there** — removing it from this repository does not remove it from a running
-  system. Open n8n, find *Langfuse — patch userId on Flowise traces*, and
-  delete it; the watchdog no longer expects it, so nothing will report it
-  missing.
+  **On an existing installation the workflow stays in n8n until it is removed
+  there** — taking it out of this repository does not take it out of a running
+  system, where the deployer had activated it. Stop it first, which is the
+  part that matters, since it ran every thirty minutes:
+
+      docker exec smartrag-n8n n8n update:workflow \
+          --id=smartrag-langfuse-userid-patch --active=false
+
+  Then delete it in the n8n interface — *Workflows* → *Langfuse — patch userId
+  on Flowise traces* → ⋯ → *Delete*. n8n's CLI has `import:workflow` and
+  `update:workflow` but no `delete:workflow`, so there is no command for the
+  second step. The watchdog no longer expects the workflow, so nothing will
+  report it missing in the meantime.
 
 ## Unreleased
 

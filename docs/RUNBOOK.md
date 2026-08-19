@@ -620,6 +620,34 @@ way — only the notifications are affected.
 
 ---
 
+## A workflow was removed from the repository but is still in n8n
+
+**Symptom.** A `git pull` drops a workflow, and n8n goes on running it —
+possibly on a schedule, possibly failing every time.
+
+**Cause.** The deployer imports and activates workflows; nothing removes one.
+n8n holds its own copy in its database, and a file disappearing from the
+repository says nothing to it.
+
+**Fix.** Deactivating is the urgent half, and the only half with a command:
+
+```bash
+docker exec smartrag-n8n n8n update:workflow --id=<workflow-id> --active=false
+```
+
+Then delete it in the interface — *Workflows* → the workflow → ⋯ → *Delete*.
+n8n's CLI (1.123.67) has `import:workflow`, `update:workflow`, `list:workflow`
+and `export:workflow`, but no `delete:workflow`; `n8n delete:workflow` answers
+`Command "delete:workflow" not found`.
+
+To see what is actually there:
+
+```bash
+docker exec smartrag-n8n n8n list:workflow
+```
+
+---
+
 ## Backing up, or moving to another machine
 
 There is **no backup command yet** (it is planned; see
