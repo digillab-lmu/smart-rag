@@ -25,6 +25,7 @@ Every step is idempotent, because "resume" means running the whole thing
 again and having the finished parts say so.
 """
 
+from datetime import date
 import logging
 import os
 import re
@@ -68,20 +69,100 @@ def all_courses() -> list[dict]:
     with db.connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, name, collection, bucket, created_at, provisioned_at "
+                "SELECT id, name, collection, bucket, created_at, provisioned_at, "
+                "       retention_until, retention_note, retention_applied_at "
                 "FROM courses ORDER BY name"
             )
             rows = cur.fetchall()
         conn.commit()
+    today = date.today()
     return [
         {"id": r[0], "name": r[1], "collection": r[2], "bucket": r[3],
-         "created_at": r[4], "provisioned_at": r[5], "ready": r[5] is not None}
+         "created_at": r[4], "provisioned_at": r[5], "ready": r[5] is not None,
+         "retention_until": r[6], "retention_note": r[7],
+         "retention_applied_at": r[8],
+         # Three states, not two. A course with no date has not been decided
+         # about, which is a different thing from one whose date is still in
+         # the future — and the dashboard has to be able to ask about the
+         # first without nagging about the second.
+         "retention_set": r[6] is not None,
+         "retention_due": r[6] is not None and r[6] <= today,
+         "retention_days_left": (r[6] - today).days if r[6] else None}
         for r in rows
     ]
 
 
 def get_course(course_id: str) -> dict | None:
     return next((c for c in all_courses() if c["id"] == course_id), None)
+
+
+# ─── How long the data may be kept ───────────────────────────────────────────
+
+def set_retention(course_id: str, until: date | None, note: str = "") -> None:
+    """Record — or clear — the date this course's data may be kept until.
+
+    Clearing is a real operation, not an oversight: a retention period entered
+    against the wrong course has to be removable, and the resulting NULL means
+    "nobody has said yet", which is what the dashboard then asks about.
+
+    Setting a date also clears `retention_applied_at`. A course whose expiry
+    was dealt with in March and which is then given a new date for September
+    has not been dealt with for September, and leaving the old timestamp there
+    would silence the warning for a period nobody has acted on.
+    """
+    if get_course(course_id) is None:
+        raise CourseError(f"No course '{course_id}' is recorded.")
+    if until is not None and until <= date(2020, 1, 1):
+        # The database refuses this too. Refusing it here as well means the
+        # operator gets a sentence instead of a constraint violation.
+        raise CourseError(
+            "A retention date before 2021 is a typing slip rather than a "
+            "retention period."
+        )
+    with db.connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE courses SET retention_until = %s, retention_note = %s, "
+                "       retention_applied_at = NULL WHERE id = %s",
+                (until, (note or "").strip() or None, course_id))
+        conn.commit()
+    logger.info("Course %s: retention set to %s", course_id, until or "none")
+
+
+def mark_retention_applied(course_id: str) -> None:
+    """Note that an expiry has been acted on.
+
+    Without this a course whose learner data was erased last week keeps
+    raising the same warning, and a warning that cannot be satisfied is one
+    people learn to scroll past.
+    """
+    with db.connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE courses SET retention_applied_at = now() WHERE id = %s",
+                (course_id,))
+        conn.commit()
+
+
+def retention_overview(warn_within_days: int = 30) -> dict:
+    """The three answers a dashboard needs, in one pass over the courses.
+
+    `due` is past its date and not yet acted on. `soon` is inside the warning
+    window. `undecided` has no date at all — listed separately because it is
+    not a problem with the data, it is a question nobody has answered, and
+    mixing the two produces a red banner that never goes away.
+    """
+    courses = all_courses()
+    return {
+        "due": [c for c in courses
+                if c["retention_due"] and c["retention_applied_at"] is None],
+        "soon": [c for c in courses
+                 if c["retention_set"] and not c["retention_due"]
+                 and c["retention_days_left"] <= warn_within_days],
+        "undecided": [c for c in courses if not c["retention_set"]],
+        "handled": [c for c in courses
+                    if c["retention_due"] and c["retention_applied_at"] is not None],
+    }
 
 
 # ─── Creating ────────────────────────────────────────────────────────────────
