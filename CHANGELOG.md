@@ -11,6 +11,26 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ## Unreleased
 
+### Removed
+
+- `langfuse-userid-patch` — the n8n workflow that back-filled a `userId` onto
+  Langfuse traces, together with the `smartrag-langfuse` credential that
+  existed only for it. Both situations it could meet make it wrong: launched
+  through the LTI middleware, Flowise already sets the trace's userId, so
+  there is nothing to patch; launched without it, the only id available is
+  Flowise's own chat id, which the embed keeps in a browser's local storage —
+  writing that into a field called `userId` turns a browser into a person,
+  which is exactly the confusion that makes an erasure request unanswerable.
+  It was also broken: it referenced a node by a name that had been changed.
+
+  **On an existing installation the workflow stays in n8n until it is deleted
+  there** — removing it from this repository does not remove it from a running
+  system. Open n8n, find *Langfuse — patch userId on Flowise traces*, and
+  delete it; the watchdog no longer expects it, so nothing will report it
+  missing.
+
+## Unreleased
+
 ### Added
 
 - **A course can be deleted.** Two pages: the first counts what the course

@@ -44,7 +44,6 @@ def check(name, ok, detail=""):
 FLOWS = {
     "chathistory-sync.json": "smartrag-chathistory-sync",
     "usermemory-summary.json": "smartrag-usermemory-summary",
-    "langfuse-userid-patch.json": "smartrag-langfuse-userid-patch",
     "error-handler.json": "smartrag-error-handler",
     "watchdog.json": "smartrag-watchdog",
 }
@@ -120,34 +119,24 @@ if "usermemory-summary.json" in loaded:
         check("Anthropic's shape is no longer read",
               "content?.[0]?.text" not in code, "")
 
-# ─── The Langfuse patcher ───────────────────────────────────────────────────
-if "langfuse-userid-patch.json" in loaded:
-    d = loaded["langfuse-userid-patch.json"]
-    whole = json.dumps(d)
-    # Langfuse's container port follows LANGFUSE_PORT — unlike the Content
-    # Admin's, which is fixed by its image. Hard-coding it is the same class
-    # of bug as the ingest callback that went to the host's port.
-    check("Langfuse's port comes from the environment",
-          "$env.LANGFUSE_PORT" in whole, "")
-    check("…and is not hard-coded",
-          "smartrag-langfuse-web:3001" not in whole, "")
-
-    for n in d["nodes"]:
-        if n["type"].endswith("postgres"):
-            q = n["parameters"].get("query", "")
-            # The value comes from Langfuse's own data. Pasting it into the
-            # query string is how a stored value becomes a statement.
-            check(f"{n['name']} parameterises its query",
-                  "{{" not in q, q[:120])
-            check(f"{n['name']} passes the value separately",
-                  "queryReplacement" in json.dumps(n["parameters"]),
-                  n["parameters"].get("options"))
-
-    # It only ships where Langfuse runs: an always-failing schedule every 30
-    # minutes teaches people to ignore the execution list.
-    check("the patcher is tied to the observability profile",
-          "LANGFUSE_ENABLED" in DEPLOYER
-          and "observability" in DEPLOYER, "")
+# ─── The Langfuse patcher is gone, and must stay gone ───────────────────────
+# It existed to write a userId onto traces that arrived without one. Both of
+# the cases it could meet make it wrong now: launched through the LTI
+# middleware, Flowise already sets the userId, so there is nothing to patch;
+# launched without it, the only id available is Flowise's own chat id, which
+# the embed keeps in a browser's local storage — writing that into a field
+# called userId turns a browser into a person, which is precisely the
+# confusion that makes an erasure request unanswerable.
+check("the Langfuse userId patcher is not back",
+      not (REPO / "n8n/workflows/langfuse-userid-patch.json").exists(), "")
+for name, text in (("the deployer", DEPLOYER),
+                   ("the watchdog", (REPO / "n8n/workflows/watchdog.json").read_text())):
+    check(f"{name} no longer references it",
+          "langfuse-userid-patch" not in text, "")
+# The n8n credential existed for that workflow alone. Shipping it now would
+# leave the Langfuse secret key sitting in n8n with nothing using it.
+check("its Langfuse credential is not created either",
+      "smartrag-langfuse-credential" not in DEPLOYER, "")
 
 # ─── Rules that hold for every workflow, not just these ─────────────────────
 ALL = sorted(Path(REPO / "n8n").glob("workflows*/*.json"))
@@ -548,11 +537,14 @@ check("the README no longer claims bootstrap imports these",
       "imported automatically by `scripts/bootstrap.sh`" not in readme, "")
 check("the README describes the summariser's actual call",
       "$env.LLM_MODEL_FAST" in readme, "")
-# The patcher writes a learner's name into Langfuse. Whatever is decided about
-# that, the file that describes it must say so — a reader deciding whether to
-# enable observability cannot see it from the workflow name.
-check("the README says the patcher handles personal data",
-      "personal data" in readme.lower(), "")
+# Both remaining workflows copy what learners wrote, keyed to their
+# pseudonym. Whatever is decided about that, the file describing them has to
+# say so — it cannot be seen from a workflow called "chathistory-sync", and
+# whoever reads this file is deciding what to run. The check outlived the
+# workflow it was written for: it originally guarded the Langfuse patcher's
+# row, and the concern was never that workflow's alone.
+check("the README says which workflows handle personal data",
+      readme.lower().count("personal data") >= 2, "")
 
 if failures:
     print("FAILURES:")

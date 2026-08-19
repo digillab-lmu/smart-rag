@@ -48,8 +48,7 @@ Flowise — up to 10 AgentFlows (1 per topic)
 
 n8n — background pipelines
     ├──► ChatHistory sync     (Postgres → Weaviate, every 5 min)
-    ├──► UserMemory summary   (Weaviate + LLM)
-    └──► Langfuse userId patch (Postgres → Langfuse)
+    └──► UserMemory summary   (Weaviate + LLM)
 
 PostgreSQL — Flowise + n8n + Langfuse state
 Garage     — S3 object storage: uploaded documents + Langfuse blobs
