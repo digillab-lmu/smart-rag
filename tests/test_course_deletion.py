@@ -285,6 +285,21 @@ check("nothing about the course changed", courses_service.get_course(CID) == bef
       "")
 
 
+# ─── 8. A failed step must say why, on the page ──────────────────────────────
+# The report rendered "detail or error", so a step that failed with a count
+# showed the count and swallowed the reason: "0 deleted, 0 already gone" with
+# no word about what stopped it — on the one row the operator has to read.
+report = (Path(flask_app.__file__).parent / "templates" / "course_delete.html").read_text()
+check("the report does not hide the error behind the detail",
+      "s.detail or s.error" not in report,
+      "a failed step would show its count and not its reason")
+check("…it renders both", "s.error" in report and "s.detail" in report, "")
+
+# And it is written to the log as well, because the page is gone as soon as
+# somebody navigates away from it.
+src = Path(courses_service.__file__).read_text()
+check("a failed step is logged", "logger.error(\"Deleting %s" in src, "")
+
 if failures:
     print("FAILURES:")
     for f in failures:
