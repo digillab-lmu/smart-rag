@@ -41,6 +41,15 @@ def check(name, ok, detail=""):
         failures.append(f"{name}: {detail}")
 
 
+def item_for(inv, cls):
+    """The shared-class line for one Weaviate class. The label is a key now,
+    so the class name is in the arguments rather than in the text."""
+    for item in inv["items"]:
+        if item["label"] == "inv_shared_class" and cls in item["args"]:
+            return item
+    return None
+
+
 def line(inv, system, fragment):
     """The first inventory line of a system whose label contains fragment."""
     for item in inv["items"]:
@@ -119,30 +128,30 @@ inv = courses_service.inventory(CID, weaviate=w, garage=g, neo4j=n, flowise=f)
 
 check("the course itself is returned", inv["course"]["id"] == CID, inv["course"])
 check("document chunks are counted",
-      line(inv, "weaviate", "document chunks")["count"] == 113, inv["items"])
+      line(inv, "weaviate", "inv_chunks")["count"] == 113, inv["items"])
 check("conversations are counted",
-      line(inv, "weaviate", "ChatHistory")["count"] == 189, inv["items"])
+      item_for(inv, "ChatHistory")["count"] == 189, inv["items"])
 check("learning records are counted",
-      line(inv, "weaviate", "UserMemory")["count"] == 15, inv["items"])
+      item_for(inv, "UserMemory")["count"] == 15, inv["items"])
 check("a class with nothing in it still appears",
-      line(inv, "weaviate", "TestResults")["count"] == 0, inv["items"])
-check("stored files are counted", line(inv, "garage", "objects")["count"] == 12,
+      item_for(inv, "TestResults")["count"] == 0, inv["items"])
+check("stored files are counted", line(inv, "garage", "inv_objects")["count"] == 12,
       inv["items"])
-check("concepts are counted", line(inv, "neo4j", "concepts")["count"] == 51,
+check("concepts are counted", line(inv, "neo4j", "inv_concepts")["count"] == 51,
       inv["items"])
 check("prerequisite links are counted",
-      line(inv, "neo4j", "prerequisite")["count"] == 40, inv["items"])
+      line(inv, "neo4j", "inv_links")["count"] == 40, inv["items"])
 check("configured slots are counted",
-      line(inv, "postgres", "agent slots configured")["count"] == 3, inv["items"])
+      line(inv, "postgres", "inv_slots_configured")["count"] == 3, inv["items"])
 check("imported agents are counted separately",
-      line(inv, "postgres", "agents imported")["count"] == 2, inv["items"])
+      line(inv, "postgres", "inv_slots_imported")["count"] == 2, inv["items"])
 
 # Only Flowise knows whether a chatflow is still there, and an id that is
 # already gone is not a failure at deletion time.
 check("only the chatflows that still exist are listed for deletion",
-      line(inv, "flowise", "chatflows to delete")["count"] == 1, inv["items"])
+      line(inv, "flowise", "inv_chatflows")["count"] == 1, inv["items"])
 check("…and the ones already gone are named as such",
-      line(inv, "flowise", "already gone")["count"] == 1, inv["items"])
+      line(inv, "flowise", "inv_chatflows_gone")["count"] == 1, inv["items"])
 
 # ─── 2. Unknown is not zero ──────────────────────────────────────────────────
 # The whole point. Each system is asked separately, so one being down leaves
@@ -150,14 +159,14 @@ check("…and the ones already gone are named as such",
 inv = courses_service.inventory(CID, weaviate=Weaviate(fail=True),
                                 garage=Garage(fail=True), neo4j=Neo4j(fail=True),
                                 flowise=Flowise([]))
-for system, fragment in (("weaviate", "document chunks"), ("weaviate", "ChatHistory"),
-                         ("garage", "object storage"), ("neo4j", "concept graph")):
+for system, fragment in (("weaviate", "inv_chunks"), ("weaviate", "inv_shared_class"),
+                         ("garage", "inv_object_storage"), ("neo4j", "inv_graph")):
     item = line(inv, system, fragment)
     check(f"{system}/{fragment} reads as unknown, not as none",
           item is not None and item["count"] is None, item)
     check(f"…and says why", item and item["error"], item)
 check("one system being down does not empty the rest",
-      line(inv, "postgres", "agent slots configured")["count"] == 3, inv["items"])
+      line(inv, "postgres", "inv_slots_configured")["count"] == 3, inv["items"])
 
 # ─── 3. Absent is zero, and says so ──────────────────────────────────────────
 # A bucket that was never created and a collection that does not exist are
@@ -165,7 +174,7 @@ check("one system being down does not empty the rest",
 # would make a clean course look broken.
 inv = courses_service.inventory(CID, weaviate=Weaviate(), garage=Garage(None),
                                 neo4j=Neo4j(), flowise=Flowise([]))
-absent = line(inv, "garage", "bucket")
+absent = line(inv, "garage", "inv_bucket")
 check("a bucket that does not exist counts zero", absent and absent["count"] == 0,
       absent)
 check("…without an error", absent and not absent["error"], absent)
@@ -175,7 +184,7 @@ check("…without an error", absent and not absent["error"], absent)
 # from a course to its traces runs through Flowise's chat records, which
 # Flowise deletes together with the chatflow — so after a deletion the mapping
 # is gone too. A zero here would read as "there are none".
-lf = line(inv, "langfuse", "traces")
+lf = line(inv, "langfuse", "inv_traces")
 check("Langfuse traces are reported as not attributable",
       lf is not None and lf["count"] is None and lf["error"], lf)
 # Two different things both leave count at None, and they mean opposite
@@ -210,11 +219,42 @@ solo = accounts.create_account("solo", "x" * 12, "maintainer")
 accounts.assign(solo["id"], CID)
 inv = courses_service.inventory(CID, weaviate=Weaviate(), garage=Garage(BUCKET),
                                 neo4j=Neo4j(), flowise=Flowise([]))
-stranded = line(inv, "postgres", "left with no course")
+stranded = line(inv, "postgres", "inv_maintainers_stranded")
 check("a maintainer who would be left with no course is reported",
       stranded and stranded["count"] == 1, inv["items"])
 check("…and the report says their account is not touched",
-      stranded and "separate decision" in stranded["note"], stranded)
+      stranded and stranded["note"] == "inv_maintainers_stranded_note", stranded)
+
+# ─── 7. Every line exists in both languages ──────────────────────────────────
+# This table is built in Python, not in a template, which is how it came to be
+# the one page in the application that showed English text to a German
+# operator: "agent slots configured", "shared with other courses — removed by
+# filter". Labels and notes are i18n keys now, and this is what keeps them so.
+import i18n  # noqa: E402
+
+inv = courses_service.inventory(CID, weaviate=Weaviate(), garage=Garage(BUCKET),
+                                neo4j=Neo4j(), flowise=Flowise(["cf-live"]))
+failing = courses_service.inventory(CID, weaviate=Weaviate(fail=True),
+                                    garage=Garage(fail=True), neo4j=Neo4j(fail=True),
+                                    flowise=Flowise([]))
+for source in (inv, failing):
+    for item in source["items"]:
+        for field in ("label", "note"):
+            key = item[field]
+            if not key:
+                continue
+            check(f"{key} is a key, not a sentence",
+                  " " not in key and key.islower(),
+                  f"{field} of {item['system']} reads as prose")
+            check(f"{key} exists in English", key in i18n.MSG_EN, "")
+            check(f"{key} exists in German", key in i18n.MSG_DE, "")
+        # The technical error of a system that did not answer is its own
+        # message and stays untranslated — but the explanation of a number
+        # that cannot exist is text this page wrote, so it is a key.
+        if item["unknowable"] and item["error"]:
+            check("the explanation of an uncountable line is translated",
+                  item["error"] in i18n.MSG_DE, item["error"])
+
 
 if failures:
     print("FAILURES:")
@@ -231,6 +271,9 @@ print(
     "zero, and does not stop the other lines; a bucket or collection that was "
     "never created reads as zero without an error; Langfuse is named as not "
     "attributable to a course rather than counted as none; the inventory only "
-    "reads; and a maintainer who would be left with no course is reported "
-    "while their account is left alone."
+    "reads; a maintainer who would be left with no course is reported while "
+    "their account is left alone; and every label and note is an i18n key that "
+    "exists in both languages — this table is built in Python rather than in a "
+    "template, which is how it came to be the one page that answered a German "
+    "operator in English."
 )
