@@ -23,6 +23,7 @@ transaction with an advisory lock held, so two containers starting at the
 same moment cannot both apply it.
 """
 
+import atexit
 import logging
 import os
 import re
@@ -89,6 +90,14 @@ def pool() -> ConnectionPool:
             open=True,
             kwargs={"autocommit": False},
         )
+        # Closed at interpreter exit. Without this, anything that opens the
+        # pool and simply ends — a one-off `python3 -c` against the running
+        # container, the CLI below, a test — leaves psycopg printing
+        # "couldn't stop thread 'pool-1-worker-0' within 5.0 seconds" after
+        # its output. Nothing is wrong when that appears, which is the
+        # problem: it reads like a failure at the end of an operation that
+        # succeeded.
+        atexit.register(close_pool)
     return _pool
 
 
