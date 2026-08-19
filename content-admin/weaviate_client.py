@@ -271,7 +271,103 @@ class WeaviateClient:
             return 0
         return int(((agg[0] or {}).get("meta") or {}).get("count") or 0)
 
+    def _learner_where(self, user_id: str, course_id: str | None) -> dict:
+        """The filter for one learner, optionally inside one course.
+
+        `user_id` is the learner's pseudonymous id — the part of Flowise's
+        session id before the first "|", which is how every agent derives it
+        (`$flow.sessionId?.split('|')[0]`) and how chathistory-sync stores it.
+
+        A course narrows an erasure to one course's records, which is what a
+        retention period expiring does. Without one it is everything the
+        learner has anywhere, which is what an erasure request is.
+        """
+        if not user_id:
+            raise WeaviateError("Refusing to match without a learner id.")
+        learner = {"path": ["user_id"], "operator": "Equal", "valueText": user_id}
+        if not course_id:
+            return learner
+        return {"operator": "And", "operands": [
+            learner,
+            {"path": ["course_id"], "operator": "Equal", "valueText": course_id},
+        ]}
+
+    @staticmethod
+    def _graphql_equal(path: str, value: str) -> str:
+        """One `path == value` clause, as GraphQL rather than JSON.
+
+        A GraphQL where-clause looks like JSON and is not: the keys are bare
+        identifiers and the operator is an enum literal, not a string. The
+        first version of this built the JSON and rewrote it with two regular
+        expressions, which worked and was a trap — the escaping of a value
+        then decides whether a key inside it is mistaken for a key of the
+        clause. Only the value is JSON here, which is exactly what json.dumps
+        is for.
+        """
+        return f'{{ path: ["{path}"], operator: Equal, valueText: {json.dumps(value)} }}'
+
+    def _learner_graphql_where(self, user_id: str, course_id: str | None) -> str:
+        if not user_id:
+            raise WeaviateError("Refusing to match without a learner id.")
+        learner = self._graphql_equal("user_id", user_id)
+        if not course_id:
+            return learner
+        return ("{ operator: And, operands: ["
+                + learner + ", " + self._graphql_equal("course_id", course_id) + "] }")
+
+    def count_by_learner(self, class_name: str, user_id: str,
+                         course_id: str | None = None) -> int:
+        """How many objects of a shared class belong to one learner.
+
+        Zero for a class that does not exist, as count_by_course does: an
+        installation that never used the knowledge-test agent has no
+        TestResults, and that is not an error to report to somebody asking
+        what is held about a person.
+        """
+        where = self._learner_graphql_where(user_id, course_id)
+        query = f"""
+        {{
+          Aggregate {{
+            {class_name}(where: {where}) {{ meta {{ count }} }}
+          }}
+        }}
+        """
+        try:
+            data = self._graphql(query)
+        except WeaviateError:
+            if not self.collection_exists(class_name):
+                return 0
+            raise
+        agg = (((data or {}).get("data") or {}).get("Aggregate") or {}).get(class_name) or []
+        if not agg:
+            return 0
+        return int(((agg[0] or {}).get("meta") or {}).get("count") or 0)
+
     # ─── deletion ───────────────────────────────────────────────────────────
+    def delete_by_learner(self, class_name: str, user_id: str,
+                          course_id: str | None = None) -> int:
+        """Every object of a shared class belonging to one learner.
+
+        The learner id is required and checked. An empty one would build a
+        filter matching every learner, and a batch delete does not ask twice
+        — the same reason delete_by_course refuses an empty course.
+        """
+        if not self.collection_exists(class_name):
+            return 0
+        payload = {
+            "match": {"class": class_name,
+                      "where": self._learner_where(user_id, course_id)},
+            "output": "minimal",
+        }
+        result = self._request("DELETE", "/v1/batch/objects", json=payload)
+        results = (result or {}).get("results") or {}
+        failed = int(results.get("failed") or 0)
+        if failed:
+            raise WeaviateError(
+                f"Weaviate reported {failed} failed deletion(s) in {class_name}."
+            )
+        return int(results.get("successful") or 0)
+
     def delete_by_course(self, class_name: str, course_id: str) -> int:
         """Every object of a shared class belonging to one course.
 
