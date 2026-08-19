@@ -18,7 +18,11 @@
     <tr>
       <td><code>{{ s.system }}</code></td>
       <td>{% if s.ok %}{{ s.action }}{% else %}<strong>{{ s.action }}</strong>{% endif %}</td>
-      <td class="note">{{ s.detail or s.error }}</td>
+      {# Both, when a step failed. Showing "detail or error" hid the reason
+         behind a count: "0 deleted, 0 already gone" is what the step managed,
+         and the sentence saying why it managed nothing was dropped — on the
+         one row the operator has to read. #}
+      <td class="note">{{ s.detail }}{% if s.error %}{% if s.detail %}<br>{% endif %}<strong>{{ s.error }}</strong>{% endif %}</td>
     </tr>
     {% endfor %}
   </table>

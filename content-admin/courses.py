@@ -609,6 +609,10 @@ def delete_course(course_id: str,
 
     # ── 8. The record, last, and only if the rest worked ────────────────────
     if any(not s["ok"] for s in steps):
+        for failed in (s for s in steps if not s["ok"]):
+            logger.error("Deleting %s — %s/%s failed: %s", course_id,
+                         failed["system"], failed["action"],
+                         failed["error"] or "no reason given")
         steps.append(DeletionStep(
             "postgres", "kept the course record", False,
             error="something above did not work, so the course stays in the "
