@@ -909,6 +909,8 @@ declare -A MSG_EN=(
     [vfyb_verdict_caveat]="It opens on this machine, which is the hard part but not the whole of a move: a different host also means a different address, and that is a rename — see restore.sh --rename."
     [vfyb_verdict_bad]="At least one system could not read its own data out of this archive. Do not rely on this backup until that is understood."
     [vfyb_kept]="--keep: the containers and %s are still there. Remove them with:"
+    [restore_dry_run_would_replace]="A real run would move the installation now at %s aside and put the archive in its place. Nothing would be deleted, but this machine would be serving the archive's data afterwards, not its own."
+    [restore_dry_run_would_rename]="A real run would also rename %s to %s."
 )
 
 
@@ -1808,6 +1810,8 @@ declare -A MSG_DE=(
     [vfyb_verdict_caveat]="Es öffnet sich auf dieser Maschine — das ist der schwierige Teil, aber nicht der ganze Umzug: ein anderer Host bedeutet auch eine andere Adresse, und das ist eine Umbenennung, siehe restore.sh --rename."
     [vfyb_verdict_bad]="Mindestens ein System konnte seine eigenen Daten aus diesem Archiv nicht lesen. Verlass dich auf diese Sicherung nicht, solange das nicht verstanden ist."
     [vfyb_kept]="--keep: die Container und %s stehen noch. Entfernen mit:"
+    [restore_dry_run_would_replace]="Ein echter Lauf würde die Installation, die jetzt unter %s liegt, beiseitelegen und das Archiv an ihre Stelle setzen. Gelöscht würde nichts, aber diese Maschine bediente danach die Daten des Archivs, nicht ihre eigenen."
+    [restore_dry_run_would_rename]="Ein echter Lauf würde außerdem %s in %s umbenennen."
 )
 
 
@@ -1828,8 +1832,18 @@ t() {
     else
         fmt="MISSING:$key"
     fi
+    # A double hyphen before the format, because a message may legitimately
+    # begin with one and printf would then read it as its own option. Found on
+    # a real run: the restore's "--dry-run: every check runs…" line printed
+    # "printf: --: invalid option" and then a blank warning, which is the worst
+    # shape a bug can take — the operator sees an empty warning in the middle
+    # of a restore and cannot tell what was not said.
+    #
+    # No backticks anywhere in this file, comments included; the check that
+    # enforces that reads the whole file, and narrowing it to accommodate a
+    # comment would be the wrong trade.
     # shellcheck disable=SC2059
-    printf "$fmt" "$@"
+    printf -- "$fmt" "$@"
 }
 
 # auto-detect language from $LANG env var
