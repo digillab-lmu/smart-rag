@@ -650,9 +650,46 @@ docker exec smartrag-n8n n8n list:workflow
 
 ## Backing up, or moving to another machine
 
-There is **no backup command yet** (it is planned; see
-[the plan](plan-multicourse.md)). Until there is, this is what has to be
-copied, and it is short:
+`sudo smartrag` → *Backup*, or directly:
+
+```bash
+sudo bash scripts/backup.sh --keep 7
+```
+
+The services stop for the duration. That is not an oversight to work around:
+Postgres and ClickHouse write continuously, and a tar of a running data
+directory is a snapshot of no consistent moment. `--running` skips the stop
+and marks the archive as torn, which the restore then says out loud.
+
+Restoring — on this machine or another — starts with a dry run, always:
+
+```bash
+sudo bash scripts/restore.sh /path/to/smartrag-20260819T101500Z.tar.gz --dry-run
+```
+
+It refuses, before unpacking anything, an archive from a different Postgres
+major version, one whose `.env` and data were not taken together, one that
+fails its checksum, and a target that already holds data. `--force` moves an
+existing installation aside rather than deleting it. If the new machine
+answers at a different address, `--rename new.example.edu` rewrites `DOMAIN`
+and states what it does not reach: the TLS certificates, the LTI registration
+in the LMS, and any chat link already given out.
+
+**A restore that starts every container is not a restore that works.** Check
+chunk counts per course and object counts per bucket on the Courses page, then
+ask one agent a question and see that it answers with a citation.
+
+**Garage, and the one thing not yet settled on real hardware.** Garage's
+layout carries a node id created on the machine it was laid out on. This
+installation runs a single node with `replication_factor = 1` and a fixed
+`rpc_public_addr`, so a copied metadata directory should bring the same node
+id and the same layout with it — *should*, because it has not yet been proved
+on a second machine, and that proof is the remaining piece of this. If after a
+restore the buckets are missing while their objects are on disk, the layout
+did not travel: lay out a fresh cluster and copy the objects back at S3 level,
+which is slower and known to work.
+
+### What an archive contains, if you would rather do it by hand
 
 ```bash
 sudo bash /srv/smart-rag/scripts/admin.sh   # → Stop, so the copy is not torn

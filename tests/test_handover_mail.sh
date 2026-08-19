@@ -61,8 +61,19 @@ done
 # what scrolls off is the end — which is where the destructive entries are.
 menu="$(sed -n '/whiptail --title "$(t admin_title)" --menu "$(t admin_menu_prompt)"/,/3>&1/p' "$REPO/scripts/admin.sh")"
 mapfile -t menu_nums < <(grep -oE '^\s+"[0-9]+"' <<<"$menu" | tr -d ' "')
-mapfile -t case_nums < <(sed -n '/case "\$choice" in/,/^    esac/p' "$REPO/scripts/admin.sh" \
-                         | grep -oE '^\s+[0-9]+\)' | tr -d ' )')
+# The dispatch is the first `case "$choice"` *after* the menu, not the first
+# one in the file — an action that offers its own sub-choice uses the same
+# variable name, and reading that one instead reported the menu as broken
+# while it was fine.
+# Anchored on admin_menu_prompt, which appears exactly once. Anchoring on
+# "whiptail --title" matched an earlier menu inside an action, and the block
+# read from there was that action's own choices.
+mapfile -t case_nums < <(awk '
+    /admin_menu_prompt/ { seen_menu = 1 }
+    seen_menu && /case "\$choice" in/ { in_case = 1; next }
+    in_case && /^    esac/ { exit }
+    in_case
+' "$REPO/scripts/admin.sh" | grep -oE '^\s+[0-9]+\)' | tr -d ' )')
 (( ${#menu_nums[@]} > 0 ))
 check "the admin menu was found" $? ""
 [[ "$(printf '%s\n' "${menu_nums[@]}")" == "$(printf '%s\n' "${case_nums[@]}")" ]]
