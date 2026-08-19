@@ -52,6 +52,14 @@ that pasted a value from Langfuse into its own text.
 The remaining work for these is Phase 4/5: they take the course from the
 chatflow instead of `$env.COURSE_ID`.
 
+**Retired on 2026-08-19.** `langfuse-userid-patch` was removed along with its
+Langfuse credential. Both situations it could meet make it wrong: launched
+through the LTI middleware, Flowise already sets the trace's userId, so there
+is nothing to patch; launched without it, the only id available is Flowise's
+own chat id, which the embed keeps in a browser's local storage — writing that
+into a field called userId turns a browser into a person. The paragraph below
+is what was true while it existed.
+
 **Personal data.** `langfuse-userid-patch` parses the LTI session id and
 writes the learner's name into Langfuse. It ships only with the
 `observability` profile and does nothing without the LTI middleware, but where

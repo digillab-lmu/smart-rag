@@ -12,9 +12,8 @@ invites building, documented-and-dead invites relying.
 
 | File | Trigger | Purpose |
 |------|---------|---------|
-| `chathistory-sync.json`     | Schedule (every 5 min) | Polls Postgres for new Flowise messages, generates embeddings + metadata, writes to Weaviate `ChatHistory` for cross-agent semantic recall. |
-| `usermemory-summary.json`   | Schedule              | Periodically condenses each user's recent sessions into the Weaviate `UserMemory` record. Calls `$env.LLM_BASE_URL` with `$env.LLM_MODEL_FAST`, like every other LLM call here — it used to be an Anthropic node with a hard-coded model, which could not run on an installation configured for any other provider. |
-| `langfuse-userid-patch.json`| Schedule (every 30 min) | Looks up `userId` from Flowise's Postgres for Langfuse traces that came in without one, then patches the trace. Deployed only with the `observability` profile. **Handles personal data:** it parses the LTI session id (`userId|givenName|agentId|ts|fullName`) and writes the learner's name into Langfuse. It therefore does nothing without the LTI middleware, and where LTI is in use the legal basis for identifying learners has to be settled first. |
+| `chathistory-sync.json`     | Schedule (every 5 min) | Polls Postgres for new Flowise messages, generates embeddings + metadata, writes to Weaviate `ChatHistory` for cross-agent semantic recall. **Handles personal data:** it copies what learners wrote, keyed to their pseudonymous id. Erasing one person, or one course's retention period running out, has to reach these records — see the Content Admin's *People* page. |
+| `usermemory-summary.json`   | Schedule              | Periodically condenses each user's recent sessions into the Weaviate `UserMemory` record. **Handles personal data**, for the same reason and with the same consequence as the row above. Calls `$env.LLM_BASE_URL` with `$env.LLM_MODEL_FAST`, like every other LLM call here — it used to be an Anthropic node with a hard-coded model, which could not run on an installation configured for any other provider. |
 
 ## Required environment variables
 
@@ -33,8 +32,6 @@ After import, attach matching credentials in the n8n UI to these nodes:
 |----------|------|-----------------|----------------|
 | `chathistory-sync` | Fetch new messages           | Postgres                | `smartrag-postgres` |
 | `usermemory-summary` | LLM: summarise session     | Anthropic API           | `smartrag-anthropic` |
-| `langfuse-userid-patch` | Langfuse: fetch/patch   | HTTP Basic Auth (LF keys) | `smartrag-langfuse` |
-| `langfuse-userid-patch` | Flowise DB: lookup      | Postgres                | `smartrag-postgres` |
 
 `bootstrap.sh` creates these credentials automatically.
 

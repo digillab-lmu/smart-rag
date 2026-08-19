@@ -157,17 +157,6 @@ ACTIVATE_IDS=(
 # on a schedule, and an operator looking for "why did I get no mail" would
 # start in the wrong place.
 
-# The Langfuse trace patcher only makes sense where Langfuse runs. Deployed
-# and activated with the observability profile, left out otherwise — an
-# always-failing scheduled workflow every 30 minutes is noise that teaches
-# people to ignore the execution list.
-LANGFUSE_ENABLED=0
-if [[ ",${COMPOSE_PROFILES:-}," == *",observability,"* ]]; then
-    LANGFUSE_ENABLED=1
-    WORKFLOWS+=("$CORE_DIR/langfuse-userid-patch.json")
-    ACTIVATE_IDS+=("smartrag-langfuse-userid-patch")
-fi
-
 # ─── Staging dir (inside the container's bind-mounted volume) ────────────────
 STAGING_HOST="${BASE_DATA_PATH}/n8n/data/staging"
 STAGING_CONTAINER="/home/node/.n8n/staging"
@@ -279,21 +268,6 @@ jq -n \
       }
     ]' > "$CREDS_FILE"
 
-if (( LANGFUSE_ENABLED )); then
-    # Langfuse's public API authenticates with the project key pair as HTTP
-    # basic auth — public key as the user, secret key as the password. Those
-    # are the LANGFUSE_INIT_PROJECT_* values, not the Garage ones next to
-    # them in .env, and not a variable called LANGFUSE_PUBLIC_KEY, which does
-    # not exist.
-    jq --arg lf_public "${LANGFUSE_INIT_PROJECT_PUBLIC_KEY:-}" \
-       --arg lf_secret "${LANGFUSE_INIT_PROJECT_SECRET_KEY:-}" \
-       '. + [{
-          "id": "smartrag-langfuse-credential",
-          "name": "smartrag-langfuse",
-          "type": "httpBasicAuth",
-          "data": { "user": $lf_public, "password": $lf_secret }
-        }]' "$CREDS_FILE" > "$CREDS_FILE.tmp" && mv "$CREDS_FILE.tmp" "$CREDS_FILE"
-fi
 
 chmod 600 "$CREDS_FILE"
 chown 1000:1000 "$CREDS_FILE"

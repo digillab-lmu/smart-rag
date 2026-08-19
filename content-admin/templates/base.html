@@ -70,8 +70,15 @@
          window widens the tables and not the paragraphs. 80% rather
          than the full width so the page keeps a margin on a large
          monitor — a table that runs into both bezels is harder to
-         read across, not easier. */
-      max-width: 80%;
+         read across, not easier.
+
+         But 80% of a 1024px laptop is 205px given away, and on that screen
+         the margin is not comfort, it is the reason the tab row no longer
+         fits. So 80% is what a large monitor gets and the smaller screen
+         keeps nearly all of its width: above roughly 1500px this resolves to
+         80%, below it to the window less a margin, capped at 1200px so the
+         two meet without a jump. */
+      max-width: max(80%, min(100% - 3rem, 1200px));
       margin: 0 auto;
       padding: 1.5rem;
       line-height: 1.5;
@@ -93,9 +100,33 @@
        to paragraphs and list items, not to table cells — a cell that wraps
        early makes a table taller for no gain. */
     p, li, .note { max-width: 78ch; }
-    nav { display: flex; flex-wrap: wrap; gap: 1.25rem; align-items: center; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
-    nav a { text-decoration: none; font-weight: 500; padding: .3rem .6rem;
-            border-radius: 4px; }
+    /* One row, always. Wrapping was the obvious choice and the wrong one: a
+       second row of tabs reads as a different kind of thing from the first,
+       and which links land there depends on the window width and the length
+       of the German words, so it moves. It broke twice — each time a tab was
+       added, measured at 1280 px as 1013 px of tabs in 964 px of space, 49 px
+       short. Tightening the gap would have bought exactly one more tab.
+
+       So the row does not wrap; it scrolls when it genuinely cannot fit, and
+       the gap shrinks with the viewport first so that scrolling stays the
+       rare case rather than the normal one. */
+    nav { display: flex; flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain;
+          gap: clamp(.35rem, .75vw, 1.25rem); align-items: center;
+          margin-bottom: 1.5rem; padding-bottom: 1rem;
+          border-bottom: 1px solid var(--border);
+          scrollbar-width: thin; }
+    /* Nothing shrinks below its text — a half-cut label is worse than a
+       scrollbar. The spacer before the right-hand items keeps its inline
+       flex:1 and is the one thing that may give way. */
+    nav > * { flex: 0 0 auto; }
+    /* .45rem rather than .6rem, which is the 38 px that decide whether the
+       row fits at 1280 px without a scrollbar. Measured, not guessed: the
+       tabs needed 991 px in 964 px of space. A clamp() on vw was tried first
+       and does nothing here — at 1280 px the viewport-relative value exceeds
+       the maximum, so it resolves to the old figure. What is scarce is the
+       row, not the window. */
+    nav a { text-decoration: none; font-weight: 500; padding: .3rem .45rem;
+            border-radius: 4px; white-space: nowrap; }
     nav a.current { background: var(--lmu-green); color: #fff; }
     .nav-group { display: inline-flex; align-items: center; gap: .35rem;
                  padding: 0 .35rem; border: 1px solid var(--border);

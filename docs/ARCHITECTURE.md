@@ -263,7 +263,7 @@ bug waiting for a coincidence. Courses, users, assignments and slots move into
 the Postgres that already runs, behind a versioned schema.
 
 **Out of scope, and why.** `n8n/workflows/` — `chathistory-sync`,
-`usermemory-summary`, `langfuse-userid-patch` — is not installed by the
+`usermemory-summary` — is not installed by the
 deployer, which reads only `workflows-ingest/`. The course-stamping coupling
 6b describes in those workflows is therefore real but dormant. They stay out:
 they cannot be tested live here, and shipping untested course routing for
