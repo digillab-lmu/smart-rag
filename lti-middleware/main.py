@@ -177,12 +177,14 @@ def get_tool_conf():
 def get_launch_data_storage():
     return FlaskCacheDataStorage(cache)
 
-def session_create(user_id: str, given_name: str, agent_id: str, full_name: str = "") -> str:
+def session_create(user_id: str, given_name: str, agent_id: str) -> str:
+    # The full name is deliberately absent. It was stored here and read in
+    # exactly one place, to be pasted into the session id; with that gone
+    # there is no longer a reason to hold it at all.
     token = secrets.token_urlsafe(32)
     data = json.dumps({
         "user_id":    user_id,
         "given_name": given_name,
-        "full_name":  full_name,
         "agent_id":   agent_id,
         "ts":         datetime.now(timezone.utc).isoformat(),
     })
@@ -207,21 +209,21 @@ def _build_launch_response(data, agent_id):
 
     user_id    = data.get("sub", "")
     given_name = data.get("given_name", lang["default_given_name"])
-    full_name  = data.get("name", given_name)
 
     if not user_id:
         return _error_page(lang["error_no_user_id"]), 403
 
-    logger.info(
-        f"LTI launch — user={user_id} agent={agent_id} "
-        f"given_name={data.get('given_name')} name={data.get('name')}"
-    )
+    # The pseudonym and the agent, and nothing else. This line used to carry
+    # the learner's given name and full name into a log file that is kept for
+    # operational reasons and read by whoever administers the server — a
+    # second copy of exactly the data the LTI pseudonym exists to avoid.
+    logger.info(f"LTI launch — user={user_id} agent={agent_id}")
 
     # Consent flag: lets the LMS bubble-embed know the user has launched
     # the assistant at least once via the proper LTI flow.
     redis_client.setex(f"lti:consent:{user_id}", CONSENT_TTL, "yes")
 
-    token    = session_create(user_id, given_name, agent_id, full_name)
+    token    = session_create(user_id, given_name, agent_id)
     chat_url = f"/chat/{agent_id}?token={token}"
 
     # Break out of LMS iframe if we are in one (configurable in LMS-side later)
@@ -320,11 +322,24 @@ def chat_page(agent_id):
     chatflow_id = cfg["chatflow_id"]
     user_id     = session_data["user_id"]
     given_name  = session_data["given_name"]
-    full_name   = session_data.get("full_name", given_name)
     ts          = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     # Session ID format consumed by the Flowise agent custom functions:
-    #   {user_id}|{given_name}|{agent_id}|{timestamp}|{full_name}
-    session_id = f"{user_id}|{given_name}|{agent_id}|{ts}|{full_name}"
+    #   {user_id}||{agent_id}|{timestamp}
+    #
+    # The learner's given name and full name used to occupy fields 2 and 5.
+    # They were read by nothing except a workflow that is switched off, and
+    # this string is not private: Flowise stores it on every chat message,
+    # chathistory-sync copies it into Weaviate's ChatHistory, and — because
+    # the launch below sends it as the Langfuse sessionId — it is stamped on
+    # every trace. Three systems carrying a clear name beside the pseudonym
+    # that exists so they would not have to. The name the agents actually
+    # greet the learner with travels separately, as flowState.student_name.
+    #
+    # Field 2 stays empty rather than closing the gap. The agents read field 1
+    # and chathistory-sync reads field 3, and conversations recorded before
+    # this change still have the old five-field shape — renumbering would
+    # make every one of them look like a different agent.
+    session_id = f"{user_id}||{agent_id}|{ts}"
 
     if cfg["embed_style"] == "bubble":
         return _bubble_page(chatflow_id, user_id, given_name, session_id, agent_id)
