@@ -21,6 +21,7 @@ import hmac
 import logging
 import os
 import secrets
+from datetime import date
 
 from functools import wraps
 
@@ -35,6 +36,7 @@ import courses as courses_service
 import db
 import i18n
 import ingest_status
+import learners
 import mailer
 import setup_checks
 import storage
@@ -1348,7 +1350,7 @@ def courses():
     """
     error = None
     success = None
-    form = {"id": "", "name": ""}
+    form = {"id": "", "name": "", "retention_until": "", "retention_note": ""}
 
     user = auth.current_user()
     is_admin = bool(user and user["role"] == accounts.ROLE_ADMIN)
@@ -1361,7 +1363,18 @@ def courses():
             # one, so it belongs to the role that manages the installation.
             return redirect(url_for("courses"))
         try:
-            if action == "provision":
+            if action in ("retention", "retention_handled"):
+                cid = request.form.get("course_id", "")
+                if action == "retention_handled":
+                    courses_service.mark_retention_applied(cid)
+                    success = _t("retention_marked", cid)
+                else:
+                    until = _parse_date(request.form.get("until", ""))
+                    courses_service.set_retention(
+                        cid, until, request.form.get("note", ""))
+                    success = (_t("retention_saved", cid, until.isoformat())
+                               if until else _t("retention_cleared", cid))
+            elif action == "provision":
                 # Finishing a course whose creation failed part-way. Same
                 # code path as creating one, because the failure could have
                 # been at any step and "resume" that only handles the last
@@ -1371,11 +1384,21 @@ def courses():
                 success = _t("courses_provisioned", done["name"])
             else:
                 form = {"id": request.form.get("id", "").strip(),
-                        "name": request.form.get("name", "").strip()}
+                        "name": request.form.get("name", "").strip(),
+                        "retention_until": request.form.get("retention_until", "").strip(),
+                        "retention_note": request.form.get("retention_note", "").strip()}
+                # Parsed before the course is created, so a mistyped date
+                # fails the form rather than leaving a provisioned course
+                # behind with no retention period and an error message.
+                until = _parse_date(form["retention_until"])
                 created = courses_service.create_course(form["id"], form["name"])
+                if until or form["retention_note"]:
+                    courses_service.set_retention(created["id"], until,
+                                                  form["retention_note"])
                 success = _t("courses_created", created["name"],
                              created["collection"], created["bucket"])
-                form = {"id": "", "name": ""}
+                form = {"id": "", "name": "", "retention_until": "",
+                        "retention_note": ""}
         except courses_service.CourseError as exc:
             # The message already says which step failed and what is left
             # behind; repeating it in the operator's words would lose that.
@@ -1399,11 +1422,19 @@ def courses():
         return render_template("courses.html", courses=[], unfinished=[],
                                error=error or str(exc), success=success,
                                form=form, needs_pick=needs_pick,
-                               is_admin=is_admin)
+                               is_admin=is_admin, retention=None)
+
+    # Only over the courses this person may see. An expiry warning about a
+    # course somebody does not maintain is a warning they cannot act on.
+    visible_ids = {c["id"] for c in all_of_them}
+    overview = courses_service.retention_overview()
+    retention = {k: [c for c in v if c["id"] in visible_ids]
+                 for k, v in overview.items()}
 
     return render_template("courses.html", courses=all_of_them,
                            unfinished=unfinished, error=error, success=success,
-                           form=form, needs_pick=needs_pick, is_admin=is_admin)
+                           form=form, needs_pick=needs_pick, is_admin=is_admin,
+                           retention=retention)
 
 
 # ─── Deleting a course ───────────────────────────────────────────────────────
@@ -1412,6 +1443,23 @@ def courses():
 # click away from removing a collection, a bucket, a graph and every
 # conversation ever held in a course — and the dialog could not say how much
 # that is, because counting it takes six requests.
+def _parse_date(raw: str):
+    """An <input type="date"> value, or None for an empty one.
+
+    Empty means "clear it", which is a real answer. Anything else that is not
+    a date is refused with a sentence rather than silently becoming None —
+    that would look like the operator had cleared the field on purpose.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError as exc:
+        raise courses_service.CourseError(
+            _t("retention_bad_date", raw)) from exc
+
+
 @app.route("/courses/<course_id>/delete", methods=["GET", "POST"])
 @auth.admin_required
 def delete_course_view(course_id: str):
@@ -1451,6 +1499,59 @@ def delete_course_view(course_id: str):
 
     return render_template("course_delete.html", course=course,
                            inventory=inventory, result=result, error=error)
+
+
+# ─── One person, across every system ─────────────────────────────────────────
+# Two pages in one, and never a single click: the form counts what is held
+# about a learner, and only then offers to erase it — with the id typed back.
+# The same route serves both obligations the DPO's approval brings with it: an
+# erasure request, which is scoped to nobody's course in particular, and a
+# retention period running out, which is scoped to one.
+@app.route("/learners", methods=["GET", "POST"])
+@auth.admin_required
+def learners_page():
+    env = read_env()
+    error = None
+    inventory = None
+    result = None
+
+    user_id = (request.values.get("user_id") or "").strip()
+    course_id = (request.values.get("course_id") or "").strip()
+    if course_id and courses_service.get_course(course_id) is None:
+        course_id = ""
+
+    client = _flowise_client()
+    action = request.form.get("action", "")
+
+    if request.method == "POST" and user_id:
+        try:
+            if action == "erase":
+                # Typed back, as a course deletion asks for its id. This
+                # cannot be undone in four systems at once, and a learner id
+                # is a string nobody recognises by sight — which is exactly
+                # why the confirmation has to be a deliberate act rather than
+                # a second click in the same place.
+                typed = (request.form.get("confirm") or "").strip()
+                if typed != user_id:
+                    error = _t("learners_mistyped")
+                else:
+                    result = learners.erase(user_id, course_id or None,
+                                            flowise=client)
+                    if result["erased"] and course_id:
+                        # An erasure done because a period ran out is the
+                        # thing that period was waiting for.
+                        courses_service.mark_retention_applied(course_id)
+            else:
+                inventory = learners.inventory(user_id, course_id or None,
+                                               flowise=client)
+        except (learners.LearnerError, courses_service.CourseError,
+                db.DatabaseError) as exc:
+            error = str(exc)
+
+    return render_template(
+        "learners.html", user_id=user_id, course_id=course_id,
+        courses=courses_service.all_courses(), inventory=inventory,
+        result=result, error=error, lti=learners.lti_configured(env))
 
 
 # ─── Documents: what is indexed, and removing it ─────────────────────────────────

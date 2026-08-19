@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}{{ t('learners_title') }} — {{ t('app_name') }} {{ t('app_subtitle') }}{% endblock %}
+{% block content %}
+<h1>{{ t('learners_heading') }}</h1>
+<p class="note">{{ t('learners_intro') }}</p>
+
+{# What this page can honestly promise depends on how chats are launched, and
+   the difference is not a detail: with LTI the learner id is one pseudonym per
+   person; without it, it is a browser. Saying so here is the difference
+   between an erasure record and a claim. #}
+{% if not lti %}
+<div class="error">
+  <strong>{{ t('learners_no_lti_heading') }}</strong>
+  <p>{{ t('learners_no_lti_what') }}</p>
+  <p>{{ t('learners_no_lti_consequence') }}</p>
+</div>
+{% endif %}
+
+<form method="post">
+  <label for="user_id">{{ t('learners_field_id') }}</label>
+  <input type="text" id="user_id" name="user_id" value="{{ user_id }}" required>
+  <p class="note">{{ t('learners_field_id_help') }}</p>
+
+  <label for="course_id">{{ t('learners_field_course') }}</label>
+  <select id="course_id" name="course_id">
+    <option value="">{{ t('learners_scope_all') }}</option>
+    {% for c in courses %}
+    <option value="{{ c.id }}" {% if c.id == course_id %}selected{% endif %}>{{ c.name }} ({{ c.id }})</option>
+    {% endfor %}
+  </select>
+  <p class="note">{{ t('learners_field_course_help') }}</p>
+
+  <button type="submit" name="action" value="inventory">{{ t('learners_look') }}</button>
+</form>
+
+{% if inventory %}
+<h2>{{ t('learners_found_heading', user_id) }}</h2>
+<p class="note">
+  {% if course_id %}{{ t('learners_scope_one_note', course_id) }}
+  {% else %}{{ t('learners_scope_all_note') }}{% endif %}
+</p>
+
+<table>
+  <tr>
+    <th>{{ t('courses_delete_col_system') }}</th>
+    <th>{{ t('courses_delete_col_what') }}</th>
+    <th>{{ t('courses_delete_col_count') }}</th>
+  </tr>
+  {% for item in inventory['items'] %}
+  <tr>
+    <td><code>{{ item.system }}</code></td>
+    <td>
+      {{ t(item.label, *item.args) }}
+      {% if item.note %}<br><span class="note">{{ t(item.note, *item.note_args) }}</span>{% endif %}
+      {% if item.error %}<br><span class="note">{{ item.error }}</span>{% endif %}
+    </td>
+    <td>
+      {% if item.count is none %}<strong>{{ t('courses_delete_unknown_count') }}</strong>
+      {% else %}{{ item.count }}{% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+
+{# A system that did not answer may hold data this page cannot see. Erasing
+   now would remove what is reachable and report the rest as failed — which is
+   recoverable, but has to be a decision rather than a surprise. #}
+{% set unknown = inventory['items'] | selectattr('count', 'none') | list %}
+{% if unknown %}
+<div class="error">{{ t('learners_unknown_warning', unknown | length) }}</div>
+{% endif %}
+
+<h2>{{ t('learners_erase_heading') }}</h2>
+<p>{{ t('learners_erase_what') }}</p>
+<p class="note">{{ t('learners_erase_langfuse_note') }}</p>
+<form method="post">
+  <input type="hidden" name="user_id" value="{{ user_id }}">
+  <input type="hidden" name="course_id" value="{{ course_id }}">
+  <label for="confirm">{{ t('learners_confirm_label', user_id) }}</label>
+  <input type="text" id="confirm" name="confirm" autocomplete="off" required>
+  <button type="submit" name="action" value="erase">{{ t('learners_erase_button') }}</button>
+</form>
+{% endif %}
+
+{% if result %}
+<h2>{{ t('learners_result_heading', result.user_id) }}</h2>
+{% if result.erased %}
+<div class="note"><strong>{{ t('learners_result_ok') }}</strong></div>
+{% else %}
+<div class="error"><strong>{{ t('learners_result_partial') }}</strong>
+  <p>{{ t('learners_result_partial_what') }}</p></div>
+{% endif %}
+<table>
+  <tr>
+    <th>{{ t('courses_delete_col_system') }}</th>
+    <th>{{ t('courses_delete_col_step') }}</th>
+    <th>{{ t('courses_delete_col_detail') }}</th>
+  </tr>
+  {% for s in result['steps'] %}
+  <tr>
+    <td><code>{{ s.system }}</code></td>
+    <td>{{ s.action }}</td>
+    <td>
+      {% if s.ok %}{{ s.detail or t('learners_step_done') }}
+      {% else %}<strong>{{ t('learners_step_failed') }}</strong>
+        {% if s.detail %}<br>{{ s.detail }}{% endif %}
+        {% if s.error %}<br><span class="note">{{ s.error }}</span>{% endif %}
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+<p class="note">{{ t('learners_rerun_note') }}</p>
+{% endif %}
+{% endblock %}

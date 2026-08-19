@@ -8,6 +8,39 @@
 <div class="error">{{ t('courses_pick_first') }}</div>
 {% endif %}
 
+{# Two separate things, deliberately not one banner. An expired retention
+   period is an obligation that is overdue; a course with no period is a
+   question nobody has answered. Merged, the red never goes away and stops
+   being read. #}
+{% if retention and retention.due %}
+<div class="error">
+  <strong>{{ t('retention_due_heading', retention.due | length) }}</strong>
+  <p>{{ t('retention_due_what') }}</p>
+  <ul>
+    {% for c in retention.due %}
+    <li>{{ c.name }} (<code>{{ c.id }}</code>) — {{ t('retention_expired_on', c.retention_until.isoformat(), -c.retention_days_left) }}
+        {% if c.retention_note %}<br><span class="note">{{ c.retention_note }}</span>{% endif %}
+        <br><a href="{{ url_for('learners_page') }}?course_id={{ c.id }}">{{ t('retention_erase_learners') }} →</a>
+        · <a href="{{ url_for('delete_course_view', course_id=c.id) }}">{{ t('retention_delete_course') }} →</a></li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if retention and retention.soon %}
+<div class="note">
+  {{ t('retention_soon_heading', retention.soon | length) }}
+  {% for c in retention.soon %}<br>{{ c.name }} — {{ t('retention_in_days', c.retention_days_left) }}{% endfor %}
+</div>
+{% endif %}
+
+{% if is_admin and retention and retention.undecided %}
+<div class="note">
+  <strong>{{ t('retention_undecided_heading', retention.undecided | length) }}</strong>
+  <p>{{ t('retention_undecided_why') }}</p>
+</div>
+{% endif %}
+
 {# Unfinished first. A course whose collection exists but whose bucket does
    not looks finished in every list that only shows names, and the next
    upload into it is the moment anyone finds out. #}
@@ -46,6 +79,7 @@
     <th>{{ t('courses_col_id') }}</th>
     <th>{{ t('courses_col_storage') }}</th>
     <th>{{ t('courses_col_state') }}</th>
+    <th>{{ t('retention_col') }}</th>
     <th></th>
   </tr>
   {% for c in courses %}
@@ -64,6 +98,35 @@
           <a href="{{ url_for('use_course', course_id=c.id) }}">{{ t('courses_use') }} →</a>
         {% endif %}
       {% else %}<strong>{{ t('courses_state_unfinished') }}</strong>{% endif %}
+    </td>
+    <td>
+      {% if not c.retention_set %}
+        <span class="note">{{ t('retention_none') }}</span>
+      {% else %}
+        <code>{{ c.retention_until.isoformat() }}</code><br>
+        {% if c.retention_due and not c.retention_applied_at %}
+          <strong>{{ t('retention_state_due') }}</strong>
+        {% elif c.retention_due %}
+          <span class="note">{{ t('retention_state_handled') }}</span>
+        {% else %}
+          <span class="note">{{ t('retention_in_days', c.retention_days_left) }}</span>
+        {% endif %}
+      {% endif %}
+      {% if is_admin %}
+      <form method="post" style="margin:.4rem 0 0">
+        <input type="hidden" name="action" value="retention">
+        <input type="hidden" name="course_id" value="{{ c.id }}">
+        <input type="date" name="until" value="{{ c.retention_until.isoformat() if c.retention_until else '' }}"
+               aria-label="{{ t('retention_field_until') }}">
+        <input type="text" name="note" value="{{ c.retention_note or '' }}"
+               placeholder="{{ t('retention_field_note') }}"
+               aria-label="{{ t('retention_field_note') }}">
+        <button type="submit">{{ t('retention_save') }}</button>
+        {% if c.retention_due and not c.retention_applied_at %}
+        <button type="submit" name="action" value="retention_handled">{{ t('retention_mark_handled') }}</button>
+        {% endif %}
+      </form>
+      {% endif %}
     </td>
     {# Administrators only, and never a one-click affair: the link leads to a
        page that counts what the course consists of before it asks. #}
@@ -84,6 +147,14 @@
   <input type="text" id="id" name="id" value="{{ form.id }}" required
          pattern="[a-z0-9][a-z0-9-]{1,62}">
   <p class="note">{{ t('courses_field_id_help') }}</p>
+
+  <label for="retention_until">{{ t('retention_field_until') }}</label>
+  <input type="date" id="retention_until" name="retention_until" value="{{ form.retention_until }}">
+  <p class="note">{{ t('retention_field_until_help') }}</p>
+
+  <label for="retention_note">{{ t('retention_field_note') }}</label>
+  <input type="text" id="retention_note" name="retention_note" value="{{ form.retention_note }}">
+  <p class="note">{{ t('retention_field_note_help') }}</p>
 
   <button type="submit">{{ t('courses_create') }}</button>
 </form>

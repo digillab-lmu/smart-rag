@@ -329,6 +329,12 @@
     {% if is_admin %}
     <a href="{{ url_for('accounts_page') }}"
        class="{% if here == 'accounts_page' %}current{% endif %}">{{ t('nav_accounts') }}</a>
+    {# Erasing one person reaches four systems at once and is not a course
+       maintainer's decision, so it sits with the role that manages the
+       installation — beside accounts, which is where somebody looking for
+       "a person" would go first. #}
+    <a href="{{ url_for('learners_page') }}"
+       class="{% if here == 'learners_page' %}current{% endif %}">{{ t('nav_learners') }}</a>
     {% endif %}
     <a href="{{ url_for('getting_started') }}"
        class="{% if here == 'getting_started' %}current{% endif %}">{{ t('guide_title') }}</a>
