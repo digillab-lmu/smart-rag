@@ -72,10 +72,31 @@ done
 check "sourcing messages.sh executes no command" $? "a canary on PATH was run"
 rm -rf "$TMPBIN"
 
+# ─── No message nobody uses ──────────────────────────────────────────────────
+# A key left behind when its dialogue was rewritten is the same kind of thing
+# as a script that no longer exists: it reads like part of the system, and the
+# next person changing that dialogue reads it as a requirement. Thirteen
+# accumulated when the mail section was reworked, and thirty-eight more had
+# outlived the migration script they belonged to.
+#
+# Only cfg_*, admin_*, next_* and repair_* are checked: those are dialogue
+# text with one call site each. Keys used through a computed name — the
+# inventory's inv_* among them — cannot be found by grep and would be
+# reported as dead while being in daily use.
+unused=()
+while read -r key; do
+    grep -rq "$key" "$REPO"/scripts/*.sh "$REPO"/scripts/lib/*.sh \
+        --exclude=messages.sh || unused+=("$key")
+done < <(grep -oE '^\s*\[(cfg|admin|next|repair)_[a-z0-9_]+\]' "$MSGS" \
+         | tr -d '[] ' | sort -u)
+check "no message is left without a caller" ${#unused[@]} \
+      "$(printf '%s ' "${unused[@]:0:6}")"
+
 if (( ${#FAILURES[@]} > 0 )); then
     echo "FAILURES:"; printf '  - %s\n' "${FAILURES[@]}"; exit 1
 fi
 echo "All message-catalogue safety checks passed: no backticks and no \$( ) in"
 echo "any message, no unescaped backtick in any string under scripts/, and"
 echo "sourcing the catalogue runs no command at all — verified with executable"
-echo "canaries named sudo, smartrag, docker and systemctl on PATH."
+echo "canaries named sudo, smartrag, docker and systemctl on PATH — and no"
+echo "cfg/admin/next/repair message is left in the catalogue without a caller."

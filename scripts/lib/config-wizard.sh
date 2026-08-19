@@ -618,92 +618,131 @@ _reset_mail_config_disabled() {
     CFG_SMTP_CONNECTION_URL=""
 }
 
+# Asks the provider's host, port, encryption and credentials — the same four
+# questions whether they end up in Postfix's configuration or in .env, so the
+# two paths below share them. Known providers prefill what they document,
+# because the usual failure is not a wrong password but a wrong port with the
+# wrong encryption.
+#
+# Results land in _MP_*; the caller copies them where they belong.
+_ask_mail_provider() {
+    _MP_HOST=""; _MP_PORT="587"; _MP_SECURE="false"; _MP_USER=""; _MP_PASSWORD=""
+    local hint=""
+
+    local which
+    which="$(select_one_index cfg_mail_provider_choice \
+        "$(t cfg_mail_provider_brevo)" \
+        "$(t cfg_mail_provider_manual)")" || return 1
+    if [[ "$which" == "1" ]]; then
+        # Verified against Brevo's own documentation: STARTTLS on 587, the
+        # user name is the login address, and the password is an SMTP key
+        # generated in the dashboard — not the API key and not the account
+        # password, which is the mistake that costs an afternoon.
+        _MP_HOST="smtp-relay.brevo.com"
+        _MP_PORT="587"
+        _MP_SECURE="false"
+        hint="cfg_mail_brevo_hint"
+    fi
+
+    [[ -n "$hint" ]] && info "$(t "$hint")"
+    _MP_HOST="$(prompt cfg_mail_host "$_MP_HOST")" || return 1
+    _MP_PORT="$(prompt cfg_mail_port "$_MP_PORT" validate_positive_int)" || return 1
+    # 465 is implicit TLS from the first byte; 587 and 25 start in the clear
+    # and upgrade. Asking rather than deriving, because a provider may differ
+    # — but the default follows the port, which is right almost always.
+    local secure_default="n"
+    [[ "$_MP_PORT" == "465" ]] && secure_default="y"
+    if confirm cfg_mail_secure "$secure_default"; then
+        _MP_SECURE="true"
+    else
+        (( WIZARD_BACK )) && return 1
+        _MP_SECURE="false"
+    fi
+    _MP_USER="$(prompt cfg_mail_user "$_MP_USER")" || return 1
+    if [[ -n "$_MP_USER" ]]; then
+        _MP_PASSWORD="$(prompt_password cfg_mail_password "")" || return 1
+    fi
+    return 0
+}
+
 ask_mail_config() {
     header "$(t cfg_section_mail)"
-    printf "  ${YELLOW}${BOLD}%s${RESET}\n" "$(t cfg_mail_warning_bold)"
     printf "  ${DIM}%s${RESET}\n\n" "$(t cfg_mail_intro)"
 
-    # Check BEFORE offering to install anything — a server may already run
-    # Postfix/Exim/etc. for unrelated reasons (see detect_existing_mail_relay
-    # in preflight.sh).
+    # Detection first, so the menu can say "we found one" rather than making
+    # the operator remember. See detect_existing_mail_relay in preflight.sh.
     local detection mta port_listening
     detection="$(detect_existing_mail_relay)"
     mta="${detection%%:*}"
     port_listening="${detection##*:}"
-
     if [[ "$mta" != "none" ]]; then
-        warn "$(t cfg_mail_detected_mta "$mta")"
+        info "$(t cfg_mail_detected_mta "$mta")"
     elif [[ "$port_listening" == "1" ]]; then
-        warn "$(t cfg_mail_detected_port25)"
+        info "$(t cfg_mail_detected_port25)"
     fi
 
-    if [[ "$mta" != "none" || "$port_listening" == "1" ]]; then
-        local existing_choice
-        existing_choice="$(select_one_index cfg_mail_existing_choice \
-            "$(t cfg_mail_existing_keep)" \
-            "$(t cfg_mail_existing_reconfigure)" \
-            "$(t cfg_mail_existing_skip)")" || return 1
-        case "$existing_choice" in
-            1)
-                _reset_mail_config_disabled
-                info "$(t cfg_mail_existing_keep_note)"
-                return 0
-                ;;
-            3)
-                _reset_mail_config_disabled
-                return 0
-                ;;
-            2) : ;;  # fall through to the normal flow below
-        esac
-    fi
+    # One question with four answers, instead of three yes/no questions whose
+    # "no" meant something different each time. The old sequence asked
+    # "configure a relay?", then "install Postfix?", and a no to the second
+    # silently meant "then an external server" — after which a bare "SMTP
+    # host:" appeared with nothing saying whose host it wanted.
+    local choice
+    choice="$(select_one_index cfg_mail_how \
+        "$(t cfg_mail_how_existing)" \
+        "$(t cfg_mail_how_postfix)" \
+        "$(t cfg_mail_how_direct)" \
+        "$(t cfg_mail_how_none)")" || return 1
 
-    if ! confirm cfg_mail_enable "y"; then
-        (( WIZARD_BACK )) && return 1
-        _reset_mail_config_disabled
-        return 0
-    fi
-
-    if confirm cfg_mail_use_postfix "y"; then
-        CFG_INSTALL_POSTFIX="true"
-        CFG_SMTP_RELAY_HOST="$(prompt cfg_mail_relay_host "${CFG_SMTP_RELAY_HOST:-}")" || return 1
-        CFG_SMTP_RELAY_PORT="$(prompt cfg_mail_relay_port "${CFG_SMTP_RELAY_PORT:-587}" validate_positive_int)" || return 1
-        if confirm cfg_mail_relay_auth "y"; then
-            CFG_SMTP_RELAY_USER="$(prompt cfg_mail_relay_user "${CFG_SMTP_RELAY_USER:-}")" || return 1
-            CFG_SMTP_RELAY_PASSWORD="$(prompt_password cfg_mail_relay_password "${CFG_SMTP_RELAY_PASSWORD:-}")" || return 1
-        else
-            (( WIZARD_BACK )) && return 1
-            CFG_SMTP_RELAY_USER=""
-            CFG_SMTP_RELAY_PASSWORD=""
-        fi
-        # Apps talk to local Postfix, unauthenticated, on the pinned gateway.
-        CFG_SMTP_HOST="$SMARTRAG_DOCKER_GATEWAY"
-        CFG_SMTP_PORT="25"
-        CFG_SMTP_SECURE="false"
-        CFG_SMTP_USER=""
-        CFG_SMTP_PASSWORD=""
-    else
-        (( WIZARD_BACK )) && return 1
-        CFG_INSTALL_POSTFIX="false"
-        CFG_SMTP_RELAY_HOST=""
-        CFG_SMTP_RELAY_PORT="587"
-        CFG_SMTP_RELAY_USER=""
-        CFG_SMTP_RELAY_PASSWORD=""
-
-        CFG_SMTP_HOST="$(prompt cfg_mail_host "${CFG_SMTP_HOST:-}")" || return 1
-        CFG_SMTP_PORT="$(prompt cfg_mail_port "${CFG_SMTP_PORT:-587}" validate_positive_int)" || return 1
-        if confirm cfg_mail_secure "n"; then
-            CFG_SMTP_SECURE="true"
-        else
-            (( WIZARD_BACK )) && return 1
+    case "$choice" in
+        1)
+            # Whatever is already running — Postfix, OpenSMTPD, Exim, the
+            # institution's own. We install nothing and point the containers
+            # at the Docker gateway, because from inside a container
+            # "localhost" is the container.
+            _reset_mail_config_disabled
+            CFG_INSTALL_POSTFIX="false"
+            CFG_SMTP_HOST="$SMARTRAG_DOCKER_GATEWAY"
+            CFG_SMTP_PORT="25"
             CFG_SMTP_SECURE="false"
-        fi
-        CFG_SMTP_USER="$(prompt cfg_mail_user "${CFG_SMTP_USER:-}")" || return 1
-        if [[ -n "$CFG_SMTP_USER" ]]; then
-            CFG_SMTP_PASSWORD="$(prompt_password cfg_mail_password "${CFG_SMTP_PASSWORD:-}")" || return 1
-        else
+            CFG_SMTP_USER=""
             CFG_SMTP_PASSWORD=""
-        fi
-    fi
+            info "$(t cfg_mail_existing_pointed "$SMARTRAG_DOCKER_GATEWAY")"
+            warn "$(t cfg_mail_existing_requirement)"
+            ;;
+        2)
+            CFG_INSTALL_POSTFIX="true"
+            _ask_mail_provider || return 1
+            CFG_SMTP_RELAY_HOST="$_MP_HOST"
+            CFG_SMTP_RELAY_PORT="$_MP_PORT"
+            CFG_SMTP_RELAY_USER="$_MP_USER"
+            CFG_SMTP_RELAY_PASSWORD="$_MP_PASSWORD"
+            # The apps talk to local Postfix, unauthenticated, on the pinned
+            # gateway. Postfix holds the provider's credentials; no
+            # application ever sees them.
+            CFG_SMTP_HOST="$SMARTRAG_DOCKER_GATEWAY"
+            CFG_SMTP_PORT="25"
+            CFG_SMTP_SECURE="false"
+            CFG_SMTP_USER=""
+            CFG_SMTP_PASSWORD=""
+            ;;
+        3)
+            CFG_INSTALL_POSTFIX="false"
+            CFG_SMTP_RELAY_HOST=""; CFG_SMTP_RELAY_PORT="587"
+            CFG_SMTP_RELAY_USER=""; CFG_SMTP_RELAY_PASSWORD=""
+            _ask_mail_provider || return 1
+            CFG_SMTP_HOST="$_MP_HOST"
+            CFG_SMTP_PORT="$_MP_PORT"
+            CFG_SMTP_SECURE="$_MP_SECURE"
+            CFG_SMTP_USER="$_MP_USER"
+            CFG_SMTP_PASSWORD="$_MP_PASSWORD"
+            warn "$(t cfg_mail_direct_note)"
+            ;;
+        *)
+            _reset_mail_config_disabled
+            info "$(t cfg_mail_none_note)"
+            return 0
+            ;;
+    esac
 
     CFG_N8N_EMAIL_MODE="smtp"
 
@@ -718,7 +757,6 @@ ask_mail_config() {
         CFG_SMTP_CONNECTION_URL="${scheme}://${CFG_SMTP_HOST}:${CFG_SMTP_PORT}"
     fi
 }
-
 
 # ─── Review & confirm ────────────────────────────────────────────────────────
 show_config_summary() {
