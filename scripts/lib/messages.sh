@@ -914,6 +914,10 @@ declare -A MSG_EN=(
     [cfg_mail_none_detected]="No mail server was found on this machine: nothing identifiable is installed, and nothing is listening on port 25. This option assumes one is there, so choosing it now would produce an installation that believes it can send mail and cannot — noticed the first time somebody waits for a password reset."
     [cfg_mail_none_detected_anyway]="Use it anyway? (yes only if a mail server is about to be installed, or if it listens somewhere this check cannot see)"
     [cfg_mail_gave_up]="Asked three times without a workable answer, so nothing is configured: this installation will not send mail. That is a real setting, not a failure — set it up whenever you like with sudo smartrag, Mail service."
+    [cfg_model_list_recent]="The provider currently offers %s models, newest first:"
+    [cfg_model_list_alpha]="The provider currently offers %s models (this API does not say when each appeared, so they are alphabetical):"
+    [cfg_model_list_more]="…and %s more. Any of them can be typed at the prompt below."
+    [cfg_model_list_unavailable]="The provider's model list could not be fetched just now — the suggestions below are this project's own, and any other name can be typed."
 )
 
 
@@ -1818,6 +1822,10 @@ declare -A MSG_DE=(
     [cfg_mail_none_detected]="Auf dieser Maschine wurde kein Mailserver gefunden: es ist nichts Erkennbares installiert, und auf Port 25 lauscht nichts. Diese Option setzt einen voraus — sie jetzt zu wählen ergäbe eine Installation, die glaubt, Mail verschicken zu können, und es nicht kann. Auffallen wird das beim ersten Menschen, der auf ein zurückgesetztes Passwort wartet."
     [cfg_mail_none_detected_anyway]="Trotzdem verwenden? (ja nur, wenn gleich noch ein Mailserver installiert wird oder er dort lauscht, wo diese Prüfung nicht hinsieht)"
     [cfg_mail_gave_up]="Dreimal gefragt, ohne brauchbare Antwort — also wird nichts eingerichtet: diese Installation verschickt keine Mail. Das ist eine echte Einstellung, kein Fehlschlag; nachholen lässt es sich jederzeit mit sudo smartrag, E-Mail-Dienst."
+    [cfg_model_list_recent]="Der Anbieter führt derzeit %s Modelle, neueste zuerst:"
+    [cfg_model_list_alpha]="Der Anbieter führt derzeit %s Modelle (diese API sagt nicht, wann eines erschienen ist — daher alphabetisch):"
+    [cfg_model_list_more]="…und %s weitere. Jedes davon lässt sich unten eintippen."
+    [cfg_model_list_unavailable]="Die Modell-Liste des Anbieters war gerade nicht abrufbar — die Vorschläge unten sind die dieses Projekts, und jeder andere Name lässt sich eintippen."
 )
 
 
