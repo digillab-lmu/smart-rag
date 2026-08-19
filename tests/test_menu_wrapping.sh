@@ -104,10 +104,20 @@ check "a 30-column terminal renders without error" $? "$narrow"
 
 for lang in EN DE; do
     declare -n CAT="MSG_$lang"
+    # Option four is the one that sets up nothing, so it has nothing to
+    # state; the other three must each name their prerequisites.
+    for key in cfg_mail_how_existing cfg_mail_how_postfix cfg_mail_how_direct; do
+        text="${CAT[$key]}"
+        [[ "$text" == *"Prerequisites:"* || "$text" == *"Voraussetzungen:"* ]]
+        check "$lang $key states what it requires" $? "$text"
+    done
+
+    # Each answer opens with what it does, in capitals, so the four are
+    # distinguishable at a glance before any of the explanation is read.
     for key in cfg_mail_how_existing cfg_mail_how_postfix cfg_mail_how_direct cfg_mail_how_none; do
         text="${CAT[$key]}"
-        [[ "$text" == *"Needs:"* || "$text" == *"Braucht:"* ]]
-        check "$lang $key states what it requires" $? "$text"
+        grep -qE '^[A-ZÄÖÜ][A-ZÄÖÜ .-]+:' <<<"$text"
+        check "$lang $key opens with a capitalised label" $? "$text"
     done
 
     # Specifically: Postfix and direct both need the same account. The whole

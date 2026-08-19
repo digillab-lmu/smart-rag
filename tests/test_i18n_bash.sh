@@ -92,6 +92,24 @@ done < <(grep -oE '^\s*\[(cfg|admin|next|repair)_[a-z0-9_]+\]' "$MSGS" \
 check "no message is left without a caller" ${#unused[@]} \
       "$(printf '%s ' "${unused[@]:0:6}")"
 
+# ─── No key assigned twice in the same catalogue ─────────────────────────────
+# bash keeps the last assignment silently, so a duplicate is not an error at
+# load time — it is a message that reads correctly in the file and wrong on
+# screen. Found once for real: next_flowise_perm_chatflows_why was pasted into
+# MSG_EN in German as well as English, and the English installer showed the
+# German sentence while the English one sat two lines above it, untouched.
+dupes="$(awk '
+    /^declare -A MSG_EN=\(/ { cat="EN"; next }
+    /^declare -A MSG_DE=\(/ { cat="DE"; next }
+    cat != "" && match($0, /^[ \t]*\[[a-z0-9_]+\]=/) {
+        key = $0
+        sub(/^[ \t]*\[/, "", key); sub(/\]=.*$/, "", key)
+        if (seen[cat "/" key]++) print cat " " key " (line " NR ")"
+    }
+' "$REPO/scripts/lib/messages.sh")"
+[[ -z "$dupes" ]]
+check "no key is assigned twice within one catalogue" $? "$dupes"
+
 if (( ${#FAILURES[@]} > 0 )); then
     echo "FAILURES:"; printf '  - %s\n' "${FAILURES[@]}"; exit 1
 fi
@@ -99,4 +117,6 @@ echo "All message-catalogue safety checks passed: no backticks and no \$( ) in"
 echo "any message, no unescaped backtick in any string under scripts/, and"
 echo "sourcing the catalogue runs no command at all — verified with executable"
 echo "canaries named sudo, smartrag, docker and systemctl on PATH — and no"
-echo "cfg/admin/next/repair message is left in the catalogue without a caller."
+echo "cfg/admin/next/repair message is left in the catalogue without a caller,"
+echo "nor any key assigned twice in one catalogue, where bash keeps the last"
+echo "one silently and the wrong language reaches the screen."
