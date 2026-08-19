@@ -43,14 +43,19 @@
     {% for item in inventory['items'] %}
     <tr>
       <td><code>{{ item.system }}</code></td>
-      <td>{{ item.label }}{% if item.note %}<br><span class="note">{{ item.note }}</span>{% endif %}</td>
+      {# Keys, not sentences: this table used to arrive in English on a
+         German page, because these strings are built in Python rather than
+         here. #}
+      <td>{{ t(item.label, *item.args) }}
+          {% if item.note %}<br><span class="note">{{ t(item.note, *item.note_args) }}</span>{% endif %}</td>
       {# An unknown count is not a zero. A service that is down would
          otherwise read as "nothing here", and the confirmation below would be
          given on that basis. #}
       <td>{% if item.count is none %}
             {% if item.unknowable %}{{ t('courses_delete_not_countable') }}
-            {% else %}<strong>{{ t('courses_delete_unknown_count') }}</strong>{% endif %}
-            <br><span class="note">{{ item.error }}</span>
+              <br><span class="note">{{ t(item.error) }}</span>
+            {% else %}<strong>{{ t('courses_delete_unknown_count') }}</strong>
+              <br><span class="note">{{ item.error }}</span>{% endif %}
           {% else %}{{ item.count }}{% endif %}</td>
     </tr>
     {% endfor %}

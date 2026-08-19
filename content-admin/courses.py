@@ -221,7 +221,13 @@ class InventoryItem(dict):
     """
 
     def __init__(self, system: str, label: str, count: int | None = None,
-                 error: str = "", note: str = "", unknowable: bool = False):
+                 error: str = "", note: str = "", unknowable: bool = False,
+                 args: tuple = (), note_args: tuple = ()):
+        # `label` and `note` are i18n keys, not sentences. This table is read
+        # by the person deciding whether to delete a course, and it used to
+        # arrive in English on a German page — the one place in this
+        # application where that happened, because these strings are built
+        # here rather than in a template.
         # `unknowable` separates two things that both leave count at None and
         # mean opposite things to the operator: a system that did not answer,
         # which may hold data and warrants stopping — and a number that cannot
@@ -229,7 +235,8 @@ class InventoryItem(dict):
         # Counting the second as a failure sends somebody to fix a service
         # that is working.
         super().__init__(system=system, label=label, count=count,
-                         error=error, note=note, unknowable=unknowable)
+                         error=error, note=note, unknowable=unknowable,
+                         args=args, note_args=note_args)
 
 
 def inventory(course_id: str,
@@ -282,15 +289,15 @@ def inventory(course_id: str,
                     (course_id,))
                 (stranded,) = cur.fetchone()
             conn.commit()
-        items.append(InventoryItem("postgres", "agent slots configured", configured))
-        items.append(InventoryItem("postgres", "agents imported into Flowise", imported))
-        items.append(InventoryItem("postgres", "maintainers assigned", members))
+        items.append(InventoryItem("postgres", "inv_slots_configured", configured))
+        items.append(InventoryItem("postgres", "inv_slots_imported", imported))
+        items.append(InventoryItem("postgres", "inv_maintainers", members))
         if stranded:
             items.append(InventoryItem(
-                "postgres", "maintainers who would be left with no course", stranded,
-                note="their accounts stay; removing them is a separate decision"))
+                "postgres", "inv_maintainers_stranded", stranded,
+                note="inv_maintainers_stranded_note"))
     except db.DatabaseError as exc:
-        items.append(InventoryItem("postgres", "slots and maintainers", None, str(exc)))
+        items.append(InventoryItem("postgres", "inv_slots_and_maintainers", None, str(exc)))
 
     # ── Weaviate: one collection of its own, three shared classes ───────────
     try:
@@ -300,23 +307,24 @@ def inventory(course_id: str,
             env.get("WEAVIATE_API_KEY", ""))
         if weaviate.collection_exists(course["collection"]):
             items.append(InventoryItem(
-                "weaviate", f"document chunks in {course['collection']}",
-                weaviate.count_chunks(course["collection"], course_id),
-                note="the whole collection goes"))
+                "weaviate", "inv_chunks", args=(course["collection"],),
+                count=weaviate.count_chunks(course["collection"], course_id),
+                note="inv_chunks_note"))
         else:
             items.append(InventoryItem(
-                "weaviate", f"collection {course['collection']}", 0,
-                note="does not exist — nothing to remove"))
+                "weaviate", "inv_collection", 0, args=(course["collection"],),
+                note="inv_absent_note"))
     except WeaviateError as exc:
-        items.append(InventoryItem("weaviate", "document chunks", None, str(exc)))
+        items.append(InventoryItem("weaviate", "inv_chunks_plain", None, str(exc)))
 
     for cls in WeaviateClient.SHARED_LEARNER_CLASSES:
         try:
             items.append(InventoryItem(
-                "weaviate", f"{cls} records", weaviate.count_by_course(cls, course_id),
-                note="shared with other courses — removed by filter"))
+                "weaviate", "inv_shared_class", args=(cls,),
+                count=weaviate.count_by_course(cls, course_id),
+                note="inv_shared_class_note"))
         except WeaviateError as exc:
-            items.append(InventoryItem("weaviate", f"{cls} records", None, str(exc)))
+            items.append(InventoryItem("weaviate", "inv_shared_class", None, str(exc), args=(cls,)))
 
     # ── Garage: the bucket, counted by Garage itself ────────────────────────
     # No S3 client is needed to count: GetBucketInfo reports objects and
@@ -330,20 +338,21 @@ def inventory(course_id: str,
         garage = garage or GarageClient()
         info = garage.bucket_info(course["bucket"])
         if info is None:
-            items.append(InventoryItem("garage", f"bucket {course['bucket']}", 0,
-                                       note="does not exist — nothing to remove"))
+            items.append(InventoryItem("garage", "inv_bucket", 0,
+                                       args=(course["bucket"],),
+                                       note="inv_absent_note"))
         else:
             items.append(InventoryItem(
-                "garage", f"objects in {course['bucket']}",
-                int(info.get("objects") or 0),
-                note=f"{int(info.get('bytes') or 0)} bytes"))
+                "garage", "inv_objects", args=(course["bucket"],),
+                count=int(info.get("objects") or 0),
+                note="inv_objects_note", note_args=(int(info.get("bytes") or 0),)))
             unfinished_uploads = int(info.get("unfinishedUploads") or 0)
             if unfinished_uploads:
                 items.append(InventoryItem(
-                    "garage", "unfinished uploads", unfinished_uploads,
-                    note="these also keep the bucket from being deleted"))
+                    "garage", "inv_unfinished", unfinished_uploads,
+                    note="inv_unfinished_note"))
     except GarageError as exc:
-        items.append(InventoryItem("garage", "object storage", None, str(exc)))
+        items.append(InventoryItem("garage", "inv_object_storage", None, str(exc)))
 
     # ── Neo4j: the course's part of the graph ───────────────────────────────
     try:
@@ -354,11 +363,11 @@ def inventory(course_id: str,
                           f"http://smartrag-neo4j:{env.get('NEO4J_HTTP_PORT', '7474')}"),
                 "neo4j", env.get("NEO4J_PASSWORD", ""))
         counts = neo4j.counts(course_id)
-        items.append(InventoryItem("neo4j", "concepts", int(counts.get("concepts") or 0)))
-        items.append(InventoryItem("neo4j", "prerequisite links",
+        items.append(InventoryItem("neo4j", "inv_concepts", int(counts.get("concepts") or 0)))
+        items.append(InventoryItem("neo4j", "inv_links",
                                    int(counts.get("edges") or 0)))
     except Exception as exc:  # noqa: BLE001 — Neo4jError, and requests' own
-        items.append(InventoryItem("neo4j", "concept graph", None, str(exc)))
+        items.append(InventoryItem("neo4j", "inv_graph", None, str(exc)))
 
     # ── Flowise: the chatflows, and whether they are still there ────────────
     # The slot table knows which chatflow it created; only Flowise knows
@@ -378,15 +387,14 @@ def inventory(course_id: str,
                 conn.commit()
             present = [i for i in ids if i in live]
             items.append(InventoryItem(
-                "flowise", "chatflows to delete", len(present),
-                note="their conversations, feedback and uploaded files go with "
-                     "them — Flowise removes those itself"))
+                "flowise", "inv_chatflows", len(present),
+                note="inv_chatflows_note"))
             if len(ids) > len(present):
                 items.append(InventoryItem(
-                    "flowise", "chatflows already gone", len(ids) - len(present),
-                    note="recorded here but not in Flowise; nothing to do"))
+                    "flowise", "inv_chatflows_gone", len(ids) - len(present),
+                    note="inv_chatflows_gone_note"))
         except Exception as exc:  # noqa: BLE001 — FlowiseError, and requests' own
-            items.append(InventoryItem("flowise", "chatflows", None, str(exc)))
+            items.append(InventoryItem("flowise", "inv_chatflows_plain", None, str(exc)))
 
     # ── What this inventory deliberately does not count ─────────────────────
     # Langfuse traces carry a userId and Flowise's chatId, and no course. The
@@ -396,12 +404,8 @@ def inventory(course_id: str,
     # answer; a zero here would read as "there are none".
     if "observability" in (env.get("COMPOSE_PROFILES") or ""):
         items.append(InventoryItem(
-            "langfuse", "traces", None, unknowable=True,
-            error="not attributable to a course — traces carry a learner id and "
-                  "Flowise's chat id, never a course id",
-            note="deleted anyway, by way of the chat sessions read from Flowise "
-                 "before its chatflows go; reachable per learner, which is what "
-                 "an erasure request needs"))
+            "langfuse", "inv_traces", None, unknowable=True,
+            error="inv_traces_why", note="inv_traces_note"))
 
     return {"course": course, "items": items}
 

@@ -77,6 +77,11 @@ IDENTICAL_OK = {
     # "System" is spelled the same in German, and the column heads a list of
     # service names.
     "courses_delete_col_system",
+    # "Collection" and "Bucket" are used untranslated throughout the German
+    # interface — the courses table's own column is headed "Collection und
+    # Bucket" — because those are the names the operator will see in Weaviate
+    # and Garage when looking for them.
+    "inv_collection", "inv_bucket",
 }
 same = [
     k for k in i18n.MSG_EN
