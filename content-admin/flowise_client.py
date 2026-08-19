@@ -110,15 +110,42 @@ class FlowiseClient:
     def chat_session_ids(self, chatflow_id: str) -> list[str]:
         """The distinct chat ids of one chatflow's conversations.
 
-        Needed before the chatflow is deleted, and only then: a Langfuse trace
-        is keyed by Flowise's chatId and carries no course, so this is the
-        only bridge from a course to its traces — and Flowise removes these
-        records together with the chatflow, which closes the bridge at the
-        same moment.
+        Named for what it is used for and not for what it returns, which is
+        confusing enough to write down: these are Flowise `chatId` values,
+        because that is what a Langfuse trace carries as its own `sessionId`.
+        Flowise's `sessionId` is a different string and is not what Langfuse
+        stores — see chat_records.
+
+        Needed before the chatflow is deleted, and only then: Flowise removes
+        these records together with the chatflow, which closes the only
+        bridge from a course to its traces at the same moment.
 
         An empty list for a chatflow nobody ever talked to, and for one that
         no longer exists: both mean "no sessions to carry over", and neither
         is a reason to stop a deletion.
+        """
+        seen: dict[str, None] = {}
+        for record in self.chat_records(chatflow_id):
+            if record["chat_id"]:
+                seen[record["chat_id"]] = None
+        return list(seen)
+
+    def chat_records(self, chatflow_id: str) -> list[dict]:
+        """Every conversation record of one chatflow, as {session_id, chat_id}.
+
+        Two different ids, and the difference is the whole point:
+
+          * `sessionId` is what the embedding sets, and in this system it is
+            `<learner>|<something>` — every agent derives the learner from it
+            with `$flow.sessionId?.split('|')[0]`, and chathistory-sync stores
+            the same split as `user_id`. So this is the only field that says
+            *who*.
+          * `chatId` is Flowise's own conversation id, and it is what a
+            Langfuse trace carries as its `sessionId`. So this is the only
+            field that reaches the traces.
+
+        One learner therefore needs both: the session ids to delete from
+        Flowise, and the chat ids of those sessions to delete from Langfuse.
         """
         try:
             messages = self._request("GET", f"/chatmessage/{chatflow_id}") or []
@@ -126,12 +153,35 @@ class FlowiseClient:
             if "HTTP 404" in str(exc):
                 return []
             raise
-        seen: dict[str, None] = {}
+        seen: dict[tuple[str, str], None] = {}
         for message in messages:
-            chat_id = (message or {}).get("chatId")
-            if chat_id:
-                seen[chat_id] = None
-        return list(seen)
+            message = message or {}
+            session_id = message.get("sessionId") or ""
+            chat_id = message.get("chatId") or ""
+            if session_id or chat_id:
+                seen[(session_id, chat_id)] = None
+        return [{"session_id": s, "chat_id": c} for s, c in seen]
+
+    def delete_chat_session(self, chatflow_id: str, session_id: str) -> None:
+        """Delete one conversation of one chatflow, by its session id.
+
+        `DELETE /chatmessage/{chatflowId}?sessionId=…`, which in 3.1.3 passes
+        the value to utilGetChatMessage as a TypeORM equality — an exact
+        match, not a prefix. Read in the source: a prefix match would be the
+        difference between erasing one learner and erasing everyone whose id
+        begins with the same characters.
+
+        An empty session id is refused rather than sent. Flowise treats an
+        absent sessionId as "no filter" and would delete every conversation
+        of the chatflow.
+        """
+        if not session_id:
+            raise FlowiseError(
+                "Refusing to delete a chat session without a session id — "
+                "Flowise would read that as every session of the chatflow."
+            )
+        self._request("DELETE", f"/chatmessage/{chatflow_id}",
+                      params={"sessionId": session_id})
 
     def delete_chatflow(self, chatflow_id: str) -> bool:
         """Remove a chatflow. True when it was there, False when it was not.

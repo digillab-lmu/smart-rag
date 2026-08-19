@@ -1,8 +1,14 @@
 """
 Langfuse, for the one thing deleting a course has to do there.
 
-A trace carries a learner id and Flowise's chat id. It never carries a
-course. The only route from a course to its traces therefore runs
+A trace carries Flowise's chat id, as its own `sessionId`, and nothing else
+that identifies anybody. It carries no course, and — despite what this
+paragraph claimed until 2026-08-19 — **no learner either**: Flowise 3.1.3's
+AnalyticHandler builds `langfuse.trace({ name, sessionId: this.options.chatId
+})` and never sets a userId. Read in the source, after the earlier sentence
+here had been believed long enough to be built on.
+
+So the only route from a course to its traces runs
 
     course → its chatflows → Flowise's chat records → chatId → sessionId
 
@@ -10,6 +16,9 @@ and Flowise deletes those chat records together with the chatflow. Which
 fixes the order of a course deletion: the session ids have to be collected
 **before** the chatflows go, or the traces become unreachable in the same
 moment the course does.
+
+The route from a *person* to their traces runs through the same records —
+see learners.py — for the same reason: there is no query by learner here.
 
 Everything here is read from Langfuse's OpenAPI specification rather than
 remembered:
