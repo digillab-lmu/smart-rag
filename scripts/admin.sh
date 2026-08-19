@@ -527,20 +527,81 @@ action_migrate() {
     press_enter
 }
 
+# Sends through the Content Admin's own mailer rather than Postfix's.
+#
+# The previous test called install-postfix.sh --test-only, which exercises a
+# local Postfix — so on an installation pointed straight at an external relay
+# there was no way to test the thing that actually sends. The mailer reads the
+# same SMTP_* values every other part of the stack uses, so a mail that
+# arrives through it is evidence for all of them.
+_mail_send_test() {
+    local to="$1"
+    docker exec smartrag-content-admin python3 -c "
+import sys; sys.path.insert(0, '/app')
+import mailer
+mailer.send_mail(${to@Q}, 'SMART RAG — test', 'This is the test mail from sudo smartrag.')
+print('sent')
+" 2>&1
+}
+
 action_mail() {
     clear
     header "$(t admin_mail_title)"
+
     if [[ -z "${SMTP_HOST:-}" ]]; then
         warn "$(t admin_mail_no_relay)"
+        info "$(t admin_mail_why)"
+        echo
+        # The obvious place to fix it is the place that reports it. This used
+        # to be reachable only through the configuration menu, so the page
+        # that said "no relay" was also the page that could not do anything
+        # about it.
+        if confirm admin_mail_configure_now "y"; then
+            _cfg_mail
+            set -a
+            # shellcheck source=/dev/null
+            source "$REPO_ROOT/.env"
+            set +a
+        else
+            press_enter
+            return 0
+        fi
+        [[ -z "${SMTP_HOST:-}" ]] && { press_enter; return 0; }
     else
         info "$(t admin_mail_current "$SMTP_HOST" "${SMTP_PORT:-25}")"
-        if [[ -n "${ADMIN_EMAIL:-}" ]]; then
-            info "$(t admin_mail_target "$ADMIN_EMAIL")"
-            if confirm admin_mail_test_confirm "y"; then
-                bash "$SCRIPT_DIR/install-postfix.sh" --lang "$LANG_CHOICE" --test-only \
-                    || err "$(t admin_mail_test_failed)"
+    fi
+
+    # n8n keeps its own copy. The credential is built from .env when the
+    # workflows are deployed, so changing the relay here reaches the Content
+    # Admin immediately and n8n not at all — the ingest mails and both alert
+    # workflows would go on using the old settings, without saying so.
+    if confirm admin_mail_refresh_n8n "y"; then
+        # Through the guided path, not the deploy script directly. That rule
+        # exists because the import needs n8n's owner account, which can only
+        # be created in a browser — a direct call skips the guidance the
+        # installer gives and fails with a message about a missing user.
+        local rc=0
+        run_n8n_import_guided "$SCRIPT_DIR" "$LANG_CHOICE" || rc=$?
+        if (( rc != 0 && rc != EXIT_SKIPPED && rc != EXIT_UNVERIFIED )); then
+            warn "$(t admin_mail_refresh_failed)"
+        fi
+    fi
+
+    if [[ -n "${ADMIN_EMAIL:-}" ]]; then
+        info "$(t admin_mail_target "$ADMIN_EMAIL")"
+        if confirm admin_mail_test_confirm "y"; then
+            local out
+            out="$(_mail_send_test "$ADMIN_EMAIL")"
+            if grep -q "^sent$" <<<"$out"; then
+                ok "$(t admin_mail_test_sent "$ADMIN_EMAIL")"
+                dim "$(t admin_mail_test_hint)"
+            else
+                err "$(t admin_mail_test_failed)"
+                printf '      %s\n' "$(tail -3 <<<"$out")"
             fi
         fi
+    else
+        warn "$(t admin_mail_no_admin_email)"
     fi
     press_enter
 }
