@@ -62,9 +62,14 @@ class Flowise:
     def __init__(self, log, present=("cf-1",), fail=False):
         self.log, self.present, self.fail = log, set(present), fail
 
-    def chat_session_ids(self, chatflow_id):
+    def chat_records(self, chatflow_id):
+        # Two ids per conversation, as Flowise really stores them. Which one a
+        # Langfuse trace is keyed by depends on how the chat was opened, so a
+        # deletion that collects only one of them misses every trace on the
+        # other kind of installation.
         self.log.append(("flowise.sessions", chatflow_id))
-        return [f"chat-{chatflow_id}"]
+        return [{"session_id": "lti-9|Ada|1|t|Ada L.",
+                 "chat_id": f"chat-{chatflow_id}"}]
 
     def delete_chatflow(self, chatflow_id):
         self.log.append(("flowise.delete", chatflow_id))
@@ -166,6 +171,18 @@ check("traces are asked for before the chatflows go",
       names.index("langfuse.delete") < names.index("flowise.delete"), names)
 check("every chatflow's sessions are read",
       names.count("flowise.sessions") == 2, names)
+
+# Both ids reach Langfuse, not just one. Through the LTI middleware a trace's
+# sessionId is the middleware's own string, because Flowise spreads
+# overrideConfig.analytics.langFuse over its defaults; without it the trace's
+# sessionId is Flowise's chatId. Collecting only chatIds — which this did
+# until 2026-08-19 — matched no trace at all on an LTI installation and
+# reported that as "0 traces", successfully.
+asked_for = {e[1] for e in log if e[0] == "langfuse.list"}
+check("the LTI session id is looked up in Langfuse",
+      "lti-9|Ada|1|t|Ada L." in asked_for, asked_for)
+check("Flowise's own chat id is looked up too",
+      "chat-cf-1" in asked_for and "chat-cf-2" in asked_for, asked_for)
 # The bucket cannot be deleted while it holds objects, and Garage's admin API
 # cannot empty one — so the order here is forced too.
 check("the bucket is emptied before it is deleted",
@@ -187,7 +204,11 @@ check("the Langfuse step says it asked rather than did",
       lf and "asked" in lf["action"], lf)
 check("…and says the deletion is not immediate",
       lf and "15 minutes" in lf["detail"], lf)
-check("all four traces were asked for", lf and "4 trace(s)" in lf["detail"], lf)
+# Three distinct ids across two chatflows — the one LTI session id, shared by
+# both conversations and counted once, and each chatflow's own chat id — with
+# two traces apiece.
+check("every trace of every id was asked for",
+      lf and "6 trace(s)" in lf["detail"], lf)
 
 # ─── 3. The record goes last, and the course is really gone ──────────────────
 actions = [s["action"] for s in result["steps"]]
