@@ -123,7 +123,13 @@ A_DOMAIN="$(manifest_value domain)"
 A_TAILSCALE="$(manifest_value tailscale_hostname)"
 A_BASE="$(manifest_value base_data_path)"
 
-info "$(t restore_archive_from "$A_CREATED" "$A_DOMAIN${A_DOMAIN:+ }${A_TAILSCALE}")"
+# On a Tailscale deployment DOMAIN *is* the MagicDNS name, so the two values
+# are the same string and printing both reads as a stutter — which is exactly
+# how it came out on the first real run.
+A_ADDRESS="$A_DOMAIN"
+[[ -n "$A_TAILSCALE" && "$A_TAILSCALE" != "$A_DOMAIN" ]] \
+    && A_ADDRESS="${A_ADDRESS:+$A_ADDRESS }$A_TAILSCALE"
+info "$(t restore_archive_from "$A_CREATED" "${A_ADDRESS:-—}")"
 
 # A backup taken with --running is a torn copy of the databases. It may
 # restore perfectly and it may not, and nobody finds out until Postgres tries
@@ -218,6 +224,10 @@ if (( NEED_KB > 0 && FREE_KB < NEED_KB )); then
 fi
 
 if (( DRY_RUN )); then
+    # A dry run that says "this would work" while leaving out that it would
+    # move the live installation aside is not a dry run, it is a reassurance.
+    (( OCCUPIED )) && warn "$(t restore_dry_run_would_replace "$TARGET_BASE")"
+    [[ -n "$RENAME" ]] && warn "$(t restore_dry_run_would_rename "$A_DOMAIN" "$RENAME")"
     ok "$(t restore_dry_run_done)"
     exit 0
 fi

@@ -213,6 +213,46 @@ check "the rename says the certificates are not covered" $? "$out"
 grep -qi 'LTI' <<<"$out"
 check "…and that the LMS registration has to be redone" $? "$out"
 
+# ─── A message beginning with a hyphen is text, not an option ────────────────
+# printf reads its first argument as the format, and "--dry-run: every check
+# runs…" begins with two of them. On the first real run that printed
+# "printf: --: invalid option" followed by an empty warning — the worst shape
+# a bug can take, because the operator sees that something was not said and
+# cannot tell what.
+for lang in en de; do
+    out="$(cd "$G" && bash scripts/restore.sh "$ARCHIVE" --lang "$lang" --dry-run 2>&1)"
+    grep -q 'invalid option' <<<"$out"
+    check "no printf option error in $lang" $(( $? == 0 ? 1 : 0 )) "$out"
+    grep -q 'dry-run' <<<"$out"
+    check "the leading-hyphen message is printed in full in $lang" $? "$out"
+done
+
+# Every catalogue message that begins with a hyphen, not just this one.
+hyphenated="$(grep -cE '^\s*\[[a-z0-9_]+\]="-' "$REPO/scripts/lib/messages.sh")"
+(( hyphenated > 0 ))
+check "there are messages beginning with a hyphen to protect" $? "$hyphenated"
+grep -q 'printf -- "\$fmt"' "$REPO/scripts/lib/messages.sh"
+check "t() passes -- before the format" $? \
+      "$(grep -n 'printf .*fmt' "$REPO/scripts/lib/messages.sh")"
+
+# ─── The address is printed once ─────────────────────────────────────────────
+# On a Tailscale deployment DOMAIN is the MagicDNS name, so the archive's two
+# address fields hold the same string and printing both stutters.
+TS="$WORK/ts"; make_install "$TS" 17 "host.example.ts.net"
+sed -i.bak 's/^TAILSCALE_HOSTNAME=""/TAILSCALE_HOSTNAME="host.example.ts.net"/' "$TS/.env"
+COMPOSE_LOG="$WORK/ts.log" bash -c "cd '$TS' && bash scripts/backup.sh --lang en --to '$WORK/tsb'" >/dev/null 2>&1
+TSA="$(ls -1 "$WORK"/tsb/smartrag-*.tar.gz | head -1)"
+out="$(cd "$TS" && bash scripts/restore.sh "$TSA" --lang en --dry-run 2>&1)"
+n="$(grep -o 'host.example.ts.net' <<<"$(grep 'Archive taken' <<<"$out")" | wc -l | tr -d ' ')"
+[[ "$n" == "1" ]]
+check "an address that is both DOMAIN and MagicDNS is printed once" $? "$n in: $(grep 'Archive taken' <<<"$out")"
+
+# ─── A dry run names what a real run would replace ───────────────────────────
+out="$(cd "$E" && bash scripts/restore.sh "$ARCHIVE" --lang en --dry-run --force 2>&1)"
+check "a dry run over an occupied target still passes" $? "$out"
+grep -qi 'aside' <<<"$out"
+check "…but says the live installation would be moved aside" $? "$out"
+
 # ─── Both languages, because an operator restoring at 3am reads their own ────
 for lang in en de; do
     out="$(cd "$G" && bash scripts/restore.sh "$WORK/definitely-not-here.tar.gz" --lang "$lang" 2>&1)"
