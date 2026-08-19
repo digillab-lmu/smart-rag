@@ -200,6 +200,100 @@ llm_model_choices_fast() {
 # to call from functions whose stdout is captured via command substitution.
 # The API key travels via header/Authorization everywhere, never a URL query
 # param, so it never ends up visible in `ps aux` output.
+# The provider's current models, one id per line. Returns 2 when the list
+# cannot be fetched, which is not an error — an installation behind a proxy,
+# or a provider having a bad minute, must not stop a setup.
+#
+# **The first line of the output is the ordering** — "recent" or "alpha" —
+# and the model ids follow. That is deliberate and worth the oddity: the order
+# is a claim ("these are the newest") that only some endpoints support, and a
+# global would not survive the trip. Every caller reads this through a
+# subshell — mapfile from a process substitution, or a command substitution —
+# so a variable set in here is discarded on the way out. The first version did
+# exactly that, and the list came out correctly sorted underneath a line
+# saying it was alphabetical.
+#
+# Returns 2 when the list cannot be fetched, which is not an error: an
+# installation behind a proxy, or a provider having a bad minute, must not
+# stop a setup. jq does the sorting — it is already a hard requirement here,
+# and doing it in bash would mean parsing timestamps.
+fetch_model_ids() {   # $1 = provider, $2 = api key
+    local provider="$1" api_key="$2" resp
+    case "$provider" in
+        anthropic)
+            resp="$(curl -sf --max-time 8 -H "x-api-key: $api_key" -H "anthropic-version: 2023-06-01" \
+                "https://api.anthropic.com/v1/models?limit=1000" 2>/dev/null)" || return 2
+            echo recent
+            jq -r '[.data[]?] | sort_by(.created_at // "") | reverse | .[].id' <<<"$resp" 2>/dev/null
+            ;;
+        openai)
+            resp="$(curl -sf --max-time 8 -H "Authorization: Bearer $api_key" \
+                "https://api.openai.com/v1/models" 2>/dev/null)" || return 2
+            echo recent
+            jq -r '[.data[]?] | sort_by(.created // 0) | reverse | .[].id' <<<"$resp" 2>/dev/null
+            ;;
+        google)
+            resp="$(curl -sf --max-time 8 -H "x-goog-api-key: $api_key" \
+                "https://generativelanguage.googleapis.com/v1beta/models" 2>/dev/null)" || return 2
+            echo alpha
+            jq -r '[.models[]?.name] | sort | .[] | sub("^models/"; "")' <<<"$resp" 2>/dev/null
+            ;;
+        mistral)
+            resp="$(curl -sf --max-time 8 -H "Authorization: Bearer $api_key" \
+                "https://api.mistral.ai/v1/models" 2>/dev/null)" || return 2
+            echo recent
+            jq -r '[.data[]?] | sort_by(.created // 0) | reverse | .[].id' <<<"$resp" 2>/dev/null
+            ;;
+        cohere)
+            resp="$(curl -sf --max-time 8 -H "Authorization: Bearer $api_key" \
+                "https://api.cohere.com/v1/models" 2>/dev/null)" || return 2
+            echo alpha
+            jq -r '[.models[]?.name] | sort | .[]' <<<"$resp" 2>/dev/null
+            ;;
+        openrouter)
+            resp="$(curl -sf --max-time 8 "https://openrouter.ai/api/v1/models" 2>/dev/null)" || return 2
+            echo recent
+            jq -r '[.data[]?] | sort_by(.created // 0) | reverse | .[].id' <<<"$resp" 2>/dev/null
+            ;;
+        *) return 2 ;;
+    esac
+}
+
+# Print the provider's models so the operator can pick from what exists rather
+# than from a list written into this repository months ago. Capped, because a
+# provider with two hundred entries would push the question itself off the
+# screen; the cap is stated rather than silent.
+MODEL_LIST_CAP=24
+show_model_list() {   # $1 = provider, $2 = api key
+    local provider="$1" api_key="$2"
+    [[ "$provider" == "custom" || -z "$api_key" ]] && return 0
+    command -v jq >/dev/null 2>&1 || return 0
+
+    local lines=() rc=0
+    mapfile -t lines < <(fetch_model_ids "$provider" "$api_key") || rc=$?
+    if (( rc != 0 )) || (( ${#lines[@]} < 2 )); then
+        dim "$(t cfg_model_list_unavailable)" >&2
+        return 0
+    fi
+    local order="${lines[0]}"
+    local models=("${lines[@]:1}")
+
+    if [[ "$order" == "recent" ]]; then
+        info "$(t cfg_model_list_recent "${#models[@]}")" >&2
+    else
+        info "$(t cfg_model_list_alpha "${#models[@]}")" >&2
+    fi
+    local shown=0 m
+    for m in "${models[@]}"; do
+        (( shown >= MODEL_LIST_CAP )) && break
+        printf "    %s\n" "$m" >&2
+        shown=$(( shown + 1 ))
+    done
+    (( ${#models[@]} > shown )) && dim "$(t cfg_model_list_more "$(( ${#models[@]} - shown ))")" >&2
+    echo >&2
+    return 0
+}
+
 validate_model_id() {
     local provider="$1" api_key="$2" model_id="$3"
     local resp found=1
@@ -508,6 +602,14 @@ ask_llm_config() {
         CFG_LLM_BASE_URL=""
     fi
 
+    # Shown once, before either question: the two tiers are picked from the
+    # same list, and printing it twice would push the first question off the
+    # screen. The curated suggestions below stay — they say which model is a
+    # reasonable *choice*, which a bare list cannot — but they are no longer
+    # the only thing the operator sees, and a model released last week is now
+    # visible instead of being something you have to already know about.
+    show_model_list "$CFG_LLM_PROVIDER" "$CFG_LLM_API_KEY"
+
     printf "  ${BOLD}%s${RESET}\n" "$(t cfg_llm_tiers_explain)"
     CFG_LLM_MODEL_STRONG="$(ask_model_choice "$CFG_LLM_PROVIDER" strong cfg_llm_model_strong "$CFG_LLM_API_KEY")" || return 1
     CFG_LLM_MODEL_FAST="$(ask_model_choice "$CFG_LLM_PROVIDER" fast cfg_llm_model_fast "$CFG_LLM_API_KEY")" || return 1
@@ -542,6 +644,7 @@ ask_embedding_config() {
 
     local d_model
     d_model="$(default_embedding_model "$CFG_EMBEDDING_PROVIDER")"
+    show_model_list "$CFG_EMBEDDING_PROVIDER" "$CFG_EMBEDDING_API_KEY"
     CFG_EMBEDDING_MODEL="$(prompt_and_validate_model cfg_embed_model "${CFG_EMBEDDING_MODEL:-$d_model}" \
         "$CFG_EMBEDDING_PROVIDER" "$CFG_EMBEDDING_API_KEY")" || return 1
 
