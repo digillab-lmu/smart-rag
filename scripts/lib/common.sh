@@ -492,15 +492,61 @@ confirm() {
 
 # select_one_index KEY OPTION1 OPTION2 ... → echoes 1-based index, returns 0
 # Use this when you need language-neutral identity (case-switch on a number).
+# ─── Wrapping ────────────────────────────────────────────────────────────────
+
+term_width() {
+    local cols="${COLUMNS:-}"
+    [[ -z "$cols" ]] && cols="$(tput cols 2>/dev/null || true)"
+    [[ "$cols" =~ ^[0-9]+$ ]] || cols=80
+    # Capped: full-screen terminals are wide, and prose set across 200 columns
+    # is harder to read than the wrapping it avoids.
+    (( cols > 100 )) && cols=100
+    (( cols < 40 )) && cols=40
+    printf '%s' "$cols"
+}
+
+# One word per line-fill, no external tools. `read -ra` rather than an
+# unquoted expansion, so a * in a message stays a * instead of becoming the
+# contents of the working directory.
+wrap_lines() {
+    local text="$1" width="${2:-80}"
+    local words=() line="" word
+    (( width < 20 )) && width=20
+    read -ra words <<< "$text"
+    for word in "${words[@]}"; do
+        if [[ -z "$line" ]]; then
+            line="$word"
+        elif (( ${#line} + 1 + ${#word} <= width )); then
+            line+=" $word"
+        else
+            printf '%s\n' "$line"
+            line="$word"
+        fi
+    done
+    [[ -n "$line" ]] && printf '%s\n' "$line"
+    return 0
+}
+
 select_one_index() {
     local key="$1"; shift
     local options=("$@")
     local prompt_text; prompt_text="$(t "$key")"
-    local i input
+    local i input line first
     WIZARD_BACK=0
     printf "  ${BOLD}%s${RESET}\n" "$prompt_text" >&2
     for i in "${!options[@]}"; do
-        printf "    ${BOLD}[%d]${RESET}  %s\n" $((i+1)) "${options[$i]}" >&2
+        # Wrapped here, not left to the terminal: the terminal resumes at
+        # column 0, and with four options long enough to say what each one
+        # requires, it stops being visible where one ends and the next begins.
+        first=1
+        while IFS= read -r line; do
+            if (( first )); then
+                printf "    ${BOLD}[%d]${RESET}  %s\n" $((i+1)) "$line" >&2
+                first=0
+            else
+                printf "         %s\n" "$line" >&2
+            fi
+        done < <(wrap_lines "${options[$i]}" $(( $(term_width) - 9 )))
     done
     while true; do
         printf "  ${DIM}%s${RESET} ${BOLD}[1]${RESET}: " "$(t enter_choice)" >&2

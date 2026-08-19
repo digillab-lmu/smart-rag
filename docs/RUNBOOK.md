@@ -611,9 +611,12 @@ same menu, *renew*. If renewal fails, it is nearly always DNS or port 80 —
 existing mail server was detected, the wizard offers to leave it alone, and
 then SMART RAG deliberately does not use it.
 
-**Fix.** `sudo smartrag` → *Change configuration* → mail relay. With Postfix
-already on the host, the value is the pinned Docker gateway `172.28.92.1`,
-port 25. Ingest works either way — only the notifications are affected.
+**Fix.** `sudo smartrag` → *Mail service — set up and test*. It asks one
+question with four answers, each stating what it needs beforehand; the entry
+also sends a test mail, so the result is visible without waiting for the next
+ingest. With Postfix already on the host, the answer is the first one and the
+value is the pinned Docker gateway `172.28.92.1`, port 25. Ingest works either
+way — only the notifications are affected.
 
 ---
 
