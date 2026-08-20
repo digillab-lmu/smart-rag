@@ -171,11 +171,14 @@ for path in sorted(TEMPLATES.glob("*.json")):
         # The provider is required, not defaulted: it selects the Flowise node
         # type for the model, so a missing one would build the agent against
         # the wrong vendor's node.
+        #
+        # The course goes in as a course, not as env keys: those left .env
+        # with the installer's course question, because a collection and a
+        # retrieval filter belong to a course and not to an installation.
         "LLM_PROVIDER": "anthropic", "EMBEDDING_PROVIDER": "openai",
-        "COURSE_ID": COURSE, "COURSE_NAME": "Einführung",
-        "WEAVIATE_COLLECTION_NAME": "SmartRagChunks",
         "EMBEDDING_MODEL": "text-embedding-3-small",
-    }, slot=4)
+    }, slot=4, course={"id": COURSE, "name": "Einführung",
+                       "collection": "SmartRagChunks"})
     for cfg in vector_stores(flow):
         raw = cfg.get("weaviateFilter") or ""
         if not raw:
@@ -199,13 +202,54 @@ for path in sorted(TEMPLATES.glob("*.json")):
 flow = at.load_template("agent-11-expert-feedback.json")
 at.auto_fill_from_env(flow, {"LLM_PROVIDER": "anthropic",
                              "EMBEDDING_PROVIDER": "openai",
-                             "COURSE_ID": "", "COURSE_NAME": "x",
-                             "WEAVIATE_COLLECTION_NAME": "c", "EMBEDDING_MODEL": "m"}, slot=1)
+                             "EMBEDDING_MODEL": "m"}, slot=1,
+                      course={"id": "", "name": "x", "collection": "c"})
 for cfg in vector_stores(flow):
     raw = cfg.get("weaviateFilter") or ""
     if raw:
         check("an empty COURSE_ID still yields a course_id condition",
               "course_id" in raw, raw[:120])
+
+# ── No installation-wide course, anywhere ───────────────────────────────────
+# The installer used to ask for a course and write COURSE_ID, COURSE_NAME and
+# WEAVIATE_COLLECTION_NAME into .env. That produced a collection and a bucket
+# belonging to no course, while the first course created in the Content Admin
+# quietly made a second pair — and every consumer that read those keys was one
+# course away from serving the wrong material.
+#
+# They are gone. This checks the whole tree rather than the files that had
+# them, because the failure mode is a *new* reader reintroducing the idea.
+INSTALLATION_WIDE = ("COURSE_ID", "COURSE_NAME", "WEAVIATE_COLLECTION_NAME")
+SEARCHED = [
+    REPO / ".env.example",
+    REPO / "docker" / "docker-compose.yml",
+    *(REPO / "n8n").glob("workflows*/*.json"),
+    *(REPO / "scripts").glob("*.sh"),
+    *(REPO / "scripts" / "lib").glob("*.sh"),
+]
+for path in SEARCHED:
+    text = path.read_text()
+    for key in INSTALLATION_WIDE:
+        # An assignment or a read. A prose mention explaining that the key is
+        # gone is not one, which is why this looks for the two syntaxes rather
+        # than the bare word.
+        offenders = []
+        for ln in text.splitlines():
+            bare = ln.strip()
+            # Comment lines are skipped: a comment cannot read a variable, and
+            # the ones that mention these keys are explaining that they are
+            # gone. Requiring prose to avoid the syntax it is describing makes
+            # the explanation worse and the check no stronger.
+            if bare.startswith("#") or bare.startswith("//"):
+                continue
+            if (f"$env.{key}" in ln or f"${{{key}}}" in ln
+                    or bare.startswith(f"{key}=") or f"CFG_{key}" in ln):
+                # Truncated: in a workflow file one "line" is an entire node,
+                # and a failure that prints six kilobytes of JSON buries the
+                # sentence saying what is wrong.
+                offenders.append(bare[:120] + ("…" if len(bare) > 120 else ""))
+        check(f"{path.name} does not use an installation-wide {key}",
+              not offenders, offenders[:2])
 
 # ── The ingest writes it ────────────────────────────────────────────────────
 ingest = (REPO / "n8n" / "workflows-ingest" / "ingest-chunk-and-embed.json").read_text()
@@ -214,9 +258,17 @@ code_nodes = {n["name"]: n.get("parameters", {}).get("jsCode", "") for n in inge
 
 writing = [n for n, c in code_nodes.items() if "course_id" in c]
 check("the ingest sets course_id on chunks", writing, "no node writes course_id")
-check("it comes from the environment, not a literal",
-      any("$env.COURSE_ID" in c for c in code_nodes.values()),
-      "no node reads $env.COURSE_ID")
+# It comes with the upload, never from the environment. The environment-wide
+# course id is gone — an installation has no course — and a fallback to it
+# would now produce chunks with an empty course id: written, counted, and
+# invisible to every agent, because each agent's retrieval filters on the
+# course. So the ingest must refuse instead.
+check("the course id does not come from the environment any more",
+      not any("$env.COURSE_ID" in c for c in code_nodes.values()),
+      "a node still falls back to an installation-wide course id")
+check("an ingest without a course id is refused rather than written",
+      any("no course id" in c for c in code_nodes.values()),
+      "nothing stops a chunk being written with an empty course")
 
 # A chunk written without it is invisible to every agent, so the write path
 # and the filter have to agree on the property name — a typo on either side

@@ -79,7 +79,7 @@ render_env() {   # $1 = mode -> echoes the path of the generated .env
 
     CFG_DEPLOYMENT_MODE="$mode"
     CFG_DOMAIN="example.com"; CFG_SUBDOMAIN_PREFIX="kurs"
-    CFG_COURSE_NAME="C"; CFG_COURSE_ID="c"; CFG_BASE_DATA_PATH="$box/data"
+    CFG_BASE_DATA_PATH="$box/data"
     CFG_ADMIN_EMAIL="a@example.com"; CFG_TZ="Europe/Berlin"
     CFG_COMPOSE_PROFILES="core"; CFG_ENABLE_OBSERVABILITY="no"; CFG_ENABLE_LTI="no"
     CFG_LMS_URL="https://lms.example.com"
@@ -140,9 +140,12 @@ done
 
 # Everything NOT mode-specific must still be written — a mode branch that
 # returned early would silently blank the rest of the file.
-[[ -n "$(env_value "$TS_ENV" COURSE_ID)" && -n "$(env_value "$TS_ENV" LLM_PROVIDER)" ]]
+# Two keys from opposite ends of the file, so a branch that stops writing
+# half way through is caught. ADMIN_EMAIL was COURSE_ID until an installation
+# stopped having a course.
+[[ -n "$(env_value "$TS_ENV" ADMIN_EMAIL)" && -n "$(env_value "$TS_ENV" LLM_PROVIDER)" ]]
 check "the mode branch does not cut the rest of .env short" $? \
-      "COURSE_ID='$(env_value "$TS_ENV" COURSE_ID)' LLM_PROVIDER='$(env_value "$TS_ENV" LLM_PROVIDER)'"
+      "ADMIN_EMAIL='$(env_value "$TS_ENV" ADMIN_EMAIL)' LLM_PROVIDER='$(env_value "$TS_ENV" LLM_PROVIDER)'"
 (( $(grep -cE '^[A-Z][A-Z0-9_]*=' "$TS_ENV") > 100 ))
 check "tailscale .env has the full set of keys" $? "$(grep -cE '^[A-Z][A-Z0-9_]*=' "$TS_ENV") keys"
 

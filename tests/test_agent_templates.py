@@ -30,7 +30,13 @@ content = {
 }
 
 flow = load_template("agent-topic-template.json")
-auto_fill_from_env(flow, env)
+# The course is passed, not read from env: COURSE_NAME, COURSE_ID and
+# WEAVIATE_COLLECTION_NAME left .env when the installer stopped configuring a
+# course, and an agent's collection and filter are properties of the course it
+# belongs to rather than of the installation.
+COURSE = {"id": "testkurs", "name": "Testkurs Mediendidaktik",
+          "collection": "TestkursChunks"}
+auto_fill_from_env(flow, env, course=COURSE)
 missing = substitute_content(flow, content)
 set_credential_ids(flow, "llm-cred-id-123", "embed-cred-id-456")
 

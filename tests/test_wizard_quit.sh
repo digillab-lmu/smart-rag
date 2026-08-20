@@ -2,7 +2,7 @@
 # Typing `exit` at a prompt must end the installer — from every prompt.
 #
 # It did not, and the way it failed is worth recording. prompt, select_one,
-# select_one_index and prompt_slug are all called as "$(prompt ...)", and
+# select_one_index and prompt are all called as "$(prompt ...)", and
 # inside a command substitution `die` exits only the subshell. The wizard saw
 # a non-zero return, read it as "go back", and re-asked the very question it
 # had just been told to abandon: the exit message appeared and nothing
@@ -36,7 +36,8 @@ set -euo pipefail
 export LANG_CHOICE=en
 source "$REPO/scripts/lib/common.sh"
 source "$REPO/scripts/lib/messages.sh"
-# prompt_slug lives in the wizard lib, not common.sh.
+# The wizard lib is sourced too: prompts defined there must obey the same
+# rule, and prompt_slug did until it was removed with the course question.
 source "$REPO/scripts/lib/config-wizard.sh"
 $1
 echo "SENTINEL_REACHED"
@@ -48,7 +49,6 @@ EOF
 # ─── exit ends the installer, from every prompt type ────────────────────────
 declare -A PROMPTS=(
     [prompt]='v="$(prompt cfg_course_name "d")" || true'
-    [prompt_slug]='v="$(prompt_slug cfg_course_id "my-course")" || true'
     [select_one]='v="$(select_one cfg_mode_choice "A" "B")" || true'
     [select_one_index]='v="$(select_one_index cfg_mode_choice "A" "B")" || true'
     [confirm]='confirm cfg_enable_observability "y" || true'

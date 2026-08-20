@@ -39,7 +39,11 @@ _handover_body() {
         content="https://$(subdomain_host content "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")"
     fi
     local flowise="${FLOWISE_PUBLIC_URL:-}"
-    local course="${COURSE_NAME:-${COURSE_ID:-}}"
+    # No course name any more: an installation has none, and the person this
+    # message is addressed to is about to create the first one. The subject
+    # and the opening line name the installation by its address instead,
+    # which is the thing they actually need from this message.
+    local course="${DOMAIN:-}"
 
     printf '%s\n\n' "$(t handover_greeting)"
     printf '%s\n\n' "$(t handover_body_intro "$course")"
@@ -76,7 +80,7 @@ _handover_body() {
 _handover_mail() {
     set -a; source "$REPO_ROOT/.env"; set +a
 
-    local course="${COURSE_NAME:-${COURSE_ID:-}}"
+    local course="${DOMAIN:-}"
     local subject; subject="$(t handover_subject "$course")"
     local body;    body="$(_handover_body)"
 

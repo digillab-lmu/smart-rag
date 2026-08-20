@@ -23,8 +23,6 @@ write_env_file() {
     # Build a key→value associative array (string values are NOT yet quoted)
     declare -A REPL
     # Course & deployment
-    REPL[COURSE_NAME]="$CFG_COURSE_NAME"
-    REPL[COURSE_ID]="$CFG_COURSE_ID"
     REPL[DOMAIN]="$CFG_DOMAIN"
     REPL[BASE_DATA_PATH]="$CFG_BASE_DATA_PATH"
     REPL[ADMIN_EMAIL]="$CFG_ADMIN_EMAIL"
@@ -84,7 +82,11 @@ write_env_file() {
     # reach it literally, and it would create a project named "${COURSE_NAME}"
     # with a user whose address is "${ADMIN_EMAIL}" — accepted, and wrong in a
     # way only visible in the dashboard.
-    REPL[LANGFUSE_INIT_PROJECT_NAME]="$CFG_COURSE_NAME"
+    # Not a course name any more. One Langfuse project holds the traces of
+    # every course on this installation — a project per course would need a
+    # key pair per course in .env, and Langfuse's own filters do the
+    # separating well enough.
+    REPL[LANGFUSE_INIT_PROJECT_NAME]="SMART RAG"
     REPL[LANGFUSE_INIT_USER_EMAIL]="$CFG_ADMIN_EMAIL"
     REPL[LANGFUSE_INIT_USER_PASSWORD]="$SECRET_ADMIN_PASSWORD"
     REPL[LANGFUSE_INIT_PROJECT_PUBLIC_KEY]="$SECRET_LANGFUSE_PUBLIC_KEY"
@@ -151,7 +153,6 @@ write_env_file() {
     REPL[SMTP_CONNECTION_URL]="$CFG_SMTP_CONNECTION_URL"
 
     # Weaviate
-    REPL[WEAVIATE_COLLECTION_NAME]="$CFG_WEAVIATE_COLLECTION_NAME"
     REPL[WEAVIATE_API_KEY]="$SECRET_WEAVIATE_API_KEY"
 
     # LMS (LTI)
@@ -350,10 +351,17 @@ write_weaviate_schema() {
     local src="$repo/weaviate/schema.json"
 
     [[ -f "$src" ]] || die "Weaviate schema not found at $src"
-    info "$(t tpl_writing_weaviate "$CFG_WEAVIATE_COLLECTION_NAME")"
 
+    # The shared classes only. __COLLECTION_NAME__ is the per-course chunk
+    # collection, and it is a template rather than a class this installation
+    # has: the Content Admin reads that same entry out of this same file when
+    # a course is created, and names it after the course. Creating it here
+    # would produce a collection belonging to no course — which is what the
+    # installer did while it still asked for one.
     mkdir -p "$(dirname "$out")"
-    sed "s|__COLLECTION_NAME__|$CFG_WEAVIATE_COLLECTION_NAME|g" "$src" > "$out"
+    jq '{classes: [.classes[] | select(.class != "__COLLECTION_NAME__")]}' "$src" > "$out" \
+        || die "Could not filter the Weaviate schema — is jq installed?"
+    info "$(t tpl_writing_weaviate "$(jq -r '[.classes[].class] | join(", ")' "$out")")"
     ok "Weaviate schema written to $out"
 }
 

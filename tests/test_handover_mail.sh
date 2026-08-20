@@ -133,8 +133,13 @@ for lang in en de; do
     # ─── 2. The things the reader came for ───────────────────────────────────
     grep -q 'https://content.lmu.de' <<<"$body"
     check "[$lang] the Content Admin URL is in the message" $? "$body"
+    # The installation is named by its address, not by a course: an
+    # installation has none, and the person reading this is about to create
+    # the first one in the Content Admin.
+    grep -q 'lmu.de' <<<"$body"
+    check "[$lang] the installation is named by its address" $? "$body"
     grep -q 'Didaktik der Chemie' <<<"$body"
-    check "[$lang] the course is named" $? ""
+    check "[$lang] no course name is invented" $(( $? == 0 ? 1 : 0 )) "$body"
     grep -q 'admin@lmu.de' <<<"$body"
     check "[$lang] somebody to ask is named" $? ""
     for n in 1. 2. 3.; do

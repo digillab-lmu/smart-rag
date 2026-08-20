@@ -227,6 +227,26 @@ follow.
 **Proven by** a full reinstall on the test machine, then phases 2–6 run
 through as one sequence by hand.
 
+
+**The course question is gone (2026-08-20).** The installer asked for a course
+name and id, derived a Weaviate collection from them, and created that
+collection plus a bucket — for a course with no row in the courses table. The
+Content Admin then showed no courses at all, and the first one created there
+made a second collection and a second bucket while the installer's pair sat on
+disk with nothing pointing at them. Reported from a fresh install.
+
+Removed with it: COURSE_ID, COURSE_NAME and WEAVIATE_COLLECTION_NAME from
+.env; the collection-name derivation in bash, which produced a different name
+from the Python one that is now authoritative; prompt_slug and five messages
+with no caller left; the course bucket and its grant in deploy-garage.sh; the
+per-course class in the staged Weaviate schema; and the fallbacks in both
+ingest workflows, in agent_templates.py and in the hand-over message. The
+ingest now refuses an upload that names no course instead of writing chunks
+with an empty one — invisible to every agent, and counted as success.
+
+`tests/test_course_scoping.py` checks the whole tree for the idea coming back,
+in code rather than in comments.
+
 ## Phase 7a · One vocabulary for concepts
 
 Learner data already points at concepts, in three places and as free text:

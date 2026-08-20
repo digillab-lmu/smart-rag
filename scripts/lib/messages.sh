@@ -131,12 +131,7 @@ declare -A MSG_EN=(
     [cfg_env_overwrite]="Overwrite without backup (destructive)"
 
     # course & deployment
-    [cfg_section_course]="Course & deployment"
-    [cfg_course_name]="Course title (free text — e.g. Intro to Research Methods)"
-    [cfg_course_id]="Course ID (lowercase, hyphens only, no umlauts/accents — e.g. intro-research)"
-    [cfg_course_id_invalid]="Course ID must be lowercase letters, digits, hyphens only — no umlauts, accents, or spaces."
-    [cfg_course_id_suggest]="Suggestion without umlauts/special characters: %s"
-    [cfg_course_id_use_suggestion]="Use this suggestion?"
+    [cfg_section_install]="Deployment"
     [cfg_domain]="Your base domain (subdomains added automatically; e.g. example.com or my-org.edu)"
     [cfg_domain_invalid]="Not a valid fully-qualified domain name."
     [cfg_domain_detected]="Detected domain from reverse DNS: %s — press Enter to accept or type a different domain."
@@ -226,7 +221,7 @@ declare -A MSG_EN=(
     [tpl_writing_env]="Writing .env to %s"
     [tpl_writing_nginx]="Substituting nginx template for %s"
     [tpl_writing_garage]="Writing the Garage configuration…"
-    [tpl_writing_weaviate]="Substituting Weaviate schema (collection: %s)"
+    [tpl_writing_weaviate]="Staging the Weaviate classes shared by every course: %s. A course's own chunk collection is created with the course, in the Content Admin."
     [tpl_copying_lti]="Copying LTI config templates"
     [tpl_done]="All templates written"
 
@@ -1041,12 +1036,7 @@ declare -A MSG_DE=(
     [cfg_env_overwrite]="Ohne Backup überschreiben (destruktiv)"
 
     # course & deployment
-    [cfg_section_course]="Kurs & Deployment"
-    [cfg_course_name]="Kurstitel (Freitext — z.B. Einführung in Forschungsmethoden)"
-    [cfg_course_id]="Kurs-ID (Kleinbuchstaben, nur Bindestriche, keine Umlaute/Akzente — z.B. forschungsmethoden)"
-    [cfg_course_id_invalid]="Kurs-ID darf nur aus Kleinbuchstaben, Ziffern und Bindestrichen bestehen — keine Umlaute, Akzente oder Leerzeichen."
-    [cfg_course_id_suggest]="Vorschlag ohne Umlaute/Sonderzeichen: %s"
-    [cfg_course_id_use_suggestion]="Diesen Vorschlag verwenden?"
+    [cfg_section_install]="Deployment"
     [cfg_domain]="Deine Basis-Domain (Subdomains werden automatisch ergänzt; z.B. example.com oder meine-uni.de)"
     [cfg_domain_invalid]="Keine gültige Domain."
     [cfg_domain_detected]="Erkannte Domain (Reverse DNS): %s — Enter drücken zum Übernehmen oder andere Domain eintippen."
@@ -1136,7 +1126,7 @@ declare -A MSG_DE=(
     [tpl_writing_env]=".env wird geschrieben nach %s"
     [tpl_writing_nginx]="nginx-Template wird für %s ersetzt"
     [tpl_writing_garage]="Garage-Konfiguration wird geschrieben…"
-    [tpl_writing_weaviate]="Weaviate-Schema wird ersetzt (Collection: %s)"
+    [tpl_writing_weaviate]="Die von allen Kursen geteilten Weaviate-Klassen werden bereitgelegt: %s. Die eigene Chunk-Collection eines Kurses entsteht mit dem Kurs, im Content Admin."
     [tpl_copying_lti]="LTI-Config-Templates werden kopiert"
     [tpl_done]="Alle Templates geschrieben"
 
