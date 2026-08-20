@@ -242,7 +242,13 @@ for path in SEARCHED:
             # the explanation worse and the check no stronger.
             if bare.startswith("#") or bare.startswith("//"):
                 continue
+            # `$COURSE_ID` without braces is in here because leaving it out
+            # cost a real install: secrets.sh interpolated it into
+            # credentials.txt, and under `set -u` the bootstrap died with
+            # "unbound variable" after writing .env — past the point where an
+            # operator would expect a configuration error.
             if (f"$env.{key}" in ln or f"${{{key}}}" in ln
+                    or re.search(rf"\${key}\b", ln)
                     or bare.startswith(f"{key}=") or f"CFG_{key}" in ln):
                 # Truncated: in a workflow file one "line" is an entire node,
                 # and a failure that prints six kilobytes of JSON buries the

@@ -129,7 +129,6 @@ SMART RAG — Initial Credentials
 ═══════════════════════════════════════════════════════════════════════════
 Generated:   $now
 Domain:      $DOMAIN
-Course ID:   $COURSE_ID
 
 ⚠  KEEP THIS FILE SAFE. Permissions are 600 (owner-only).
 ⚠  These are the credentials needed for initial login. Once you've logged in

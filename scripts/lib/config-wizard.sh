@@ -108,7 +108,7 @@ known_embedding_dimensions() {
 default_llm_model_strong() {
     case "$1" in
         anthropic)  echo "claude-sonnet-4-5" ;;
-        openai)     echo "gpt-4o" ;;
+        openai)     echo "gpt-5.6-sol" ;;
         google)     echo "gemini-2.5-pro" ;;
         mistral)    echo "mistral-large-latest" ;;
         cohere)     echo "command-r-plus" ;;
@@ -120,7 +120,7 @@ default_llm_model_strong() {
 default_llm_model_fast() {
     case "$1" in
         anthropic)  echo "claude-haiku-4-5" ;;
-        openai)     echo "gpt-4o-mini" ;;
+        openai)     echo "gpt-5.4-mini" ;;
         google)     echo "gemini-2.0-flash-lite" ;;
         mistral)    echo "mistral-small-latest" ;;
         cohere)     echo "command-r" ;;
@@ -136,7 +136,7 @@ default_llm_model_fast() {
 llm_model_choices_strong() {
     case "$1" in
         anthropic)  echo "claude-sonnet-4-5|claude-opus-4-8" ;;
-        openai)     echo "gpt-4o|gpt-4.1|o3" ;;
+        openai)     echo "gpt-5.6-sol|gpt-5.6-terra|gpt-5.6-luna" ;;
         google)     echo "gemini-2.5-pro|gemini-2.5-flash" ;;
         mistral)    echo "mistral-large-latest|mistral-medium-latest" ;;
         cohere)     echo "command-r-plus|command-r" ;;
@@ -147,7 +147,7 @@ llm_model_choices_strong() {
 llm_model_choices_fast() {
     case "$1" in
         anthropic)  echo "claude-haiku-4-5" ;;
-        openai)     echo "gpt-4o-mini|gpt-4.1-mini" ;;
+        openai)     echo "gpt-5.4-mini|gpt-5.4-nano" ;;
         google)     echo "gemini-2.0-flash-lite|gemini-2.5-flash" ;;
         mistral)    echo "mistral-small-latest" ;;
         cohere)     echo "command-r" ;;
@@ -227,8 +227,22 @@ fetch_model_ids() {   # $1 = provider, $2 = api key
 # provider with two hundred entries would push the question itself off the
 # screen; the cap is stated rather than silent.
 MODEL_LIST_CAP=24
-show_model_list() {   # $1 = provider, $2 = api key
-    local provider="$1" api_key="$2"
+
+# Which families are not what this question is asking for. Matched on the id,
+# because none of the six endpoints says what a model is *for* — OpenAI's list
+# returns transcription, image, realtime and embedding models beside the chat
+# ones, undistinguished.
+#
+# A name-based filter is a heuristic and will be wrong eventually, which is
+# why it only ever hides things from a *display*: the count of what was hidden
+# is printed, and any name at all can still be typed at the prompt. That is a
+# different bet from the curated suggestion lists, where being wrong means
+# recommending a model that does not work.
+MODEL_FILTER_CHAT='embed|image|dall-e|sora|tts|audio|transcribe|whisper|realtime|moderation|guard|rerank'
+MODEL_FILTER_EMBEDDING='embed'
+
+show_model_list() {   # $1 = provider, $2 = api key, $3 = chat|embedding
+    local provider="$1" api_key="$2" kind="${3:-chat}"
     [[ "$provider" == "custom" || -z "$api_key" ]] && return 0
     command -v jq >/dev/null 2>&1 || return 0
 
@@ -239,12 +253,36 @@ show_model_list() {   # $1 = provider, $2 = api key
         return 0
     fi
     local order="${lines[0]}"
-    local models=("${lines[@]:1}")
+    local all=("${lines[@]:1}")
 
+    # Keep what this question is about. An embedding question showing 132
+    # chat, image and speech models is a list nobody can use, and a chat
+    # question whose first ten entries are transcription models buries the
+    # ones being asked about.
+    local models=() m
+    for m in "${all[@]}"; do
+        if [[ "$kind" == "embedding" ]]; then
+            [[ "$m" =~ $MODEL_FILTER_EMBEDDING ]] && models+=("$m")
+        else
+            [[ "$m" =~ $MODEL_FILTER_CHAT ]] || models+=("$m")
+        fi
+    done
+    # A filter that removes everything has misjudged this provider's naming.
+    # Better the unfiltered list than none — and say which is being shown.
+    local filtered=1
+    if (( ${#models[@]} == 0 )); then
+        models=("${all[@]}")
+        filtered=0
+        dim "$(t cfg_model_list_unfiltered)" >&2
+    fi
+    local hidden=$(( ${#all[@]} - ${#models[@]} ))
+
+    # The two numbers, because one of them alone misleads: "5 models" reads
+    # as the provider offering five, and it offers 132.
     if [[ "$order" == "recent" ]]; then
-        info "$(t cfg_model_list_recent "${#models[@]}")" >&2
+        info "$(t cfg_model_list_recent "${#models[@]}" "${#all[@]}")" >&2
     else
-        info "$(t cfg_model_list_alpha "${#models[@]}")" >&2
+        info "$(t cfg_model_list_alpha "${#models[@]}" "${#all[@]}")" >&2
     fi
     local shown=0 m
     for m in "${models[@]}"; do
@@ -253,6 +291,7 @@ show_model_list() {   # $1 = provider, $2 = api key
         shown=$(( shown + 1 ))
     done
     (( ${#models[@]} > shown )) && dim "$(t cfg_model_list_more "$(( ${#models[@]} - shown ))")" >&2
+    (( filtered && hidden > 0 )) && dim "$(t cfg_model_list_hidden "$hidden")" >&2
     echo >&2
     return 0
 }
@@ -443,8 +482,47 @@ ask_model_choice() {
     fi
 
     local IFS='|'
-    local opts=($choices)
+    local curated=($choices)
     unset IFS
+
+    # A recommendation the provider has retired is worse than no
+    # recommendation: it is the one entry an operator trusts, and choosing it
+    # produces an installation whose agents answer with an API error. The
+    # names below are written into this repository and go stale by definition
+    # — gpt-4o was still being offered as the strong model long after it had
+    # been superseded twice.
+    #
+    # So they are checked against the provider's own list, which was fetched a
+    # moment ago for the display. Anything the provider no longer offers is
+    # dropped, and the drop is stated: a suggestion vanishing without a word
+    # would look like this installer forgetting the provider.
+    local opts=() live=() gone=()
+    mapfile -t live < <(fetch_model_ids "$provider" "$api_key" 2>/dev/null | tail -n +2)
+    if (( ${#live[@]} > 0 )); then
+        local c
+        for c in "${curated[@]}"; do
+            if printf '%s\n' "${live[@]}" | grep -qxF "$c"; then
+                opts+=("$c")
+            else
+                gone+=("$c")
+            fi
+        done
+        (( ${#gone[@]} )) && warn "$(t cfg_model_retired "${gone[*]}")" >&2
+    else
+        # No list to check against — offer them all rather than nothing.
+        opts=("${curated[@]}")
+    fi
+
+    # Every suggestion retired at once leaves the free-text entry, which is
+    # the honest state: this repository no longer knows what to recommend for
+    # this provider, and the live list is on screen above.
+    if (( ${#opts[@]} == 0 )); then
+        prompt_and_validate_model "$msg_key" "${live[0]:-$default_model}" "$provider" "$api_key"
+        return
+    fi
+    # The default follows the suggestions: one pointing at a model that was
+    # just dropped would be offered as the pre-filled answer.
+    printf '%s\n' "${opts[@]}" | grep -qxF "$default_model" || default_model="${opts[0]}"
     opts+=("$(t cfg_model_custom)")
 
     local selected
@@ -579,7 +657,7 @@ ask_llm_config() {
     # reasonable *choice*, which a bare list cannot — but they are no longer
     # the only thing the operator sees, and a model released last week is now
     # visible instead of being something you have to already know about.
-    show_model_list "$CFG_LLM_PROVIDER" "$CFG_LLM_API_KEY"
+    show_model_list "$CFG_LLM_PROVIDER" "$CFG_LLM_API_KEY" chat
 
     printf "  ${BOLD}%s${RESET}\n" "$(t cfg_llm_tiers_explain)"
     CFG_LLM_MODEL_STRONG="$(ask_model_choice "$CFG_LLM_PROVIDER" strong cfg_llm_model_strong "$CFG_LLM_API_KEY")" || return 1
@@ -615,7 +693,7 @@ ask_embedding_config() {
 
     local d_model
     d_model="$(default_embedding_model "$CFG_EMBEDDING_PROVIDER")"
-    show_model_list "$CFG_EMBEDDING_PROVIDER" "$CFG_EMBEDDING_API_KEY"
+    show_model_list "$CFG_EMBEDDING_PROVIDER" "$CFG_EMBEDDING_API_KEY" embedding
     CFG_EMBEDDING_MODEL="$(prompt_and_validate_model cfg_embed_model "${CFG_EMBEDDING_MODEL:-$d_model}" \
         "$CFG_EMBEDDING_PROVIDER" "$CFG_EMBEDDING_API_KEY")" || return 1
 

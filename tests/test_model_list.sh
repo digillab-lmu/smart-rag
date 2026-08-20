@@ -59,10 +59,10 @@ check "an API without dates is sorted alphabetically" $? "$out"
 grep -q 'models/' <<<"$out"
 check "and the models/ prefix is stripped" $(( $? == 0 ? 1 : 0 )) "$out"
 
-out="$(run 'show_model_list google key123' "$GOOGLE")"
+out="$(run 'show_model_list google key123 chat' "$GOOGLE")"
 grep -qi 'alphabetical' <<<"$out"
 check "the display says why the order is alphabetical" $? "$out"
-out="$(run 'show_model_list openai key123' "$OPENAI")"
+out="$(run 'show_model_list openai key123 chat' "$OPENAI")"
 grep -qi 'newest first' <<<"$out"
 check "and says newest first when that is true" $? "$out"
 
@@ -72,6 +72,45 @@ grep -qE '^    (recent|alpha)$' <<<"$out"
 check "the ordering marker is not shown as a model" $(( $? == 0 ? 1 : 0 )) "$out"
 grep -qE '^    gpt-5\.4$' <<<"$out"
 check "and the models themselves are" $? "$out"
+
+# ─── Each question shows what it is asking about ─────────────────────────────
+# The provider's list mixes chat, embedding, image, speech and moderation
+# models and marks none of them. Unfiltered, the embedding question offered
+# 132 entries of which two were embeddings, and the chat question opened with
+# four transcription models — reported from a real install, both.
+MIXED='{"data":[{"id":"gpt-9-chat","created":9},{"id":"gpt-image-2","created":8},
+                {"id":"text-embedding-9","created":7},{"id":"gpt-transcribe","created":6},
+                {"id":"omni-moderation-latest","created":5},{"id":"dall-e-3","created":4}]}'
+
+out="$(run 'show_model_list openai key123 chat' "$MIXED")"
+grep -qE '^    gpt-9-chat$' <<<"$out"
+check "the chat question shows a chat model" $? "$out"
+for noise in gpt-image-2 text-embedding-9 gpt-transcribe omni-moderation-latest dall-e-3; do
+    grep -qE "^    $noise\$" <<<"$out"
+    check "the chat question hides $noise" $(( $? == 0 ? 1 : 0 )) "$out"
+done
+
+out="$(run 'show_model_list openai key123 embedding' "$MIXED")"
+grep -qE '^    text-embedding-9$' <<<"$out"
+check "the embedding question shows the embedding model" $? "$out"
+grep -qE '^    gpt-9-chat$' <<<"$out"
+check "the embedding question hides the chat model" $(( $? == 0 ? 1 : 0 )) "$out"
+
+# Hiding is never silent, and the heading never passes the filtered count off
+# as the provider's offering.
+grep -qiE '(not shown|nicht gezeigt)' <<<"$out"
+check "what was hidden is counted" $? "$out"
+grep -qE '1 of the provider.s 6 models' <<<"$out"
+check "the heading gives both numbers" $? "$out"
+
+# A filter that matches nothing has misjudged the provider's naming — then the
+# whole list is better than an empty one, and it says so.
+NONE='{"data":[{"id":"weird-one","created":2},{"id":"weird-two","created":1}]}'
+out="$(run 'show_model_list openai key123 embedding' "$NONE")"
+grep -qE '^    weird-one$' <<<"$out"
+check "a filter matching nothing falls back to the whole list" $? "$out"
+grep -qi 'whole list' <<<"$out"
+check "and says that is what is happening" $? "$out"
 
 # ─── The cap is stated, never silent ─────────────────────────────────────────
 MANY="$(jq -nc '{data: [range(40) | {id: ("m" + (tostring)), created: .}]}')"
