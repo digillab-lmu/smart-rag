@@ -172,10 +172,11 @@ What's in there:
 | Update | `docker compose pull && up -d` — picks up new pinned image versions after a `git pull` |
 | Restart a service | `docker restart` on one container |
 | SSL | Certificate status/expiry, force-renew |
-| Mail | Send a test email against the configured relay; view current relay config |
+| Mail service | Set it up, or send a test mail against what is configured. One question with four answers, each stating what it needs beforehand |
 | DNS check | Re-verify every subdomain still resolves to this server |
 | Secrets | Overview of which secrets are set — **values are never shown**, only set/not-set |
-| Change configuration | Mail relay reconfigure, reranker API key, LMS URL, admin email, timezone — see below |
+| Change configuration | Mail service, reranker API key, LMS URL, admin email, timezone — see below |
+| Backup | Make one — the services stop for the duration — or read how to restore. Restoring is a command, not a menu pick: it replaces the installation, so the archive is named on the command line |
 | Uninstall | Runs `scripts/uninstall.sh` |
 
 ### What "Change configuration" covers, and why some things aren't there

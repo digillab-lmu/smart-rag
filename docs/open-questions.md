@@ -224,10 +224,23 @@ The plan records that the LTI question is with the data protection officer.
 Durable learner-linked data is exactly what §1's deciding question is about,
 and what 7a would make analysable. This gates both.
 
-**Q7.2 — Is there a path to erase one learner's data?**
-There is none today. `ChatHistory` and `UserMemory` are keyed by a learner id,
-so it is buildable — but it does not exist, and "we can, in principle" is not
-an answer to a request. Is it required before production?
+**Q7.2 — Is there a path to erase one learner's data? — BUILT 2026-08-19.**
+`content-admin/learners.py` and the *People* page: what is held about one
+learner across the four systems that know them, and erasure of all of it, with
+the id typed back. One code path serves both scopes — with a course it is a
+retention period expiring, without one it is an erasure request.
+
+Two facts had to be established from source first, and one of them corrected a
+belief this project had been building on: a Langfuse trace carries the learner
+only when the LTI middleware supplied it, and Flowise's `sessionId` is the
+learner while its `chatId` is not. Getting the second wrong had already broken
+course deletion, which asked Langfuse for traces by `chatId` and therefore
+deleted none on an LTI installation.
+
+**What is still true and has to be said out loud:** without LTI there is no
+stable learner id at all. Flowise falls back to a chat id kept in the
+browser's local storage, so a different browser is a different person and
+nothing links them. The page says so rather than implying completeness.
 
 ---
 

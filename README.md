@@ -25,6 +25,12 @@ persistent per-student memory, hybrid retrieval, and optional LMS integration.
 - **LMS integration** via LTI 1.3 (Moodle, ILIAS, Canvas — optional).
 - **Course scoping** — one installation can host several courses; every
   retrieved object carries a `course_id` and every agent filters on it.
+  Courses are created in the Content Admin, not configured at install time.
+- **Data protection you can actually carry out** — a retention date per
+  course, and erasure of one person across every system that holds anything
+  about them. Both are pages, not scripts; both say what they cannot promise.
+- **Backup and restore** as one command each, with the restore refusing an
+  archive that would not work rather than discovering it half way through.
 - **One-command deployment** to Ubuntu LTS via an interactive wizard —
   with a public domain, or with no domain at all via Tailscale.
 
@@ -256,6 +262,19 @@ once deployed) is where course-specific content gets filled in:
 - A document list per agent with deletion, so a mistaken upload, a superseded
   edition, or the leftovers of a slot reused for a different topic can be
   removed from the index — chunks and all.
+- **Courses**: created here, which is what makes a course's chunk collection,
+  its object-storage bucket, the ingest key's grant on it, and its ten agent
+  slots. Deleting one is a page of its own that counts what it consists of
+  across six systems before it asks.
+- **A retention date per course**, with the reason for it, and a record of
+  having acted on an expiry. Three states, kept apart: no date means nobody
+  has decided, which is not the same as not being due.
+- **People**: what is held about one learner across the four systems that each
+  know them under a different name, and erasure of all of it. The three
+  systems that hold nothing are listed as holding nothing — "we looked"
+  belongs in an erasure record. Without LTI the page says plainly that it
+  cannot be complete, because without it the learner id is a browser rather
+  than a person.
 - A "System status" page that checks, live, what still has to be set up
   (API keys, Flowise connection, agents, the n8n ingest webhook, the
   conversion and search services) by asking each service at that moment.
@@ -295,12 +314,50 @@ key knobs:
 | Variable | Purpose |
 |----------|---------|
 | `COMPOSE_PROFILES` | `core` always; add `observability` for Langfuse, `lti` for LTI |
+| *(no course keys)* | Courses are created in the Content Admin, not configured here — collection, bucket and slots are made with the course |
 | `LLM_PROVIDER` / `LLM_API_KEY` | LLM provider + key (Anthropic, OpenAI, …) |
 | `EMBEDDING_PROVIDER` / `EMBEDDING_MODEL` / `EMBEDDING_DIMENSIONS` | Embedding model (**don't change after first ingest!**) |
-| `WEAVIATE_COLLECTION_NAME` | Derived from `COURSE_ID` |
 | `FLOWISE_PORT`, `N8N_PORT`, … | Host port bindings (override if conflicts) |
 
 See [`.env.example`](.env.example) for the complete annotated list.
+
+---
+
+## Backup and restore
+
+Everything that matters is `BASE_DATA_PATH` and `.env`, and they only work as
+a pair: Postgres, Neo4j and ClickHouse read their password once, when their
+data directory is created, and `N8N_ENCRYPTION_KEY` decrypts every credential
+n8n holds. One archive holds both.
+
+```bash
+sudo bash scripts/backup.sh --keep 7
+```
+
+The services stop for the duration — a copy taken while the databases are
+writing is not one that restores. Restoring starts with a dry run, which runs
+every check and touches nothing:
+
+```bash
+sudo bash scripts/restore.sh ARCHIVE.tar.gz --dry-run
+```
+
+It refuses, before unpacking anything, an archive from a different Postgres
+major version, one whose `.env` and data were not taken together, one that
+fails its checksum, and a target that already holds data. Moving to a machine
+with a different address is a rename, not a copy: `--rename` rewrites the
+domain and states what it does not reach.
+
+A backup nobody has restored is not a backup, so there is a third command that
+opens one without a second machine and without touching the running system:
+
+```bash
+sudo bash scripts/verify-backup.sh ARCHIVE.tar.gz
+```
+
+It unpacks into a scratch directory and starts throwaway containers against
+that copy — Postgres with the archived password, Garage for its buckets,
+Weaviate for its collections — then removes them again.
 
 ---
 
@@ -318,7 +375,7 @@ smart-rag/
 │   └── workflows-ingest/   # Document ingest: convert, clean, chunk, embed
 ├── lti-middleware/         # Flask app for LTI 1.3
 ├── content-admin/          # Flask app for course-content authoring
-├── scripts/                # bootstrap.sh, admin.sh, uninstall.sh, compose.sh, lib/, standalone phase scripts
+├── scripts/                # bootstrap.sh, admin.sh, backup.sh, restore.sh, verify-backup.sh, uninstall.sh, compose.sh, lib/, standalone phase scripts
 ├── tests/                  # Regression suite — bash tests/run-tests.sh
 ├── CHANGELOG.md            # What changed, and what an upgrade needs
 └── docs/                   # requirements, operations guide, architecture, runbook

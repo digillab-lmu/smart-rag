@@ -141,10 +141,11 @@ vector configuration.
 
 ---
 
-## 6a · One chunk collection per course (planned, not yet built)
+## 6a · One chunk collection per course
 
-**Status.** Agreed 2026-08-06. Recorded here because the migration is cheap
-now and expensive later, so the reasoning has to survive until it is built.
+**Status.** Agreed 2026-08-06, built 2026-08-11. Every course gets its own
+chunk collection, created by the Content Admin from the `__COLLECTION_NAME__`
+template in `weaviate/schema.json` at the moment the course is created.
 
 **Decision.** The collection students' material is retrieved from is created
 per course, by the Content Admin, when a course is created. `ChatHistory`,
@@ -183,7 +184,10 @@ why this was decided before a second course existed anywhere.
 
 ## 6b · The course is a runtime object, not an install-time answer
 
-**Status.** Agreed 2026-08-06, not yet built.
+**Status.** Agreed 2026-08-06, built 2026-08-20 — the last piece of it, after
+a fresh install showed the installer still asking. The paragraphs below are
+the decision as it was taken; what actually happened is at the end of this
+section.
 
 **Decision.** `bootstrap.sh` stops asking for a course. It asks for a name
 for the *installation* and deploys only the shared schema. Courses —
@@ -227,6 +231,31 @@ to derive collection names would put course data back under an `.env` value
 and merely move the problem.
 
 ---
+
+**What was actually built (2026-08-20).** All three couplings are gone, and
+two of them turned out to be worse than "reads the wrong variable":
+
+- The ingest workflows fell back to an installation-wide course id when the
+  request carried none. With the variable removed that fallback would have
+  written chunks with an *empty* course id — written, counted, reported as
+  success, and invisible to every agent, because each agent's retrieval
+  filters on the course. Both workflows now refuse an upload that names no
+  course or no collection, and say which is missing.
+- `chathistory-sync` and `usermemory-summary` take the course from the record
+  they are processing. The lookup this section said "does not exist yet" is
+  the `course_id` the sync already writes.
+- Agent import was the cheap one, as predicted: the course arrives as a course
+  and its collection with it.
+
+Also removed, because they were the same idea wearing other clothes: a bash
+collection-name derivation that produced a *different* name from the Python
+one now in use, the course bucket the installer created (a course's bucket is
+made with the course), the per-course class in the staged schema, and
+`COURSE_ID` in `credentials.txt`, which under `set -u` killed the bootstrap
+after `.env` was written.
+
+`tests/test_course_scoping.py` now checks the whole tree for the single-course
+idea returning, in code rather than in comments.
 
 ## 6c · What was decided when the build was planned (2026-08-11)
 
