@@ -50,6 +50,7 @@ ASSUME_YES=0
 PURGE_CERTS=0
 PURGE_SECRETS=0
 PURGE_DATA=0
+HAD_FAILURES=0
 while (( $# > 0 )); do
     case "$1" in
         --lang) shift; LANG_CHOICE="${1:-en}" ;;
@@ -133,25 +134,38 @@ fi
 # Defensive sweep — catches any smartrag-* container compose didn't know
 # about (e.g. a stale one from a broken previous run, or .env missing above).
 mapfile -t stray_containers < <(docker ps -a --format '{{.Names}}' 2>/dev/null | grep '^smartrag-' || true)
+FAILED_CONTAINERS=()
 if (( ${#stray_containers[@]} > 0 )); then
     info "$(t uninstall_removing_stray "${#stray_containers[@]}")"
     for c in "${stray_containers[@]}"; do
         if (( DRY_RUN )); then
             dim "docker rm -f $c"
         else
-            docker rm -f "$c" >/dev/null 2>&1 || true
+            docker rm -f "$c" >/dev/null 2>&1 || FAILED_CONTAINERS+=("$c")
         fi
     done
 fi
 
+NETWORK_FAILED=0
 if docker network inspect smart-rag-network >/dev/null 2>&1; then
     if (( DRY_RUN )); then
         dim "docker network rm smart-rag-network"
     else
-        docker network rm smart-rag-network >/dev/null 2>&1 || true
+        docker network rm smart-rag-network >/dev/null 2>&1 || NETWORK_FAILED=1
     fi
 fi
-ok "$(t uninstall_containers_done)"
+
+if (( ${#FAILED_CONTAINERS[@]} > 0 )); then
+    warn "$(t uninstall_containers_failed "${FAILED_CONTAINERS[*]}")"
+    HAD_FAILURES=1
+fi
+if (( NETWORK_FAILED )); then
+    warn "$(t uninstall_network_failed)"
+    HAD_FAILURES=1
+fi
+if (( ${#FAILED_CONTAINERS[@]} == 0 )) && (( ! NETWORK_FAILED )); then
+    ok "$(t uninstall_containers_done)"
+fi
 
 # ─── 2. Remove OUR nginx configs only (never touch anything else) ────────────
 info "$(t uninstall_removing_nginx)"
@@ -172,7 +186,10 @@ for f in "${NGINX_FILES[@]}"; do
 done
 if (( ! DRY_RUN )) && command -v nginx >/dev/null 2>&1; then
     if nginx -t >/dev/null 2>&1; then
-        systemctl reload nginx 2>/dev/null || true
+        if ! systemctl reload nginx 2>/dev/null; then
+            warn "$(t uninstall_nginx_reload_failed)"
+            HAD_FAILURES=1
+        fi
     else
         warn "$(t uninstall_nginx_test_failed)"
     fi
@@ -185,10 +202,12 @@ if (( PURGE_CERTS )) && (( HAVE_ENV )) && [[ -n "${DOMAIN:-}" ]]; then
     if command -v certbot >/dev/null 2>&1 && certbot certificates 2>/dev/null | grep -q "$CERT_NAME"; then
         if (( DRY_RUN )); then
             dim "certbot delete --cert-name $CERT_NAME --non-interactive"
+        elif certbot delete --cert-name "$CERT_NAME" --non-interactive 2>&1 | sed 's/^/    /'; then
+            ok "$(t uninstall_certs_done "$CERT_NAME")"
         else
-            certbot delete --cert-name "$CERT_NAME" --non-interactive 2>&1 | sed 's/^/    /' || true
+            warn "$(t uninstall_certs_failed "$CERT_NAME" "$CERT_NAME")"
+            HAD_FAILURES=1
         fi
-        ok "$(t uninstall_certs_done "$CERT_NAME")"
     else
         dim "$(t uninstall_certs_none)"
     fi
@@ -258,3 +277,7 @@ else
     ok "$(t uninstall_done_summary)"
 fi
 echo "  $(t uninstall_kept_note)"
+
+if (( HAD_FAILURES )); then
+    exit 1
+fi
