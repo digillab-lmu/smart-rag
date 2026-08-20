@@ -610,10 +610,9 @@ header "$(t phase_templates)"
 
 # Export config so future phases (called as separate scripts) can re-read it
 DOMAIN="$CFG_DOMAIN"
-COURSE_ID="$CFG_COURSE_ID"
 ADMIN_EMAIL="$CFG_ADMIN_EMAIL"
 DEPLOYMENT_MODE="$CFG_DEPLOYMENT_MODE"
-export DOMAIN COURSE_ID ADMIN_EMAIL DEPLOYMENT_MODE
+export DOMAIN ADMIN_EMAIL DEPLOYMENT_MODE
 
 # Decide where to stage generated files
 STAGING_DIR="$CFG_BASE_DATA_PATH/staging"

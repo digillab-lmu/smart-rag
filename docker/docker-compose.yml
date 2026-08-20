@@ -145,7 +145,7 @@ x-flowise-env: &flowise-env
   ENABLE_METRICS: "true"
   METRICS_PROVIDER: "prometheus"
   METRICS_INCLUDE_NODE_METRICS: "true"
-  METRICS_SERVICE_NAME: "SmartRAG-${COURSE_ID}"
+  METRICS_SERVICE_NAME: "SmartRAG"
 
   # ── Allowed external packages for custom tool functions ───────────────────────
   TOOL_FUNCTION_BUILTIN_DEP: "crypto,fs,path,os"
@@ -223,13 +223,14 @@ services:
   # and course documents (ingest pipeline).
   #
   # Buckets created on startup:
-  #   ${COURSE_ID}-rag    → course document storage (ingest pipeline)
-  #   ${COURSE_ID}-media  → Flowise media uploads
+  #   <course-id>-rag     → one per course, created with the course by the
+  #                          Content Admin, which also grants the ingest key
+  #                          on it. An installation starts with none.
   #   langfuse-events     → Langfuse event storage
   #   langfuse-media      → Langfuse media uploads
   #   langfuse-exports    → Langfuse batch exports
   #
-  # On every document upload to ${COURSE_ID}-rag, MinIO fires a webhook to n8n
+  # On every document upload to a course's bucket, MinIO fires a webhook to n8n
   # which triggers the ingest pipeline.
   # ── Garage (S3 object storage) ───────────────────────────────────────────
   # Replaces MinIO, which was archived upstream on 2026-04-24. Garage was

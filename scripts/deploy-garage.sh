@@ -112,8 +112,12 @@ else
 fi
 
 # ─── 3. Buckets ──────────────────────────────────────────────────────────────
-DOC_BUCKET="${COURSE_ID}-rag"
-BUCKETS=("$DOC_BUCKET" langfuse-events langfuse-media langfuse-exports)
+# Langfuse's three, and no course bucket. A course's bucket is made when the
+# course is — by the Content Admin, which also grants the ingest key on it and
+# writes the row that everything else joins against. Creating one here meant
+# an installation started with a bucket belonging to no course, while the
+# first course created in the GUI quietly made a second one.
+BUCKETS=(langfuse-events langfuse-media langfuse-exports)
 for b in "${BUCKETS[@]}"; do
     if g bucket info "$b" >/dev/null 2>&1; then
         ok "$(t garage_bucket_present "$b")"
@@ -160,7 +164,10 @@ grant() {   # $1 = bucket, $2 = key id
         return 1
     fi
 }
-grant "$DOC_BUCKET" "$GARAGE_ACCESS_KEY" || exit 1
+# The ingest key is imported but granted nowhere yet: it is granted on each
+# course's bucket at the moment that bucket exists. A key with no grants can
+# read and write nothing, which is the correct state for an installation with
+# no courses.
 for b in langfuse-events langfuse-media langfuse-exports; do
     grant "$b" "$GARAGE_LANGFUSE_ACCESS_KEY" || exit 1
 done

@@ -6,8 +6,9 @@
 # CFG_* variables. The templates.sh module then writes them to .env.
 #
 # Globals set by run_config_wizard():
-#   CFG_COURSE_NAME, CFG_COURSE_ID, CFG_DOMAIN, CFG_ADMIN_EMAIL,
-#   CFG_BASE_DATA_PATH, CFG_TZ
+#   CFG_DOMAIN, CFG_ADMIN_EMAIL, CFG_BASE_DATA_PATH, CFG_TZ
+#   (no course: courses are created in the Content Admin — see
+#    ask_install_info for why the installer stopped asking)
 #   CFG_ENABLE_OBSERVABILITY (yes|no), CFG_ENABLE_LTI (yes|no), CFG_LMS_URL
 #   CFG_LLM_PROVIDER, CFG_LLM_MODEL_STRONG, CFG_LLM_MODEL_FAST,
 #   CFG_LLM_API_KEY, CFG_LLM_BASE_URL
@@ -15,7 +16,6 @@
 #   CFG_EMBEDDING_API_KEY, CFG_EMBEDDING_BASE_URL
 #   CFG_RERANKER_PROVIDER, CFG_RERANKER_MODEL,
 #   CFG_RERANKER_API_KEY, CFG_RERANKER_BASE_URL
-#   CFG_WEAVIATE_COLLECTION_NAME (derived)
 #   CFG_COMPOSE_PROFILES (derived)
 # ═════════════════════════════════════════════════════════════════════════════
 
@@ -45,32 +45,6 @@ transliterate_slug() {
     while [[ "$s" == *--* ]]; do s="${s//--/-}"; done
     s="${s#-}"; s="${s%-}"
     printf '%s' "$s"
-}
-
-# Prompts for a slug value (course-id). If the raw input isn't already a
-# valid slug, offers an auto-transliterated suggestion (ä→ae etc.) instead
-# of just failing — most invalid input here is German Umlaute, not typos.
-prompt_slug() {
-    local key="$1" default="$2"
-    local input suggestion
-    while true; do
-        input="$(prompt "$key" "$default")" || return 1
-        if _is_slug "$input"; then
-            printf '%s' "$input"
-            return 0
-        fi
-        suggestion="$(transliterate_slug "$input")"
-        if [[ -n "$suggestion" ]] && _is_slug "$suggestion"; then
-            info "$(t cfg_course_id_suggest "$suggestion")" >&2
-            if confirm cfg_course_id_use_suggestion "y"; then
-                printf '%s' "$suggestion"
-                return 0
-            fi
-            (( WIZARD_BACK )) && return 1
-        else
-            err "$(t cfg_course_id_invalid)"
-        fi
-    done
 }
 
 validate_fqdn() {
@@ -115,17 +89,6 @@ validate_url() {
 
 # course-id → PascalCase + "Chunks" suffix
 # "intro-research-methods" → "IntroResearchMethodsChunks"
-derive_collection_name() {
-    local slug="$1"
-    local IFS='-'
-    local parts=($slug)
-    local out=""
-    for p in "${parts[@]}"; do
-        out="${out}${p^}"   # capitalize first letter
-    done
-    echo "${out}Chunks"
-}
-
 # Auto-fill embedding dimensions for known models
 known_embedding_dimensions() {
     local model="$1"
@@ -510,11 +473,22 @@ default_embedding_model() {
 # aborts the section immediately and bubbles up to run_config_wizard's step
 # loop. Defaults read from previously-entered CFG_* values so re-entering a
 # section after going back doesn't lose earlier answers.
-ask_course_info() {
-    header "$(t cfg_section_course)"
-
-    CFG_COURSE_NAME="$(prompt cfg_course_name "${CFG_COURSE_NAME:-My Course}")" || return 1
-    CFG_COURSE_ID="$(prompt_slug cfg_course_id "${CFG_COURSE_ID:-my-course}")" || return 1
+# No course is asked for here, and that is the point of this section's name.
+# A course is created in the Content Admin, where creating one also makes its
+# chunk collection, its bucket, the grant on that bucket and its ten agent
+# slots — and, crucially, a row in the courses table that everything else
+# joins against.
+#
+# The installer used to ask, and then built a collection and a bucket for a
+# course that existed in no table. The Content Admin showed zero courses; the
+# first one created there made a *second* collection and a *second* bucket,
+# and the installer's pair sat on disk with nothing pointing at them. Which is
+# the whole reason this system stopped being single-course: the answer to
+# "which course is this installation for" is now "as many as you like", and an
+# installer that insists on one at setup time is answering a question nobody
+# asked any more.
+ask_install_info() {
+    header "$(t cfg_section_install)"
 
     # In tailscale mode there is no domain to ask for: the hostname is the
     # machine's MagicDNS name, which Tailscale assigns once it is up. It is
@@ -541,9 +515,6 @@ ask_course_info() {
     info "$(t cfg_base_data_path_explain)"
     CFG_BASE_DATA_PATH="$(prompt cfg_base_data_path "${CFG_BASE_DATA_PATH:-/srv/smart-rag/data}")" || return 1
     CFG_TZ="$(prompt cfg_tz "${CFG_TZ:-Europe/Berlin}")" || return 1
-
-    CFG_WEAVIATE_COLLECTION_NAME="$(derive_collection_name "$CFG_COURSE_ID")"
-    dim "Weaviate collection name: $CFG_WEAVIATE_COLLECTION_NAME"
 }
 
 
@@ -900,7 +871,6 @@ ask_mail_config() {
 show_config_summary() {
     header "$(t cfg_review_title)"
     cat <<EOF
-  Course:           $CFG_COURSE_NAME ($CFG_COURSE_ID)
   Domain:           $CFG_DOMAIN
   Admin email:      $CFG_ADMIN_EMAIL
   Data path:        $CFG_BASE_DATA_PATH
@@ -918,7 +888,6 @@ show_config_summary() {
 
   Reranker:         $CFG_RERANKER_PROVIDER${CFG_RERANKER_MODEL:+ / $CFG_RERANKER_MODEL}
 
-  Weaviate coll:    $CFG_WEAVIATE_COLLECTION_NAME
 EOF
     if [[ "$CFG_INSTALL_POSTFIX" == "true" ]]; then
         echo "  Mail service:     local Postfix → $CFG_SMTP_RELAY_HOST:$CFG_SMTP_RELAY_PORT"
@@ -941,7 +910,7 @@ EOF
 # nothing entered earlier is lost when stepping back and forward again.
 _wizard_step_loop() {
     local i="$1"
-    local steps=(ask_deployment_mode ask_course_info ask_profiles ask_llm_config ask_embedding_config ask_reranker_config ask_mail_config)
+    local steps=(ask_deployment_mode ask_install_info ask_profiles ask_llm_config ask_embedding_config ask_reranker_config ask_mail_config)
     local n=${#steps[@]}
     while (( i < n )); do
         if "${steps[$i]}"; then

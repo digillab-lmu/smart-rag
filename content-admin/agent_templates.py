@@ -734,20 +734,25 @@ def auto_fill_from_env(
     llm_provider, llm_map = resolve_llm_provider(env)
     embed_provider, embed_map = resolve_embedding_provider(env)
 
-    # The course comes from the caller, not from .env. Those three variables
-    # were installation-wide, which is exactly what stopped there being more
-    # than one course: an agent's retrieval filter and its collection are
-    # properties of the course it belongs to. .env is still read as a
-    # fallback so a caller that has no course — the template preview — keeps
-    # working.
+    # The course comes from the caller. Those three values were once
+    # installation-wide in .env, which is exactly what stopped there being
+    # more than one course: an agent's retrieval filter and its collection are
+    # properties of the course it belongs to.
+    #
+    # The .env fallback is gone with the keys themselves — the installer no
+    # longer writes COURSE_NAME, COURSE_ID or WEAVIATE_COLLECTION_NAME,
+    # because an installation no longer has a course. A caller with no course
+    # is the template preview, and it gets empty strings: a preview showing
+    # "{{COURSE_NAME}}" unfilled is honest, while one showing some other
+    # course's collection name would not be.
     if course:
         course_name = course.get("name", "")
         course_id = course.get("id", "")
         weaviate_collection = course.get("collection", "")
     else:
-        course_name = env.get("COURSE_NAME", "")
-        course_id = env.get("COURSE_ID", "")
-        weaviate_collection = env.get("WEAVIATE_COLLECTION_NAME", "")
+        course_name = ""
+        course_id = ""
+        weaviate_collection = ""
     embedding_model = env.get("EMBEDDING_MODEL", "")
     agent_number = str(slot) if slot is not None else ""
 
