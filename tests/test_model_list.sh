@@ -181,6 +181,35 @@ out="$(run 'fetch_model_ids cohere key123 embedding' "$COHERE")"
 [[ "$(tail -n +2 <<<"$out" | tr '\n' ' ')" == "embed-v4 " ]]
 check "Cohere: only the embedding model" $? "$out"
 
+# ─── What the provider publishes is shown beside the model ───────────────────
+# Facts from the provider, never a judgement of ours: context length, price,
+# the first sentence of its own description. OpenAI and Anthropic publish
+# neither on this endpoint, and their models get a bare id rather than an
+# invented recommendation — the entry an operator would trust most is the one
+# that must not be made up.
+WITHNOTES='{"data":[
+  {"id":"a/one","created":9,"context_length":128000,
+   "pricing":{"prompt":"0.0000014"},"architecture":{"output_modalities":["text"]}}]}'
+out="$(run 'show_model_list openrouter key123 chat' "$WITHNOTES")"
+grep -q '128000 tokens' <<<"$out"
+check "the context length the provider publishes is shown" $? "$out"
+grep -q '1.4/M in' <<<"$out"
+check "and its price per million tokens" $? "$out"
+
+# A note must never decide whether a model is shown.
+NOTEBAIT='{"data":[
+  {"id":"good/chat","created":9,"context_length":1,
+   "pricing":{"prompt":"0"},"architecture":{"output_modalities":["text"],"modality":"image->text"}},
+  {"id":"good/other","created":8,"context_length":2,
+   "pricing":{"prompt":"0"},"architecture":{"output_modalities":["text"]}}]}'
+out="$(run 'show_model_list openrouter key123 chat' "$NOTEBAIT")"
+grep -q 'good/chat' <<<"$out"
+check "a model is not hidden because its note mentions a filtered word" $? "$out"
+
+out="$(run 'fetch_model_ids openai key123 chat' "$OPENAI")"
+[[ "$(sed -n 2p <<<"$out")" == "gpt-5.4" ]]
+check "a provider that publishes nothing yields a bare id" $? "$out"
+
 # ─── A list that cannot be fetched is not a failure ──────────────────────────
 out="$(run 'show_model_list openai key123; echo "REACHED-THE-END"' "" 22)"
 grep -q 'REACHED-THE-END' <<<"$out"

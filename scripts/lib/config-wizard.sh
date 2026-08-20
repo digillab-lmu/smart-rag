@@ -167,8 +167,12 @@ llm_model_choices_fast() {
 # cannot be fetched, which is not an error — an installation behind a proxy,
 # or a provider having a bad minute, must not stop a setup.
 #
-# **The first line of the output is the ordering** — "recent" or "alpha" —
-# and the model ids follow. That is deliberate and worth the oddity: the order
+# **The first line of the output is the ordering** — "recent" or "alpha" — and
+# the models follow, one per line, as `id` and an optional note separated by a
+# tab. The note is whatever the provider itself publishes about that model:
+# context length, price, a one-line description. Nothing is inferred and
+# nothing is scored — OpenAI and Anthropic publish neither on this endpoint,
+# so their models get a bare id rather than a guess dressed as advice. That is deliberate and worth the oddity: the order
 # is a claim ("these are the newest") that only some endpoints support, and a
 # global would not survive the trip. Every caller reads this through a
 # subshell — mapfile from a process substitution, or a command substitution —
@@ -202,64 +206,91 @@ llm_model_choices_fast() {
 # silently empty.
 fetch_model_ids() {   # $1 = provider, $2 = api key, $3 = chat|embedding
     local provider="$1" api_key="$2" kind="${3:-chat}" resp
-    case "$provider" in
-        anthropic)
-            resp="$(curl -sf --max-time 8 -H "x-api-key: $api_key" -H "anthropic-version: 2023-06-01" \
-                "https://api.anthropic.com/v1/models?limit=1000" 2>/dev/null)" || return 2
-            echo recent
-            jq -r '[.data[]?] | sort_by(.created_at // "") | reverse | .[].id' <<<"$resp" 2>/dev/null
-            ;;
-        openai)
-            resp="$(curl -sf --max-time 8 -H "Authorization: Bearer $api_key" \
-                "https://api.openai.com/v1/models" 2>/dev/null)" || return 2
-            echo recent
-            jq -r '[.data[]?] | sort_by(.created // 0) | reverse | .[].id' <<<"$resp" 2>/dev/null
-            ;;
-        google)
-            resp="$(curl -sf --max-time 8 -H "x-goog-api-key: $api_key" \
-                "https://generativelanguage.googleapis.com/v1beta/models" 2>/dev/null)" || return 2
-            echo alpha
-            local g_want='generateContent'
-            [[ "$kind" == "embedding" ]] && g_want='embedContent'
-            jq -r --arg want "$g_want" '
-                [.models[]?
-                 | select(.supportedGenerationMethods == null
-                          or ((.supportedGenerationMethods | index($want)) != null))
-                 | .name]
-                | sort | .[] | sub("^models/"; "")' <<<"$resp" 2>/dev/null
-            ;;
-        mistral)
-            resp="$(curl -sf --max-time 8 -H "Authorization: Bearer $api_key" \
-                "https://api.mistral.ai/v1/models" 2>/dev/null)" || return 2
-            echo recent
-            jq -r --arg kind "$kind" '
-                [.data[]?
-                 | select(.deprecation == null)
-                 | select(.capabilities == null
-                          or (if $kind == "embedding"
-                              then (.capabilities.completion_chat // false) | not
-                              else (.capabilities.completion_chat // false) end))]
-                | sort_by(.created // 0) | reverse | .[].id' <<<"$resp" 2>/dev/null
-            ;;
-        cohere)
-            resp="$(curl -sf --max-time 8 -H "Authorization: Bearer $api_key" \
-                "https://api.cohere.com/v1/models" 2>/dev/null)" || return 2
-            echo alpha
-            local c_want='chat'
-            [[ "$kind" == "embedding" ]] && c_want='embed'
-            jq -r --arg want "$c_want" '
-                [.models[]?
-                 | select(.is_deprecated != true)
-                 | select(.endpoints == null or ((.endpoints | index($want)) != null))
-                 | .name] | sort | .[]' <<<"$resp" 2>/dev/null
-            ;;
-        openrouter)
-            resp="$(curl -sf --max-time 8 "https://openrouter.ai/api/v1/models" 2>/dev/null)" || return 2
-            echo recent
-            jq -r '[.data[]?] | sort_by(.created // 0) | reverse | .[].id' <<<"$resp" 2>/dev/null
-            ;;
-        *) return 2 ;;
-    esac
+    # One place strips a note that came out empty, rather than six jq
+    # expressions each having to decide whether to add the separator.
+    {
+        case "$provider" in
+            anthropic)
+                resp="$(curl -sf --max-time 8 -H "x-api-key: $api_key" -H "anthropic-version: 2023-06-01" \
+                    "https://api.anthropic.com/v1/models?limit=1000" 2>/dev/null)" || return 2
+                echo recent
+                jq -r '[.data[]?] | sort_by(.created_at // "") | reverse | .[]
+                       | .id + "\t" + (.display_name // "")' <<<"$resp" 2>/dev/null
+                ;;
+            openai)
+                resp="$(curl -sf --max-time 8 -H "Authorization: Bearer $api_key" \
+                    "https://api.openai.com/v1/models" 2>/dev/null)" || return 2
+                echo recent
+                jq -r '[.data[]?] | sort_by(.created // 0) | reverse | .[].id' <<<"$resp" 2>/dev/null
+                ;;
+            google)
+                resp="$(curl -sf --max-time 8 -H "x-goog-api-key: $api_key" \
+                    "https://generativelanguage.googleapis.com/v1beta/models" 2>/dev/null)" || return 2
+                echo alpha
+                local g_want='generateContent'
+                [[ "$kind" == "embedding" ]] && g_want='embedContent'
+                jq -r --arg want "$g_want" '
+                    [.models[]?
+                     | select(.supportedGenerationMethods == null
+                              or ((.supportedGenerationMethods | index($want)) != null))
+                     | (.name | sub("^models/"; ""))
+                       + "\t"
+                       + ((.inputTokenLimit // empty | tostring | . + " tokens in") // "")
+                       + (if .inputTokenLimit and .description then " · " else "" end)
+                       + ((.description // "") | split(". ")[0])]
+                    | sort | .[]' <<<"$resp" 2>/dev/null
+                ;;
+            mistral)
+                resp="$(curl -sf --max-time 8 -H "Authorization: Bearer $api_key" \
+                    "https://api.mistral.ai/v1/models" 2>/dev/null)" || return 2
+                echo recent
+                jq -r --arg kind "$kind" '
+                    [.data[]?
+                     | select(.deprecation == null)
+                     | select(.capabilities == null
+                              or (if $kind == "embedding"
+                                  then (.capabilities.completion_chat // false) | not
+                                  else (.capabilities.completion_chat // false) end))]
+                    | sort_by(.created // 0) | reverse | .[]
+                    | .id + "\t"
+                      + ((.max_context_length // empty | tostring | . + " tokens") // "")
+                      + (if .max_context_length and .description then " · " else "" end)
+                      + ((.description // "") | split(". ")[0])' <<<"$resp" 2>/dev/null
+                ;;
+            cohere)
+                resp="$(curl -sf --max-time 8 -H "Authorization: Bearer $api_key" \
+                    "https://api.cohere.com/v1/models" 2>/dev/null)" || return 2
+                echo alpha
+                local c_want='chat'
+                [[ "$kind" == "embedding" ]] && c_want='embed'
+                jq -r --arg want "$c_want" '
+                    [.models[]?
+                     | select(.is_deprecated != true)
+                     | select(.endpoints == null or ((.endpoints | index($want)) != null))
+                     | .name + "\t"
+                       + ((.context_length // empty | tostring | . + " tokens") // "")]
+                    | sort | .[]' <<<"$resp" 2>/dev/null
+                ;;
+            openrouter)
+                resp="$(curl -sf --max-time 8 "https://openrouter.ai/api/v1/models" 2>/dev/null)" || return 2
+                echo recent
+                jq -r --arg kind "$kind" '
+                    [.data[]?
+                     | select((.architecture.output_modalities // ["text"]) | index("text"))]
+                    | sort_by(.created // 0) | reverse | .[]
+                    | .id + "\t"
+                      + ((.context_length // empty | tostring | . + " tokens") // "")
+                      + (if .pricing.prompt then
+                           " · $" + (((.pricing.prompt | tonumber) * 1000000 * 100 | round) / 100 | tostring)
+                           + "/M in"
+                         else "" end)' <<<"$resp" 2>/dev/null
+                ;;
+            *) return 2 ;;
+        esac
+    # POSIX '*', not GNU '\+': BSD sed does not know the latter and left every
+    # trailing tab in place, which is the kind of difference that shows up as
+    # a test failure on a laptop and never on the server.
+    } | sed $'s/\t*$//'
 }
 
 # Print the provider's models so the operator can pick from what exists rather
@@ -307,15 +338,18 @@ show_model_list() {   # $1 = provider, $2 = api key, $3 = chat|embedding
     # chat, image and speech models is a list nobody can use, and a chat
     # question whose first ten entries are transcription models buries the
     # ones being asked about.
-    local models=() m
+    local models=() m mid
     if provider_filters_itself "$provider"; then
         models=("${all[@]}")
     else
         for m in "${all[@]}"; do
+            # The id, not the line: a note mentioning "image" would otherwise
+            # filter out the model it describes.
+            mid="${m%%$'\t'*}"
             if [[ "$kind" == "embedding" ]]; then
-                [[ "$m" =~ $MODEL_FILTER_EMBEDDING ]] && models+=("$m")
+                [[ "$mid" =~ $MODEL_FILTER_EMBEDDING ]] && models+=("$m")
             else
-                [[ "$m" =~ $MODEL_FILTER_CHAT ]] || models+=("$m")
+                [[ "$mid" =~ $MODEL_FILTER_CHAT ]] || models+=("$m")
             fi
         done
     fi
@@ -336,10 +370,23 @@ show_model_list() {   # $1 = provider, $2 = api key, $3 = chat|embedding
     else
         info "$(t cfg_model_list_alpha "${#models[@]}" "${#all[@]}")" >&2
     fi
-    local shown=0 m
+    # Aligned to the longest id being shown, so the notes form a column
+    # instead of ragged text after names of different lengths.
+    local shown=0 m id note width=0
+    for m in "${models[@]:0:$MODEL_LIST_CAP}"; do
+        id="${m%%$'\t'*}"
+        (( ${#id} > width )) && width=${#id}
+    done
     for m in "${models[@]}"; do
         (( shown >= MODEL_LIST_CAP )) && break
-        printf "    %s\n" "$m" >&2
+        id="${m%%$'\t'*}"
+        note="${m#*$'\t'}"
+        [[ "$note" == "$m" ]] && note=""
+        if [[ -n "$note" ]]; then
+            printf "    %-*s  ${DIM}%s${RESET}\n" "$width" "$id" "$note" >&2
+        else
+            printf "    %s\n" "$id" >&2
+        fi
         shown=$(( shown + 1 ))
     done
     (( ${#models[@]} > shown )) && dim "$(t cfg_model_list_more "$(( ${#models[@]} - shown ))")" >&2
@@ -549,7 +596,7 @@ ask_model_choice() {
     # dropped, and the drop is stated: a suggestion vanishing without a word
     # would look like this installer forgetting the provider.
     local opts=() live=() gone=()
-    mapfile -t live < <(fetch_model_ids "$provider" "$api_key" chat 2>/dev/null | tail -n +2)
+    mapfile -t live < <(fetch_model_ids "$provider" "$api_key" chat 2>/dev/null | tail -n +2 | cut -f1)
     if (( ${#live[@]} > 0 )); then
         local c
         for c in "${curated[@]}"; do

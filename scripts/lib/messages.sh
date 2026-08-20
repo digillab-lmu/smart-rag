@@ -914,7 +914,7 @@ declare -A MSG_EN=(
     [cfg_model_list_more]="…and %s more. Any of them can be typed at the prompt below."
     [cfg_model_list_unavailable]="The provider's model list could not be fetched just now — the suggestions below are this project's own, and any other name can be typed."
     [cfg_model_retired]="No longer offered by this provider, so not suggested: %s. The list above is what it does offer."
-    [cfg_model_list_hidden]="%s are not shown, because they are not what this question asks about — the provider's list mixes chat, embedding, image, speech and moderation models and marks none of them. Any name can still be typed."
+    [cfg_model_list_hidden]="%s are not shown: this provider's list mixes chat, embedding, image, speech and moderation models without saying which is which, so they were told apart by name. Any name can still be typed, including one that was hidden."
     [cfg_model_list_unfiltered]="Showing the provider's whole list: none of its names matched what was expected for this question, so nothing is being hidden on a guess."
 )
 
@@ -1820,7 +1820,7 @@ declare -A MSG_DE=(
     [cfg_model_list_more]="…und %s weitere. Jedes davon lässt sich unten eintippen."
     [cfg_model_list_unavailable]="Die Modell-Liste des Anbieters war gerade nicht abrufbar — die Vorschläge unten sind die dieses Projekts, und jeder andere Name lässt sich eintippen."
     [cfg_model_retired]="Von diesem Anbieter nicht mehr angeboten und deshalb nicht vorgeschlagen: %s. Was er anbietet, steht oben."
-    [cfg_model_list_hidden]="%s werden nicht gezeigt, weil sie nicht zu dieser Frage gehören — die Liste des Anbieters mischt Chat-, Embedding-, Bild-, Sprach- und Moderationsmodelle und kennzeichnet keines davon. Eintippen lässt sich jeder Name trotzdem."
+    [cfg_model_list_hidden]="%s werden nicht gezeigt: die Liste dieses Anbieters mischt Chat-, Embedding-, Bild-, Sprach- und Moderationsmodelle, ohne zu sagen was was ist — unterschieden wurde daher am Namen. Eintippen lässt sich jeder Name trotzdem, auch ein ausgeblendeter."
     [cfg_model_list_unfiltered]="Es wird die gesamte Liste des Anbieters gezeigt: keiner seiner Namen passte zu dem, was hier erwartet wurde — dann wird lieber nichts auf Verdacht ausgeblendet."
 )
 
