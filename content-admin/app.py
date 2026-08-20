@@ -528,7 +528,8 @@ def with_course(view):
     def wrapped(*args, **kwargs):
         try:
             course = _resolve_course()
-        except db.DatabaseError:
+        except db.DatabaseError as exc:
+            logger.warning("Could not resolve the active course: %s", exc)
             course = None
         if course is None:
             # Say why. Bouncing to the course list without a word looks like
@@ -550,7 +551,8 @@ def _inject_course():
         user = auth.current_user()
         available = [c for c in courses_service.all_courses()
                      if c["ready"] and accounts.may_access(user, c["id"])]
-    except db.DatabaseError:
+    except db.DatabaseError as exc:
+        logger.warning("Could not load the course list for the layout: %s", exc)
         active, available = None, []
     return {"active_course": active, "available_courses": available,
             "is_admin": bool(user and user["role"] == accounts.ROLE_ADMIN),
