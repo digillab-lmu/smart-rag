@@ -67,9 +67,9 @@ the failures that have actually occurred, by the message they produce.
 
 ## Quick start
 
-**Requirements**: Ubuntu 24.04 LTS (the release everything is tested against
-— another even-year LTS is accepted after a warning), Docker, Docker Compose
-v2, and an LLM plus embedding API key. Full checklist, including hardware
+**Requirements**: Ubuntu 24.04 or 26.04 LTS (the releases this is actually
+installed and run on — another even-year LTS is accepted after a warning),
+Docker, Docker Compose v2, and an LLM plus embedding API key. Full checklist, including hardware
 sizing: [`docs/requirements.md`](docs/requirements.md). The wizard shows this
 checklist interactively before it asks you anything.
 

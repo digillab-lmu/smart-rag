@@ -180,8 +180,28 @@ llm_model_choices_fast() {
 # installation behind a proxy, or a provider having a bad minute, must not
 # stop a setup. jq does the sorting — it is already a hard requirement here,
 # and doing it in bash would mean parsing timestamps.
-fetch_model_ids() {   # $1 = provider, $2 = api key
-    local provider="$1" api_key="$2" resp
+# $3 selects what the caller is asking for: chat or embedding.
+#
+# **Three of the six providers say which a model is**, and where they do, that
+# is used instead of guessing from the name — verified against each one's own
+# specification rather than remembered:
+#
+#   google   supportedGenerationMethods[]   generateContent / embedContent
+#   mistral  capabilities.completion_chat   and a deprecation timestamp
+#   cohere   endpoints[]                    chat / embed / rerank, is_deprecated
+#
+# OpenAI, Anthropic and OpenRouter publish no capability field on this
+# endpoint, so those three fall back to the name filter in show_model_list.
+# Mistral and Cohere also say when a model is deprecated, and a deprecated
+# model is dropped: offering one is offering something scheduled to stop
+# working.
+#
+# A model that does not carry the field at all is kept, not dropped. These
+# are filters over somebody else's API: if a provider stops sending the
+# field, the failure should be a list that is too long, not one that is
+# silently empty.
+fetch_model_ids() {   # $1 = provider, $2 = api key, $3 = chat|embedding
+    local provider="$1" api_key="$2" kind="${3:-chat}" resp
     case "$provider" in
         anthropic)
             resp="$(curl -sf --max-time 8 -H "x-api-key: $api_key" -H "anthropic-version: 2023-06-01" \
@@ -199,19 +219,39 @@ fetch_model_ids() {   # $1 = provider, $2 = api key
             resp="$(curl -sf --max-time 8 -H "x-goog-api-key: $api_key" \
                 "https://generativelanguage.googleapis.com/v1beta/models" 2>/dev/null)" || return 2
             echo alpha
-            jq -r '[.models[]?.name] | sort | .[] | sub("^models/"; "")' <<<"$resp" 2>/dev/null
+            local g_want='generateContent'
+            [[ "$kind" == "embedding" ]] && g_want='embedContent'
+            jq -r --arg want "$g_want" '
+                [.models[]?
+                 | select(.supportedGenerationMethods == null
+                          or ((.supportedGenerationMethods | index($want)) != null))
+                 | .name]
+                | sort | .[] | sub("^models/"; "")' <<<"$resp" 2>/dev/null
             ;;
         mistral)
             resp="$(curl -sf --max-time 8 -H "Authorization: Bearer $api_key" \
                 "https://api.mistral.ai/v1/models" 2>/dev/null)" || return 2
             echo recent
-            jq -r '[.data[]?] | sort_by(.created // 0) | reverse | .[].id' <<<"$resp" 2>/dev/null
+            jq -r --arg kind "$kind" '
+                [.data[]?
+                 | select(.deprecation == null)
+                 | select(.capabilities == null
+                          or (if $kind == "embedding"
+                              then (.capabilities.completion_chat // false) | not
+                              else (.capabilities.completion_chat // false) end))]
+                | sort_by(.created // 0) | reverse | .[].id' <<<"$resp" 2>/dev/null
             ;;
         cohere)
             resp="$(curl -sf --max-time 8 -H "Authorization: Bearer $api_key" \
                 "https://api.cohere.com/v1/models" 2>/dev/null)" || return 2
             echo alpha
-            jq -r '[.models[]?.name] | sort | .[]' <<<"$resp" 2>/dev/null
+            local c_want='chat'
+            [[ "$kind" == "embedding" ]] && c_want='embed'
+            jq -r --arg want "$c_want" '
+                [.models[]?
+                 | select(.is_deprecated != true)
+                 | select(.endpoints == null or ((.endpoints | index($want)) != null))
+                 | .name] | sort | .[]' <<<"$resp" 2>/dev/null
             ;;
         openrouter)
             resp="$(curl -sf --max-time 8 "https://openrouter.ai/api/v1/models" 2>/dev/null)" || return 2
@@ -238,6 +278,14 @@ MODEL_LIST_CAP=24
 # is printed, and any name at all can still be typed at the prompt. That is a
 # different bet from the curated suggestion lists, where being wrong means
 # recommending a model that does not work.
+# The providers that answer the question themselves, so the name filter must
+# not run a second time over their output: a Google chat model called
+# gemini-…-image supports generateContent and would be thrown away by a filter
+# looking for "image" in the name.
+provider_filters_itself() {
+    case "$1" in google|mistral|cohere) return 0 ;; *) return 1 ;; esac
+}
+
 MODEL_FILTER_CHAT='embed|image|dall-e|sora|tts|audio|transcribe|whisper|realtime|moderation|guard|rerank'
 MODEL_FILTER_EMBEDDING='embed'
 
@@ -247,7 +295,7 @@ show_model_list() {   # $1 = provider, $2 = api key, $3 = chat|embedding
     command -v jq >/dev/null 2>&1 || return 0
 
     local lines=() rc=0
-    mapfile -t lines < <(fetch_model_ids "$provider" "$api_key") || rc=$?
+    mapfile -t lines < <(fetch_model_ids "$provider" "$api_key" "$kind") || rc=$?
     if (( rc != 0 )) || (( ${#lines[@]} < 2 )); then
         dim "$(t cfg_model_list_unavailable)" >&2
         return 0
@@ -260,13 +308,17 @@ show_model_list() {   # $1 = provider, $2 = api key, $3 = chat|embedding
     # question whose first ten entries are transcription models buries the
     # ones being asked about.
     local models=() m
-    for m in "${all[@]}"; do
-        if [[ "$kind" == "embedding" ]]; then
-            [[ "$m" =~ $MODEL_FILTER_EMBEDDING ]] && models+=("$m")
-        else
-            [[ "$m" =~ $MODEL_FILTER_CHAT ]] || models+=("$m")
-        fi
-    done
+    if provider_filters_itself "$provider"; then
+        models=("${all[@]}")
+    else
+        for m in "${all[@]}"; do
+            if [[ "$kind" == "embedding" ]]; then
+                [[ "$m" =~ $MODEL_FILTER_EMBEDDING ]] && models+=("$m")
+            else
+                [[ "$m" =~ $MODEL_FILTER_CHAT ]] || models+=("$m")
+            fi
+        done
+    fi
     # A filter that removes everything has misjudged this provider's naming.
     # Better the unfiltered list than none — and say which is being shown.
     local filtered=1
@@ -497,7 +549,7 @@ ask_model_choice() {
     # dropped, and the drop is stated: a suggestion vanishing without a word
     # would look like this installer forgetting the provider.
     local opts=() live=() gone=()
-    mapfile -t live < <(fetch_model_ids "$provider" "$api_key" 2>/dev/null | tail -n +2)
+    mapfile -t live < <(fetch_model_ids "$provider" "$api_key" chat 2>/dev/null | tail -n +2)
     if (( ${#live[@]} > 0 )); then
         local c
         for c in "${curated[@]}"; do

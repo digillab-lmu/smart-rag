@@ -5,8 +5,9 @@
 Before running `scripts/bootstrap.sh`, make sure you have:
 
 **Server**
-- Ubuntu 24.04 LTS — the version everything here is tested against. Another
-  Ubuntu LTS (26.04, 22.04, …) is accepted after the wizard says it is
+- Ubuntu 24.04 or 26.04 LTS — the two releases this project has actually been
+  installed and run on, rather than the ones it is expected to work on.
+  Another Ubuntu LTS (22.04, 28.04, …) is accepted after the wizard says it is
   untested and you confirm; interim releases and non-Ubuntu systems are
   refused outright
 - Root or sudo access

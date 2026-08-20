@@ -11,6 +11,14 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ## Unreleased
 
+### Changed
+
+- Ubuntu 26.04 is a tested release, not an accepted-with-a-warning one. It is
+  what this project is developed and run on; the installer, the whole service
+  stack, the backup path and the ingest have all been exercised there
+  repeatedly, which is a stronger claim than 24.04 originally carried. 24.04
+  stays on the list — it did not stop working when 26.04 started.
+
 ### Removed
 
 - `langfuse-userid-patch` — the n8n workflow that back-filled a `userId` onto

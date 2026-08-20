@@ -38,6 +38,9 @@ run() {   # $1 = snippet, $2 = body, $3 = rc
 }
 
 OPENAI='{"data":[{"id":"gpt-4o","created":100},{"id":"gpt-5.4","created":900},{"id":"ancient","created":1}]}'
+# No supportedGenerationMethods on these two on purpose: a provider that stops
+# sending the field must produce a list that is too long, never a silently
+# empty one.
 GOOGLE='{"models":[{"name":"models/gemini-b"},{"name":"models/gemini-a"}]}'
 
 # ─── Newest first, where the API knows ───────────────────────────────────────
@@ -120,6 +123,63 @@ shown="$(grep -cE '^    m[0-9]+$' <<<"$out")"
 check "a long list is capped" $? "$shown lines shown"
 grep -qiE 'and [0-9]+ more' <<<"$out"
 check "and the rest is counted rather than dropped in silence" $? "$out"
+
+# ─── Where the provider says what a model is, that is used ───────────────────
+# Three of the six publish it, and each was read from its own specification
+# rather than remembered: Google's supportedGenerationMethods, Mistral's
+# capabilities.completion_chat, Cohere's endpoints. Guessing from the name
+# where the answer is published is how a chat model called gemini-…-image gets
+# thrown away for having "image" in it.
+# Two chat models, one of which has a filtered word in its name. The second is
+# load-bearing: with only the first, the name filter would empty the list and
+# the "show everything rather than nothing" fallback would hand it back —
+# hiding the very mistake this is checking for.
+GOOGLE_CAP='{"models":[
+  {"name":"models/gemini-3-image","supportedGenerationMethods":["generateContent"]},
+  {"name":"models/gemini-3-pro","supportedGenerationMethods":["generateContent"]},
+  {"name":"models/text-embedding-5","supportedGenerationMethods":["embedContent"]}]}'
+out="$(run 'fetch_model_ids google key123 chat' "$GOOGLE_CAP")"
+grep -qx 'gemini-3-image' <<<"$out"
+check "Google: a chat model is kept despite its name" $? "$out"
+grep -qx 'text-embedding-5' <<<"$out"
+check "Google: an embedding model is not offered for chat" $(( $? == 0 ? 1 : 0 )) "$out"
+out="$(run 'fetch_model_ids google key123 embedding' "$GOOGLE_CAP")"
+grep -qx 'text-embedding-5' <<<"$out"
+check "Google: the embedding question gets the embedding model" $? "$out"
+
+# A response without the capability field is kept rather than filtered away.
+out="$(run 'fetch_model_ids google key123 chat' "$GOOGLE")"
+[[ "$(tail -n +2 <<<"$out" | tr '\n' ' ')" == "gemini-a gemini-b " ]]
+check "a model that carries no capability field is kept" $? "$out"
+
+out="$(run 'show_model_list google key123 chat' "$GOOGLE_CAP")"
+grep -qE '^    gemini-3-image$' <<<"$out"
+check "and the name filter does not run a second time over it" $? "$out"
+
+# Deprecated is not offered: it is scheduled to stop working.
+MISTRAL='{"data":[
+  {"id":"mistral-large","created":9,"capabilities":{"completion_chat":true}},
+  {"id":"mistral-embed","created":8,"capabilities":{"completion_chat":false}},
+  {"id":"mistral-old","created":7,"capabilities":{"completion_chat":true},"deprecation":"2026-01-01T00:00:00Z"}]}'
+out="$(run 'fetch_model_ids mistral key123 chat' "$MISTRAL")"
+grep -qx 'mistral-large' <<<"$out"
+check "Mistral: a current chat model is offered" $? "$out"
+grep -qx 'mistral-old' <<<"$out"
+check "Mistral: a deprecated model is not" $(( $? == 0 ? 1 : 0 )) "$out"
+grep -qx 'mistral-embed' <<<"$out"
+check "Mistral: an embedding model is not offered for chat" $(( $? == 0 ? 1 : 0 )) "$out"
+
+COHERE='{"models":[
+  {"name":"command-a","endpoints":["chat"]},
+  {"name":"embed-v4","endpoints":["embed"]},
+  {"name":"rerank-v4","endpoints":["rerank"]},
+  {"name":"command-old","endpoints":["chat"],"is_deprecated":true}]}'
+out="$(run 'fetch_model_ids cohere key123 chat' "$COHERE")"
+[[ "$(tail -n +2 <<<"$out" | tr '\n' ' ')" == "command-a " ]]
+check "Cohere: only the current chat model" $? "$out"
+out="$(run 'fetch_model_ids cohere key123 embedding' "$COHERE")"
+[[ "$(tail -n +2 <<<"$out" | tr '\n' ' ')" == "embed-v4 " ]]
+check "Cohere: only the embedding model" $? "$out"
 
 # ─── A list that cannot be fetched is not a failure ──────────────────────────
 out="$(run 'show_model_list openai key123; echo "REACHED-THE-END"' "" 22)"

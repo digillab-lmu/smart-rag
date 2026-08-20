@@ -3,7 +3,7 @@
 # SMART RAG — Install required system packages (Phase 5)
 # ═════════════════════════════════════════════════════════════════════════════
 #
-# Installs nginx, certbot, jq, dnsutils, openssl, curl on Ubuntu 24.04.
+# Installs nginx, certbot, jq, dnsutils, openssl, curl on Ubuntu 24.04/26.04.
 # Idempotent — packages already installed are skipped.
 #
 # Usage:  sudo bash scripts/install-system-packages.sh [--lang en|de]

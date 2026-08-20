@@ -59,7 +59,14 @@ show_prerequisites_checklist() {
 
 # ─── 1. Operating System ─────────────────────────────────────────────────────
 # The one Ubuntu release this project is actually tested on.
-readonly UBUNTU_TESTED="24.04"
+# The versions this project has actually been installed and run on, not the
+# ones it is expected to work on. 26.04 joined the list on 2026-08-20, after
+# the development machine was rebuilt on it and the installer, the whole
+# service stack, the backup path and the ingest were exercised there
+# repeatedly — which is a stronger claim than the one 24.04 originally
+# carried. Kept as a list rather than replaced: 24.04 did not stop working
+# when 26.04 started.
+readonly UBUNTU_TESTED=("24.04" "26.04")
 
 check_ubuntu() {
     local id="" version=""
@@ -74,19 +81,24 @@ check_ubuntu() {
         die "$(t pf_ubuntu_not_linux "${id:-unknown}")"
     fi
 
-    # 24.04 is the version everything here is actually tested against —
-    # package names, the Docker repo layout, nginx and certbot behaviour.
-    if [[ "$version" == "$UBUNTU_TESTED" ]]; then
-        ok "$(t pf_ubuntu_ok "$version")"
-        return 0
-    fi
+    # What "tested" covers: package names, the Docker repo layout, nginx and
+    # certbot behaviour — the things that differ between releases and that
+    # this installer touches directly.
+    local tested
+    for tested in "${UBUNTU_TESTED[@]}"; do
+        if [[ "$version" == "$tested" ]]; then
+            ok "$(t pf_ubuntu_ok "$version")"
+            return 0
+        fi
+    done
 
     # Another Ubuntu LTS (even year, .04) is untested, not known-broken.
     # Refusing outright would block a machine that very likely works; saying
     # nothing would hide a real reason for later surprises. So: say which
     # version was tested, and let the operator decide.
     if [[ "$version" =~ ^(2[0-9])\.04$ ]] && (( ${BASH_REMATCH[1]} % 2 == 0 )); then
-        warn "$(t pf_ubuntu_untested "$version" "$UBUNTU_TESTED")"
+        local tested_list; tested_list="$(printf '%s, ' "${UBUNTU_TESTED[@]}")"
+        warn "$(t pf_ubuntu_untested "$version" "${tested_list%, }")"
         PREFLIGHT_WARN=$((PREFLIGHT_WARN+1))
         confirm pf_ubuntu_untested_continue "y" || die "$(t pf_ubuntu_declined)"
         return 0
