@@ -565,6 +565,22 @@ def _inject_course():
             "current_account": user}
 
 
+# ─── Database unavailable ──────────────────────────────────────────────────
+# Safety net for every route and context processor that does not catch
+# db.DatabaseError itself (6e-10): with_course, _inject_course and a few
+# routes already handle it locally and never reach here (Flask only invokes
+# a registered errorhandler when the exception propagates unhandled out of
+# view/context-processor code) — this is purely additive for everything
+# else, including login_required's own current_user() call.
+#
+# TODO(6e-10/6e-02): under a sustained outage this logs once per request,
+# same open point as _inject_course's own logging (6e-02) — not throttled.
+@app.errorhandler(db.DatabaseError)
+def db_unavailable(exc):
+    logger.warning("Unhandled database error: %s", exc)
+    return render_template("db_unavailable.html"), 503
+
+
 @app.route("/courses/<course_id>/use")
 @auth.login_required
 def use_course(course_id):
