@@ -546,6 +546,12 @@ def _inject_course():
     """So the layout can show which course is active without every view
     passing it. A page that acts on a course while not naming it is how an
     edit lands in the wrong one."""
+    # Bound before the try: db.DatabaseError can fire on the very first
+    # line below (_resolve_course() itself calls auth.current_user()), which
+    # would otherwise leave `user` unassigned when the except branch's
+    # `return` references it below — UnboundLocalError instead of the
+    # intended graceful fallback (6e-11).
+    user = None
     try:
         active = getattr(g, "course", None) or _resolve_course()
         user = auth.current_user()
