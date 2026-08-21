@@ -578,7 +578,18 @@ def _inject_course():
 @app.errorhandler(db.DatabaseError)
 def db_unavailable(exc):
     logger.warning("Unhandled database error: %s", exc)
-    return render_template("db_unavailable.html"), 503
+    try:
+        return render_template("db_unavailable.html"), 503
+    except Exception as render_exc:
+        # The template's own render_template() call still runs every
+        # context processor app-wide (6e-11 is exactly this kind of
+        # failure) -- if a second, unrelated one ever raises here, a
+        # template-free reply is the one thing that can't be dragged down
+        # by the same outage a second time.
+        logger.warning("Could not render the database-unavailable page "
+                        "itself: %s", render_exc)
+        body = f"{_t('db_unavailable_heading')}\n\n{_t('db_unavailable_message')}"
+        return body, 503, {"Content-Type": "text/plain; charset=utf-8"}
 
 
 @app.route("/courses/<course_id>/use")
