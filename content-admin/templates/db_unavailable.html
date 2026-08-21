@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ t('db_unavailable_title') }}</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #ffffff; color: #1a1a1a;
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; margin: 0; padding: 1.5rem; box-sizing: border-box;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { background: #17191b; color: #edf2ef; }
+      h1 { color: #59b27f !important; }
+    }
+    .box { max-width: 32rem; text-align: center; }
+    h1 { color: #00883a; font-size: 1.3rem; margin-bottom: 0.75rem; }
+    p { line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>{{ t('db_unavailable_heading') }}</h1>
+    <p>{{ t('db_unavailable_message') }}</p>
+  </div>
+</body>
+</html>

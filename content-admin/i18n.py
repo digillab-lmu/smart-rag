@@ -46,6 +46,11 @@ MSG_EN: dict[str, str] = {
     "footer_repo": 'GitHub: <a href="https://github.com/digillab-lmu/smart-rag" target="_blank" rel="noopener">github.com/digillab-lmu/smart-rag</a>',
     "lang_switch_label": "Language",
 
+    # --- database unavailable --------------------------------------------
+    "db_unavailable_title": "Service temporarily unavailable",
+    "db_unavailable_heading": "The database isn't reachable right now",
+    "db_unavailable_message": "This page can't load right now because the database can't be reached. This is usually temporary — try again in a few minutes. If it persists, contact your administrator.",
+
     # --- first-run setup ------------------------------------------------
     "setup_title": "First-time setup",
     "setup_heading": "Welcome — create your admin account",
@@ -580,6 +585,11 @@ MSG_DE: dict[str, str] = {
     "footer_contact": 'Entwickler: <a href="mailto:benjamin.goetzinger@psy.lmu.de">Benjamin Götzinger</a>',
     "footer_repo": 'GitHub: <a href="https://github.com/digillab-lmu/smart-rag" target="_blank" rel="noopener">github.com/digillab-lmu/smart-rag</a>',
     "lang_switch_label": "Sprache",
+
+    # --- database unavailable --------------------------------------------
+    "db_unavailable_title": "Dienst vorübergehend nicht verfügbar",
+    "db_unavailable_heading": "Die Datenbank ist gerade nicht erreichbar",
+    "db_unavailable_message": "Diese Seite kann gerade nicht geladen werden, weil die Datenbank nicht erreichbar ist. Das ist meist vorübergehend — versuchen Sie es in ein paar Minuten erneut. Hält das Problem an, wenden Sie sich an Ihre Administratorin oder Ihren Administrator.",
 
     # --- first-run setup ------------------------------------------------
     "setup_title": "Ersteinrichtung",
