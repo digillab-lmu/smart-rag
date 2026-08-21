@@ -528,7 +528,8 @@ def with_course(view):
     def wrapped(*args, **kwargs):
         try:
             course = _resolve_course()
-        except db.DatabaseError:
+        except db.DatabaseError as exc:
+            logger.warning("Could not resolve the active course: %s", exc)
             course = None
         if course is None:
             # Say why. Bouncing to the course list without a word looks like
@@ -545,16 +546,50 @@ def _inject_course():
     """So the layout can show which course is active without every view
     passing it. A page that acts on a course while not naming it is how an
     edit lands in the wrong one."""
+    # Bound before the try: db.DatabaseError can fire on the very first
+    # line below (_resolve_course() itself calls auth.current_user()), which
+    # would otherwise leave `user` unassigned when the except branch's
+    # `return` references it below — UnboundLocalError instead of the
+    # intended graceful fallback (6e-11).
+    user = None
     try:
         active = getattr(g, "course", None) or _resolve_course()
         user = auth.current_user()
         available = [c for c in courses_service.all_courses()
                      if c["ready"] and accounts.may_access(user, c["id"])]
-    except db.DatabaseError:
+    except db.DatabaseError as exc:
+        logger.warning("Could not load the course list for the layout: %s", exc)
         active, available = None, []
     return {"active_course": active, "available_courses": available,
             "is_admin": bool(user and user["role"] == accounts.ROLE_ADMIN),
             "current_account": user}
+
+
+# ─── Database unavailable ──────────────────────────────────────────────────
+# Safety net for every route and context processor that does not catch
+# db.DatabaseError itself (6e-10): with_course, _inject_course and a few
+# routes already handle it locally and never reach here (Flask only invokes
+# a registered errorhandler when the exception propagates unhandled out of
+# view/context-processor code) — this is purely additive for everything
+# else, including login_required's own current_user() call.
+#
+# TODO(6e-10/6e-02): under a sustained outage this logs once per request,
+# same open point as _inject_course's own logging (6e-02) — not throttled.
+@app.errorhandler(db.DatabaseError)
+def db_unavailable(exc):
+    logger.warning("Unhandled database error: %s", exc)
+    try:
+        return render_template("db_unavailable.html"), 503
+    except Exception as render_exc:
+        # The template's own render_template() call still runs every
+        # context processor app-wide (6e-11 is exactly this kind of
+        # failure) -- if a second, unrelated one ever raises here, a
+        # template-free reply is the one thing that can't be dragged down
+        # by the same outage a second time.
+        logger.warning("Could not render the database-unavailable page "
+                        "itself: %s", render_exc)
+        body = f"{_t('db_unavailable_heading')}\n\n{_t('db_unavailable_message')}"
+        return body, 503, {"Content-Type": "text/plain; charset=utf-8"}
 
 
 @app.route("/courses/<course_id>/use")
