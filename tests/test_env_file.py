@@ -228,7 +228,12 @@ set_env_var("ANOTHER", "v", env_path=p8)
 check("the Python port keeps the inode", p8.stat().st_ino == before8,
       f"{before8} -> {p8.stat().st_ino}")
 
-# No writer anywhere may replace it.
+# No writer anywhere may replace a bind-mounted file by renaming over it. The
+# rule was written for .env and holds for every file the compose mounts: a mv
+# swaps the inode, and a container that already has the old one mounted keeps
+# reading it while the host shows the new content. It earned its keep on a
+# second file on 2026-08-24 — write_garage_config wrote garage.toml, which is
+# mounted at /etc/garage.toml, through a temp file and a mv.
 for script in (REPO / "scripts").rglob("*.sh"):
     body = "\n".join(
         l for l in script.read_text().splitlines() if not l.strip().startswith("#")
@@ -236,7 +241,7 @@ for script in (REPO / "scripts").rglob("*.sh"):
     if "mv " in body and ".env" in body:
         import re as _re
         bad = _re.findall(r'^\s*mv\s+.*\$\{?(?:tmp|TMP)\b.*$', body, _re.M)
-        check(f"{script.name} does not mv over .env", not bad, str(bad))
+        check(f"{script.name} does not rename over a mounted file", not bad, str(bad))
 
 # ─── 8. Repeated writes must not bury the output in backup notices ───────────
 # The upgrade entry and the Garage spike each write many keys in a row.

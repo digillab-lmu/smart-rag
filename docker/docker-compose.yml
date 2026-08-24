@@ -27,11 +27,15 @@
 #     127.0.0.1::") or, worse, targets the wrong things. From inside docker/,
 #     always pass the env file explicitly:
 #
-#   cd /srv/smart-rag/docker
-#   docker compose --env-file ../.env up -d
+#   bash scripts/compose.sh up -d
+#
+# Use that wrapper rather than calling docker compose here directly: it
+# supplies -f and --env-file, and without the latter every ${VAR} below
+# resolves to an empty string — which fails as "no port specified: 127.0.0.1::"
+# rather than as anything about a missing environment file.
 #
 # Profiles are controlled via COMPOSE_PROFILES in .env:
-#   core          → always required (Flowise, Weaviate, Neo4j, PostgreSQL, Redis, MinIO, n8n)
+#   core          → always required (Flowise, Weaviate, Neo4j, PostgreSQL, Redis, Garage, n8n)
 #   observability → Langfuse + ClickHouse  (recommended for production)
 #   lti           → LTI 1.3 middleware for Moodle / ILIAS
 #
@@ -218,20 +222,6 @@ services:
       start_period: 10s
 
 
-  # ── MinIO ────────────────────────────────────────────────────────────────────
-  # S3-compatible object storage for Flowise media, Langfuse events/exports,
-  # and course documents (ingest pipeline).
-  #
-  # Buckets created on startup:
-  #   <course-id>-rag     → one per course, created with the course by the
-  #                          Content Admin, which also grants the ingest key
-  #                          on it. An installation starts with none.
-  #   langfuse-events     → Langfuse event storage
-  #   langfuse-media      → Langfuse media uploads
-  #   langfuse-exports    → Langfuse batch exports
-  #
-  # On every document upload to a course's bucket, MinIO fires a webhook to n8n
-  # which triggers the ingest pipeline.
   # ── Garage (S3 object storage) ───────────────────────────────────────────
   # Replaces MinIO, which was archived upstream on 2026-04-24. Garage was
   # chosen after running this stack's actual S3 operations against it — put,
@@ -250,6 +240,32 @@ services:
   # scripts/deploy-garage.sh, which runs the binary directly via docker exec.
   #
   # There is no web console. Garage has none, and nothing replaces it.
+  #
+  # ── What is in it, and who puts it there ──────────────────────────────────
+  #   langfuse-events / -media / -exports   created by scripts/deploy-garage.sh
+  #   <course-id>-rag                       created WITH THE COURSE by the
+  #                                         Content Admin, which also grants
+  #                                         the ingest key on it. A fresh
+  #                                         installation has none of these.
+  #
+  # Nothing here creates buckets on startup, and nothing in the object store
+  # notifies n8n when something is uploaded. Two comments in this file claimed
+  # both until 2026-08-24; they described MinIO, which had been gone for four
+  # months, and sent whoever read them looking for machinery that is not
+  # there. Garage has no bucket notifications at all — the Content Admin posts
+  # each uploaded file straight to n8n at /webhook/document-ingest.
+  #
+  # ── Where garage.toml comes from ──────────────────────────────────────────
+  # garage/garage.toml.template in this repository, rendered by
+  # write_garage_config() in scripts/lib/templates.sh — during bootstrap phase
+  # 4, and again by scripts/start-services.sh if the file has gone missing,
+  # since every value in it comes from .env.
+  #
+  # That check exists because the mount below is a FILE mount: if the host
+  # path is missing when this container starts, Docker creates a directory
+  # there, Garage reads a directory as its configuration, and it restart-loops
+  # with "IO error: Is a directory" — which names neither the file nor the
+  # cause, and repeats forever, because the directory then stays.
   smartrag-garage:
     profiles: [core]
     image: dxflrs/garage:v2.3.0
@@ -558,7 +574,9 @@ services:
   # Automation platform running background pipelines:
   #   • Chat history sync (PostgreSQL → Weaviate, every 5 min)
   #   • User memory summary (per-student learning profile)
-  #   • Document ingest trigger (MinIO upload → Weaviate)
+  #   • Document ingest (Content Admin → this webhook → Weaviate). Triggered
+  #     by the upload itself, not by the object store: Garage has no bucket
+  #     notifications, and this line used to describe MinIO's.
   # After first start: import and activate workflows from n8n/workflows/.
   # See docs/setup/07-first-login.md
   smartrag-n8n:

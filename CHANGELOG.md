@@ -11,6 +11,41 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ## Unreleased
 
+### Fixed
+
+- **Garage would not start after a fresh install, and could not recover.** Its
+  configuration is mounted as a *file*; when the host path is missing, Docker
+  creates a directory there, Garage reads a directory as its configuration and
+  restart-loops with `IO error: Is a directory` — which names neither the file
+  nor the cause. It was self-sustaining: the directory stays, so every later
+  start fails identically, including a bootstrap re-run that keeps its `.env`
+  and therefore never reaches the phase that writes the file.
+
+  `scripts/start-services.sh` now checks before anything starts. A missing
+  file is written — every value in it comes from `.env`, so there is nobody to
+  ask — and a directory is refused with the repair, because removing something
+  is the operator's call.
+
+- **Two comments described machinery that had been gone for four months.**
+  `docker-compose.yml` said buckets are created on startup and that the object
+  store notifies n8n on upload. Both were MinIO's; Garage has no bucket
+  notifications, and the Content Admin posts each file to n8n itself. An
+  orphaned MinIO block sat above the Garage service with no service under it,
+  and the core profile still listed MinIO as a member.
+
+### Changed
+
+- **Garage's configuration is a template in the repository**, like every other
+  component's — `garage/garage.toml.template`, rendered by
+  `write_garage_config()`. It previously existed only as a heredoc inside
+  `scripts/lib/templates.sh`: nothing to review in a diff, nothing in a
+  `garage/` directory to find, and no way to re-create the file without
+  walking through the wizard again. Rendering takes its values from the wizard
+  on a first install and from `.env` afterwards, so the file can be rebuilt at
+  any time. The rendered file is still never committed — it carries the RPC
+  secret — and the test that enforced that now also requires the template to
+  carry none.
+
 ### Changed
 
 - Ubuntu 26.04 is a tested release, not an accepted-with-a-warning one. It is

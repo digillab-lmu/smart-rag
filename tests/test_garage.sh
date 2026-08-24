@@ -59,6 +59,103 @@ check "the configuration is written 600" $? "it contains the rpc secret"
 [[ ! -f "$REPO/garage/garage.toml" ]]
 check "no garage.toml is committed" $? "an rpc_secret in the repository is a shared cluster key"
 
+# ─── The configuration is a template in the repository, like every other ────
+# Garage was the one component whose configuration existed nowhere but inside
+# a heredoc in templates.sh: no file to review in a diff, nothing to look at
+# in a garage/ directory, and — the part that bit — no way to re-create it
+# without walking the wizard again.
+TEMPLATE="$REPO/garage/garage.toml.template"
+[[ -f "$TEMPLATE" ]]
+check "the configuration lives in the repository as a template" $? \
+      "every other component's config does: weaviate/schema.json, nginx/…, neo4j/…"
+for ph in __RPC_SECRET__ __ADMIN_TOKEN__ __S3_REGION__; do
+    grep -q "$ph" "$TEMPLATE"
+    check "the template carries $ph" $? ""
+done
+# The reason a template and not the rendered file: it must hold no secret.
+grep -qE '^(rpc_secret|admin_token) *= *"[^_]' "$TEMPLATE"
+check "the template contains no secret literal" $(( $? == 0 ? 1 : 0 )) \
+      "$(grep -nE '^(rpc_secret|admin_token)' "$TEMPLATE")"
+
+# ─── Rendering it, and the two ways it goes wrong ───────────────────────────
+render() {   # $1 = target, rest = environment assignments
+    env -i PATH="$PATH" HOME="$HOME" LANG_CHOICE=en REPO_ROOT="$REPO" "${@:2}" bash -c '
+        source "'"$REPO"'/scripts/lib/messages.sh"
+        source "'"$REPO"'/scripts/lib/common.sh"
+        source "'"$REPO"'/scripts/lib/templates.sh"
+        write_garage_config "'"$1"'" "'"$REPO"'"
+    ' 2>&1
+}
+
+TMP="$(mktemp -d)"
+out="$(render "$TMP/garage.toml" GARAGE_RPC_SECRET=rpc-xyz GARAGE_ADMIN_TOKEN=adm-xyz GARAGE_REGION=eu-west-9)"
+check "it renders from .env values alone, without the wizard" $? "$out"
+grep -q 'rpc_secret = "rpc-xyz"' "$TMP/garage.toml"
+check "the rpc secret is substituted" $? "$(cat "$TMP/garage.toml" 2>/dev/null)"
+grep -q 'admin_token = "adm-xyz"' "$TMP/garage.toml"
+check "the admin token is substituted" $? ""
+grep -q 's3_region = "eu-west-9"' "$TMP/garage.toml"
+check "the region is substituted" $? ""
+grep -q '__' "$TMP/garage.toml"
+check "no placeholder is left behind" $(( $? == 0 ? 1 : 0 )) "$(grep -o '__[A-Z_]*__' "$TMP/garage.toml")"
+[[ "$(stat -c %a "$TMP/garage.toml" 2>/dev/null || stat -f %Lp "$TMP/garage.toml")" == "600" ]]
+check "it is written 600 — it holds the cluster key" $? ""
+
+# The wizard's own variable names must work too, or a first install breaks.
+out="$(render "$TMP/wizard.toml" SECRET_GARAGE_RPC_SECRET=w-rpc SECRET_GARAGE_ADMIN_TOKEN=w-adm CFG_GARAGE_REGION=eu-north-1)"
+grep -q 'rpc_secret = "w-rpc"' "$TMP/wizard.toml"
+check "the wizard's SECRET_/CFG_ names render too" $? "$out"
+
+# An empty secret would start a Garage that rejects every client, and the
+# failure surfaces later as a signature error against a working-looking store.
+out="$(render "$TMP/nosecret.toml" GARAGE_ADMIN_TOKEN=adm GARAGE_REGION=eu-central-1)"
+check "an empty rpc secret is refused" $(( $? == 0 ? 1 : 0 )) "$out"
+[[ ! -f "$TMP/nosecret.toml" ]]
+check "and nothing is written" $? ""
+
+# The failure this whole section exists for: Docker creates a DIRECTORY where
+# a file mount's host path is missing. Garage then reads a directory as its
+# configuration and restart-loops with "IO error: Is a directory", which names
+# neither the file nor the cause — and it repeats forever, because the
+# directory stays. Observed on a real install, 2026-08-24.
+mkdir -p "$TMP/asdir/garage.toml"
+out="$(render "$TMP/asdir/garage.toml" GARAGE_RPC_SECRET=r GARAGE_ADMIN_TOKEN=a)"
+check "a directory in the file's place is refused" $(( $? == 0 ? 1 : 0 )) "$out"
+grep -qi 'directory' <<<"$out"
+check "and the refusal says so, with the repair" $? "$out"
+grep -qi 'rmdir' <<<"$out"
+check "naming rmdir rather than rm -rf" $? "$out"
+rm -rf "$TMP"
+
+# ─── Nothing starts before that file is a file ──────────────────────────────
+STARTER="$REPO/scripts/start-services.sh"
+grep -q 'garage.toml' "$STARTER"
+check "start-services checks the configuration before compose runs" $? \
+      "without it, the first start is what creates the directory"
+starter_body="$(sed -n '/GARAGE_CONFIG=/,/^fi/p' "$STARTER")"
+grep -q 'write_garage_config' <<<"$starter_body"
+check "a missing file is written rather than refused" $? \
+      "every value in it comes from .env, so there is nobody to ask"
+grep -q 'svc_garage_config_is_dir' <<<"$starter_body"
+check "a directory is refused rather than removed" $? \
+      "removing something is the operator's call"
+# Order matters: the check has to precede `compose up`, not follow it.
+cfg_line="$(grep -n 'GARAGE_CONFIG=' "$STARTER" | head -1 | cut -d: -f1)"
+up_line="$(grep -n 'up -d --remove-orphans' "$STARTER" | head -1 | cut -d: -f1)"
+[[ -n "$cfg_line" && -n "$up_line" ]] && (( cfg_line < up_line ))
+check "and it runs before the services start" $? "check at $cfg_line, up at $up_line"
+
+# ─── No stale MinIO machinery is described ──────────────────────────────────
+# Two sentences outlived MinIO by four months: that buckets are created on
+# startup, and that the object store fires a webhook at n8n on upload. Garage
+# has no bucket notifications; the Content Admin posts to n8n itself. Both
+# sent readers looking for machinery that is not there.
+grep -qiE 'fires a webhook|MinIO upload' "$COMPOSE"
+check "no comment claims the object store triggers the ingest" $(( $? == 0 ? 1 : 0 )) \
+      "$(grep -niE 'fires a webhook|MinIO upload' "$COMPOSE")"
+grep -q 'Redis, MinIO, n8n' "$COMPOSE"
+check "the core profile does not still list MinIO" $(( $? == 0 ? 1 : 0 )) ""
+
 # ─── Provisioning: layout, then buckets, then keys ───────────────────────────
 [[ -f "$DEPLOY" ]]
 check "the provisioning script exists" $? ""

@@ -317,31 +317,61 @@ write_nginx_config() {
 # Args: $1 = output path
 write_garage_config() {
     local out="$1"
+    local repo="${2:-$REPO_ROOT}"
+    local src="$repo/garage/garage.toml.template"
+
+    [[ -f "$src" ]] || die "$(t tpl_garage_no_template "$src")"
+
+    # The values come from the wizard on a first install and from a sourced
+    # .env on every later run. Two names for each, because those are the two
+    # ways this function is legitimately reached — and having both means the
+    # file can be re-created without walking through the wizard again, which
+    # is what a missing garage.toml used to cost.
+    local rpc="${SECRET_GARAGE_RPC_SECRET:-${GARAGE_RPC_SECRET:-}}"
+    local admin="${SECRET_GARAGE_ADMIN_TOKEN:-${GARAGE_ADMIN_TOKEN:-}}"
+    local region="${CFG_GARAGE_REGION:-${GARAGE_REGION:-eu-central-1}}"
+
+    # A config written with an empty secret starts a Garage that no client can
+    # authenticate against, and the failure appears later as a signature
+    # error. Refusing here is the only place it can still be named.
+    [[ -n "$rpc"   ]] || die "$(t tpl_garage_no_secret GARAGE_RPC_SECRET)"
+    [[ -n "$admin" ]] || die "$(t tpl_garage_no_secret GARAGE_ADMIN_TOKEN)"
+
+    # If the container has already started once without this file, Docker
+    # created a directory in its place — a file mount whose host path is
+    # missing is created as a directory. `cat >` would then fail with bash's
+    # own "Is a directory", which says nothing about why. Refuse with the
+    # cause and the repair instead.
+    if [[ -e "$out" && ! -f "$out" ]]; then
+        die "$(t tpl_garage_target_not_file "$out")"
+    fi
+
     info "$(t tpl_writing_garage)"
     mkdir -p "$(dirname "$out")"
-    cat > "$out" <<TOML
-# Written by scripts/lib/templates.sh — regenerated on every wizard run.
-metadata_dir = "/var/lib/garage/meta"
-data_dir = "/var/lib/garage/data"
-db_engine = "sqlite"
-replication_factor = 1
-
-rpc_bind_addr = "[::]:3901"
-rpc_public_addr = "127.0.0.1:3901"
-rpc_secret = "$SECRET_GARAGE_RPC_SECRET"
-
-[s3_api]
-# Must match what every client sends: clients sign requests for a region, and
-# a mismatch is rejected as a signature error rather than as a wrong region.
-s3_region = "${CFG_GARAGE_REGION:-eu-central-1}"
-api_bind_addr = "[::]:3900"
-root_domain = ".s3.garage"
-
-[admin]
-api_bind_addr = "[::]:3903"
-admin_token = "$SECRET_GARAGE_ADMIN_TOKEN"
-TOML
+    # Written in place, never through a temp file and a mv. This file is bind
+    # mounted into the container at /etc/garage.toml, and a mv replaces the
+    # inode: a running Garage would keep reading the old one while the host
+    # shows the new. The same rule already applies to .env for the same
+    # reason, and tests/test_env_file.py enforces it across every script here
+    # — it caught this one.
+    #
+    # umask instead of a chmod afterwards: on a first write the file must not
+    # exist even for an instant with the RPC secret in it and default
+    # permissions. Truncating an existing one keeps its inode and its mode.
+    local old_umask; old_umask="$(umask)"
+    umask 077
+    sed -e "s|__RPC_SECRET__|$rpc|g" \
+        -e "s|__ADMIN_TOKEN__|$admin|g" \
+        -e "s|__S3_REGION__|$region|g" \
+        "$src" > "$out" || { umask "$old_umask"; die "$(t tpl_garage_write_failed "$out")"; }
+    umask "$old_umask"
     chmod 600 "$out"
+
+    # Nothing may leave a placeholder behind: a literal __RPC_SECRET__ in the
+    # file is a Garage that starts and rejects every client.
+    if grep -q '__[A-Z_]*__' "$out"; then
+        die "$(t tpl_garage_placeholder_left "$out" "$(grep -o '__[A-Z_]*__' "$out" | sort -u | tr '\n' ' ')")"
+    fi
     ok "Garage configuration written to $out"
 }
 

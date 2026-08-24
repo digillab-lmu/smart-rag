@@ -920,6 +920,13 @@ declare -A MSG_EN=(
     [cfg_model_retired]="No longer offered by this provider, so not suggested: %s. The list above is what it does offer."
     [cfg_model_list_hidden]="%s are not shown: this provider's list mixes chat, embedding, image, speech and moderation models without saying which is which, so they were told apart by name. Any name can still be typed, including one that was hidden."
     [cfg_model_list_unfiltered]="Showing the provider's whole list: none of its names matched what was expected for this question, so nothing is being hidden on a guess."
+    [tpl_garage_no_template]="The Garage configuration template is missing at %s. The image is incomplete — garage/garage.toml.template ships with this repository."
+    [tpl_garage_no_secret]="%s is empty, so the Garage configuration cannot be written. A config with an empty secret starts a Garage that rejects every client, and the failure appears later as a signature error."
+    [tpl_garage_target_not_file]="%s exists but is not a regular file. Docker created it as a directory, which is what it does when a file mount's host path is missing — and Garage then reads a directory as its configuration. Remove it and run this again:  rmdir %s"
+    [tpl_garage_write_failed]="The Garage configuration could not be written to %s."
+    [tpl_garage_placeholder_left]="%s still contains unsubstituted placeholders (%s). Refusing to leave a configuration that would start Garage and reject every client."
+    [svc_garage_config_is_dir]="%s is a directory, not a file. That is what Docker leaves behind when it starts this container before the configuration exists — and Garage then fails on every start, including every future one, because the directory stays. Remove it and run this again:  rmdir %s"
+    [svc_garage_config_missing]="The Garage configuration is missing at %s, and Docker would create a directory there. Writing it now — every value in it comes from .env."
 )
 
 
@@ -1830,6 +1837,13 @@ declare -A MSG_DE=(
     [cfg_model_retired]="Von diesem Anbieter nicht mehr angeboten und deshalb nicht vorgeschlagen: %s. Was er anbietet, steht oben."
     [cfg_model_list_hidden]="%s werden nicht gezeigt: die Liste dieses Anbieters mischt Chat-, Embedding-, Bild-, Sprach- und Moderationsmodelle, ohne zu sagen was was ist — unterschieden wurde daher am Namen. Eintippen lässt sich jeder Name trotzdem, auch ein ausgeblendeter."
     [cfg_model_list_unfiltered]="Es wird die gesamte Liste des Anbieters gezeigt: keiner seiner Namen passte zu dem, was hier erwartet wurde — dann wird lieber nichts auf Verdacht ausgeblendet."
+    [tpl_garage_no_template]="Die Vorlage für die Garage-Konfiguration fehlt unter %s. Das Abbild ist unvollständig — garage/garage.toml.template gehört zu diesem Repository."
+    [tpl_garage_no_secret]="%s ist leer, die Garage-Konfiguration lässt sich damit nicht schreiben. Eine Konfiguration mit leerem Geheimnis startet ein Garage, das jeden Client abweist, und der Fehler zeigt sich später als Signaturfehler."
+    [tpl_garage_target_not_file]="%s existiert, ist aber keine reguläre Datei. Docker hat dort ein Verzeichnis angelegt — das tut es, wenn der Host-Pfad eines Datei-Mounts fehlt — und Garage liest dann ein Verzeichnis als Konfiguration. Entfernen und erneut ausführen:  rmdir %s"
+    [tpl_garage_write_failed]="Die Garage-Konfiguration konnte nicht nach %s geschrieben werden."
+    [tpl_garage_placeholder_left]="In %s stehen noch unersetzte Platzhalter (%s). Eine Konfiguration, die Garage startet und jeden Client abweist, wird nicht zurückgelassen."
+    [svc_garage_config_is_dir]="%s ist ein Verzeichnis, keine Datei. Das hinterlässt Docker, wenn dieser Container startet, bevor die Konfiguration existiert — und Garage scheitert danach bei jedem Start daran, auch bei jedem künftigen, weil das Verzeichnis bleibt. Entfernen und erneut ausführen:  rmdir %s"
+    [svc_garage_config_missing]="Die Garage-Konfiguration fehlt unter %s, und Docker würde dort ein Verzeichnis anlegen. Sie wird jetzt geschrieben — jeder Wert darin stammt aus der .env."
 )
 
 

@@ -1,0 +1,46 @@
+# Garage configuration — rendered to $BASE_DATA_PATH/garage/garage.toml.
+#
+# This file is the template. The rendered one is NEVER committed: it carries
+# the RPC secret, which is the key to the cluster, and the admin token.
+# tests/test_garage.sh enforces both halves of that — the template must hold
+# no secret, and no rendered garage.toml may appear in the repository.
+#
+# Placeholders are substituted by write_garage_config() in
+# scripts/lib/templates.sh, which takes the values from the wizard during a
+# first install and from .env on every later run — so the file can be
+# re-created without going through the wizard again.
+#
+# Why a file at all, when every other service is configured from the
+# environment: Garage does not read its configuration from environment
+# variables. It needs this file, and the container mounts it read-only at
+# /etc/garage.toml. If it is missing when the container starts, Docker
+# creates a *directory* at that path — the mount is a file mount — and Garage
+# fails with "IO error: Is a directory", which names neither the file nor the
+# cause. scripts/start-services.sh checks for that before starting anything.
+
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "sqlite"
+
+# One node. Garage's replication is between nodes, and there is one; the
+# redundancy this installation relies on is the backup, not a second replica.
+replication_factor = 1
+
+rpc_bind_addr = "[::]:3901"
+# The node's own address as it announces itself. Loopback because the cluster
+# is this one container: nothing else may talk RPC to it.
+rpc_public_addr = "127.0.0.1:3901"
+rpc_secret = "__RPC_SECRET__"
+
+[s3_api]
+# Must match what every client sends: clients sign requests for a region, and
+# a mismatch is rejected as a signature error rather than as a wrong region —
+# which sends whoever debugs it looking at credentials instead of at this
+# line.
+s3_region = "__S3_REGION__"
+api_bind_addr = "[::]:3900"
+root_domain = ".s3.garage"
+
+[admin]
+api_bind_addr = "[::]:3903"
+admin_token = "__ADMIN_TOKEN__"

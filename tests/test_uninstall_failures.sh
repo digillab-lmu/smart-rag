@@ -10,6 +10,17 @@
 # running (real smartrag-* containers, real smart-rag-network); the whole
 # point of the stubs is that uninstall.sh never sees the real docker/systemctl/
 # certbot binaries at all.
+# uninstall.sh refuses to run as anyone but root, and it is right to. Without
+# this, every run on a developer machine reports five failures that all read
+# "Please run as root" — a red suite that says nothing about the code, which
+# is worse than an absent one because people learn to ignore it. Exit 10 is
+# this project's "could not run", the same code dbfixture uses.
+if (( EUID != 0 )); then
+    echo "uninstall.sh only runs as root, and these checks run it. Re-run with"
+    echo "sudo to exercise them; skipping."
+    exit 10
+fi
+
 set -uo pipefail
 
 TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

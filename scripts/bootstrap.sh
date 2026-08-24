@@ -619,7 +619,7 @@ STAGING_DIR="$CFG_BASE_DATA_PATH/staging"
 mkdir -p "$STAGING_DIR"
 
 write_env_file "$REPO_ROOT"
-write_garage_config "$CFG_BASE_DATA_PATH/garage/garage.toml"
+write_garage_config "$CFG_BASE_DATA_PATH/garage/garage.toml" "$REPO_ROOT"
 write_weaviate_schema "$REPO_ROOT" "$STAGING_DIR/weaviate-schema.json"
 
 # nginx target — only write if /etc/nginx/sites-available exists (otherwise

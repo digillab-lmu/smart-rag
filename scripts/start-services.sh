@@ -23,6 +23,8 @@ LIB_DIR="$SCRIPT_DIR/lib"
 source "$LIB_DIR/common.sh"
 # shellcheck source=lib/messages.sh
 source "$LIB_DIR/messages.sh"
+# shellcheck source=lib/templates.sh
+source "$LIB_DIR/templates.sh"
 
 # ─── Arg parsing ─────────────────────────────────────────────────────────────
 DO_PULL=1
@@ -92,6 +94,30 @@ fi
 info "$(t svc_preparing_data_dirs)"
 mkdir -p "${BASE_DATA_PATH}/n8n/data"
 chown -R 1000:1000 "${BASE_DATA_PATH}/n8n/data"   # n8n image runs as user "node" (uid 1000)
+
+# ─── Garage's configuration must exist as a FILE before compose runs ─────────
+# Garage is the one service configured from a file rather than from the
+# environment, and the compose mount is a file mount. If the host path is
+# missing when compose starts, Docker creates a directory there, Garage reads
+# a directory as its configuration and restart-loops with
+#
+#     Error: IO error: Is a directory (os error 21)
+#
+# — which names neither the file nor the reason. Worse, it is self-sustaining:
+# the directory then exists, so every later start fails identically, including
+# a bootstrap re-run that keeps its .env and therefore never reaches the phase
+# that writes the file. Seen on a real install, 2026-08-24.
+#
+# Missing is repaired here rather than refused: every value in that file comes
+# from .env, which is already loaded, so there is nothing to ask anybody. A
+# directory is refused, because removing something is the operator's call.
+GARAGE_CONFIG="${BASE_DATA_PATH}/garage/garage.toml"
+if [[ -e "$GARAGE_CONFIG" && ! -f "$GARAGE_CONFIG" ]]; then
+    die "$(t svc_garage_config_is_dir "$GARAGE_CONFIG")"
+elif [[ ! -f "$GARAGE_CONFIG" ]]; then
+    warn "$(t svc_garage_config_missing "$GARAGE_CONFIG")"
+    write_garage_config "$GARAGE_CONFIG" "$REPO_ROOT"
+fi
 
 # ─── Pull images (skip with --no-pull) ───────────────────────────────────────
 COMPOSE_FILE="$REPO_ROOT/docker/docker-compose.yml"
