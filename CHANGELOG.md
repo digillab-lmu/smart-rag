@@ -13,6 +13,22 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **The same failure one phase later: the staged Weaviate schema.** Phase 4
+  writes three things. `.env` is in the repository and survives anything; the
+  other two land under `BASE_DATA_PATH`, which is the one directory an
+  operator deletes on purpose to start over — and *continue the deployment*
+  then skips phase 4, because `.env` still being there looks like proof that
+  configuration happened. Garage got a directory where its config should be;
+  the schema was simply gone, and phase 8 died on it.
+
+  `scripts/deploy-schemas.sh` now writes it when missing. Nothing has to be
+  asked: since courses stopped being an installation-wide setting, that file
+  is `weaviate/schema.json` with the per-course template removed.
+
+  `tests/test_bootstrap_incomplete.sh` generalises it — whatever phase 4
+  writes under `BASE_DATA_PATH`, some consumer outside bootstrap must be able
+  to produce again, so a third file cannot repeat this.
+
 - **Garage would not start after a fresh install, and could not recover.** Its
   configuration is mounted as a *file*; when the host path is missing, Docker
   creates a directory there, Garage reads a directory as its configuration and

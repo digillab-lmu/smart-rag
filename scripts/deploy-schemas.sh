@@ -27,10 +27,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 LIB_DIR="$SCRIPT_DIR/lib"
 
+# shellcheck source=lib/templates.sh — for write_weaviate_schema, used
+# when the staged file is missing (see below).
 # shellcheck source=lib/common.sh
 source "$LIB_DIR/common.sh"
 # shellcheck source=lib/messages.sh
 source "$LIB_DIR/messages.sh"
+# shellcheck source=lib/templates.sh
+source "$LIB_DIR/templates.sh"
 
 # ─── Arg parsing ─────────────────────────────────────────────────────────────
 while (( $# > 0 )); do
@@ -68,8 +72,21 @@ _container_ready() { container_ready "$1"; }
 # ─── Weaviate ─────────────────────────────────────────────────────────────────
 _container_ready smartrag-weaviate || die "$(t schema_container_not_healthy "smartrag-weaviate")"
 
+# Phase 4 stages this file, and it lives under BASE_DATA_PATH — the one
+# directory an operator deletes on purpose when starting over. The .env sits in
+# the repository and survives that, so "continue the deployment" then looks
+# like a reasonable answer and dies here instead.
+#
+# Written rather than refused, because since courses stopped being an
+# installation-wide setting this file is derived from weaviate/schema.json
+# alone: it is the shared classes with the per-course template removed. There
+# is nothing to ask anybody. Seen on a real install, 2026-08-24, one phase
+# after the same shape of failure in Garage.
 STAGED_SCHEMA="${BASE_DATA_PATH}/staging/weaviate-schema.json"
-[[ -f "$STAGED_SCHEMA" ]] || die "$(t schema_weaviate_not_found "$STAGED_SCHEMA")"
+if [[ ! -f "$STAGED_SCHEMA" ]]; then
+    warn "$(t schema_weaviate_restaging "$STAGED_SCHEMA")"
+    write_weaviate_schema "$REPO_ROOT" "$STAGED_SCHEMA"
+fi
 
 WEAVIATE_URL="http://127.0.0.1:${WEAVIATE_HTTP_PORT}"
 info "$(t schema_weaviate_checking)"

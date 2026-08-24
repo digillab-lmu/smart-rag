@@ -244,6 +244,49 @@ check "EXIT_UNVERIFIED is defined as 11" $? "${EXIT_UNVERIFIED:-unset}"
 check "'could not run' and 'could not confirm' are different states" $? ""
 
 # ─── Report ──────────────────────────────────────────────────────────────────
+# ─── Everything phase 4 writes under BASE_DATA_PATH must be self-healing ────
+# Phase 4 writes three things. One is .env, in the repository, which survives
+# anything. The other two land under BASE_DATA_PATH — the single directory an
+# operator deletes on purpose to start over — and "continue the deployment"
+# then skips phase 4, because .env is still there and looks like proof that
+# configuration happened.
+#
+# Both failed that way on the same install, one phase apart: Garage got a
+# directory where its config should be, and the Weaviate schema was simply
+# gone. Neither needs anything a human knows — garage.toml comes from .env,
+# the staged schema from weaviate/schema.json — so the consumer writes it
+# rather than refusing.
+#
+# This check is the generalisation, so a third file added to phase 4 cannot
+# repeat it: whatever phase 4 writes under BASE_DATA_PATH, some consumer must
+# be able to produce again.
+phase4="$(sed -n '/Phase 4: Write templates/,/Phase 5/p' "$REPO/scripts/bootstrap.sh")"
+mapfile -t writers < <(grep -oE '^write_[a-z_]+' <<<"$phase4" | sort -u)
+(( ${#writers[@]} >= 2 ))
+check "phase 4's writers were found" $? "$(printf '%s ' "${writers[@]}")"
+
+for writer in "${writers[@]}"; do
+    # Which of them target BASE_DATA_PATH rather than the repository or /etc.
+    target_line="$(grep -m1 "^$writer " <<<"$phase4")"
+    [[ "$target_line" == *'CFG_BASE_DATA_PATH'* || "$target_line" == *'STAGING_DIR'* ]] || continue
+
+    # Somebody other than bootstrap must call it, or a wiped data directory is
+    # only repairable by walking the wizard again.
+    # An actual call, not a mention. The first version grepped the file and
+    # was satisfied by the shellcheck comment naming the function two lines
+    # above the call — so removing the call left the check green.
+    callers=""
+    for cand in "$REPO"/scripts/*.sh; do
+        [[ "$(basename "$cand")" == "bootstrap.sh" ]] && continue
+        if sed 's/#.*//' "$cand" | grep -qE "(^|[;&|[:space:]])$writer([[:space:]]|\$)"; then
+            callers="$callers $(basename "$cand")"
+        fi
+    done
+    [[ -n "${callers// /}" ]]
+    check "$writer can be re-run outside bootstrap" $? \
+          "only bootstrap phase 4 calls it, so deleting BASE_DATA_PATH is unrecoverable without the wizard"
+done
+
 if (( ${#FAILURES[@]} > 0 )); then
     echo "FAILURES:"
     printf '  - %s\n' "${FAILURES[@]}"

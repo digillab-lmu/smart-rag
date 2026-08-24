@@ -928,6 +928,7 @@ declare -A MSG_EN=(
     [svc_garage_config_is_dir]="%s is a directory, not a file. That is what Docker leaves behind when it starts this container before the configuration exists — and Garage then fails on every start, including every future one, because the directory stays. Remove it and run this again:  rmdir %s"
     [svc_garage_config_missing]="The Garage configuration is missing at %s, and Docker would create a directory there. Writing it now — every value in it comes from .env."
     [svc_garage_recreate]="The existing Garage container resolved this mount when it was created, against the directory that used to be there — restarting it would fail the same way. Removing it so compose builds it again; Garage keeps no state inside the container."
+    [schema_weaviate_restaging]="The staged Weaviate schema is missing at %s. It lives under BASE_DATA_PATH, which is what gets deleted when an installation is started over, while .env survives in the repository — so this is expected after a wipe. Writing it now: it is derived from weaviate/schema.json alone."
 )
 
 
@@ -1846,6 +1847,7 @@ declare -A MSG_DE=(
     [svc_garage_config_is_dir]="%s ist ein Verzeichnis, keine Datei. Das hinterlässt Docker, wenn dieser Container startet, bevor die Konfiguration existiert — und Garage scheitert danach bei jedem Start daran, auch bei jedem künftigen, weil das Verzeichnis bleibt. Entfernen und erneut ausführen:  rmdir %s"
     [svc_garage_config_missing]="Die Garage-Konfiguration fehlt unter %s, und Docker würde dort ein Verzeichnis anlegen. Sie wird jetzt geschrieben — jeder Wert darin stammt aus der .env."
     [svc_garage_recreate]="Der vorhandene Garage-Container hat diesen Mount beim Anlegen aufgelöst, gegen das Verzeichnis, das damals dort lag — ein Neustart scheiterte genauso. Er wird entfernt, damit Compose ihn neu baut; Garage hält keinen Zustand im Container."
+    [schema_weaviate_restaging]="Das vorbereitete Weaviate-Schema fehlt unter %s. Es liegt unter BASE_DATA_PATH — genau dem Verzeichnis, das beim Neuanfang gelöscht wird, während die .env im Repository überlebt. Nach einem Löschen ist das also zu erwarten. Es wird jetzt geschrieben: es leitet sich allein aus weaviate/schema.json ab."
 )
 
 
