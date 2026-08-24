@@ -26,6 +26,13 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
   ask — and a directory is refused with the repair, because removing something
   is the operator's call.
 
+  Writing the file is not sufficient on a host that has started the container
+  once already, which the first version of this fix got wrong: a bind mount is
+  resolved when a container is *created*, and `compose up` only restarts an
+  existing one, so it kept failing against a path that had become a perfectly
+  good file. The container is now removed after the repair and left for
+  compose to build again — Garage keeps no state inside it.
+
 - **Two comments described machinery that had been gone for four months.**
   `docker-compose.yml` said buckets are created on startup and that the object
   store notifies n8n on upload. Both were MinIO's; Garage has no bucket

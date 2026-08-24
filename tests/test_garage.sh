@@ -145,6 +145,22 @@ up_line="$(grep -n 'up -d --remove-orphans' "$STARTER" | head -1 | cut -d: -f1)"
 [[ -n "$cfg_line" && -n "$up_line" ]] && (( cfg_line < up_line ))
 check "and it runs before the services start" $? "check at $cfg_line, up at $up_line"
 
+# Writing the file is not enough on a host that has already started this
+# container once. A bind mount is resolved when the container is CREATED, and
+# `compose up` only restarts an existing one — nothing in the compose config
+# changed. So the container keeps failing against a path that is now a good
+# file. Measured on a real install: config written at 13:34, same error at
+# 13:34:56, 13:35:56, 13:36:56.
+grep -q 'docker rm -f smartrag-garage' <<<"$starter_body"
+check "an existing container is removed so compose rebuilds it" $? \
+      "restarting it re-uses the mount it resolved against the directory"
+rm_line="$(grep -n 'docker rm -f smartrag-garage' "$STARTER" | head -1 | cut -d: -f1)"
+[[ -n "$rm_line" ]] && (( rm_line < up_line ))
+check "and that happens before compose runs" $? "rm at $rm_line, up at $up_line"
+# Only in the branch that just wrote the file — never as a blanket removal.
+awk -v s="$cfg_line" -v e="$up_line" 'NR>s && NR<e' "$STARTER" | grep -q 'write_garage_config'
+check "the removal sits in the branch that repaired the file" $? ""
+
 # ─── No stale MinIO machinery is described ──────────────────────────────────
 # Two sentences outlived MinIO by four months: that buckets are created on
 # startup, and that the object store fires a webhook at n8n on upload. Garage

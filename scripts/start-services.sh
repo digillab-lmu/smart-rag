@@ -117,6 +117,24 @@ if [[ -e "$GARAGE_CONFIG" && ! -f "$GARAGE_CONFIG" ]]; then
 elif [[ ! -f "$GARAGE_CONFIG" ]]; then
     warn "$(t svc_garage_config_missing "$GARAGE_CONFIG")"
     write_garage_config "$GARAGE_CONFIG" "$REPO_ROOT"
+
+    # Writing the file is not enough, and finding that out cost a second
+    # round: a container that already exists resolved this mount when it was
+    # CREATED, against whatever the path was then — a directory. `compose up`
+    # only starts it again, because nothing in the compose configuration
+    # changed, so the container keeps failing with "Is a directory" against a
+    # path that is now a perfectly good file. Observed on a real install: the
+    # config was written successfully at 13:34 and the same error continued at
+    # 13:34:56, 13:35:56, 13:36:56.
+    #
+    # So the container is removed and left for compose to build again. Garage
+    # holds no state in the container — meta and data are their own mounts —
+    # and it was in a restart loop, so there is nothing running to disturb.
+    if docker ps -a --filter 'name=^smartrag-garage$' --format '{{.Names}}' \
+            | grep -q .; then
+        warn "$(t svc_garage_recreate)"
+        docker rm -f smartrag-garage >/dev/null 2>&1 || true
+    fi
 fi
 
 # ─── Pull images (skip with --no-pull) ───────────────────────────────────────

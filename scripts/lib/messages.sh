@@ -927,6 +927,7 @@ declare -A MSG_EN=(
     [tpl_garage_placeholder_left]="%s still contains unsubstituted placeholders (%s). Refusing to leave a configuration that would start Garage and reject every client."
     [svc_garage_config_is_dir]="%s is a directory, not a file. That is what Docker leaves behind when it starts this container before the configuration exists — and Garage then fails on every start, including every future one, because the directory stays. Remove it and run this again:  rmdir %s"
     [svc_garage_config_missing]="The Garage configuration is missing at %s, and Docker would create a directory there. Writing it now — every value in it comes from .env."
+    [svc_garage_recreate]="The existing Garage container resolved this mount when it was created, against the directory that used to be there — restarting it would fail the same way. Removing it so compose builds it again; Garage keeps no state inside the container."
 )
 
 
@@ -1844,6 +1845,7 @@ declare -A MSG_DE=(
     [tpl_garage_placeholder_left]="In %s stehen noch unersetzte Platzhalter (%s). Eine Konfiguration, die Garage startet und jeden Client abweist, wird nicht zurückgelassen."
     [svc_garage_config_is_dir]="%s ist ein Verzeichnis, keine Datei. Das hinterlässt Docker, wenn dieser Container startet, bevor die Konfiguration existiert — und Garage scheitert danach bei jedem Start daran, auch bei jedem künftigen, weil das Verzeichnis bleibt. Entfernen und erneut ausführen:  rmdir %s"
     [svc_garage_config_missing]="Die Garage-Konfiguration fehlt unter %s, und Docker würde dort ein Verzeichnis anlegen. Sie wird jetzt geschrieben — jeder Wert darin stammt aus der .env."
+    [svc_garage_recreate]="Der vorhandene Garage-Container hat diesen Mount beim Anlegen aufgelöst, gegen das Verzeichnis, das damals dort lag — ein Neustart scheiterte genauso. Er wird entfernt, damit Compose ihn neu baut; Garage hält keinen Zustand im Container."
 )
 
 
