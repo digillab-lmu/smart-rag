@@ -148,6 +148,73 @@ check("nothing removes a concept with no sources at all",
           for s in stmts if "DETACH DELETE c" in s),
       "concepts from before provenance would vanish without being anybody's")
 
+# ─── Taking one build back out ──────────────────────────────────────────────
+# The reason this exists is not tidiness. The operator asked the honest
+# question about the review — *"mal ehrlich: wie realistisch ist es, dass man
+# das als Mensch überprüfen kann?"* — and for a proposal of hundreds of
+# concepts the answer is that it is not. A review that cannot be done is a
+# review that gets clicked through. An exact undo changes what the reading has
+# to achieve: a map you can remove in one action is one you may apply and then
+# check against something real.
+#
+# Exact means three things survive that a blunt "delete everything from that
+# run" would take: a concept an earlier build also found, one a later build
+# also found, and one a person has edited by hand.
+c, rec = client()
+c.undo_build("kurs-1", "build-7")
+stmts = [re.sub(r"\s+", " ", s) for s in statements_of(rec)]
+undo = " ".join(stmts)
+
+# "Only this build" as an exact list, not "this build is among them". The
+# difference is a mutation that passed: `$build IN coalesce(c.builds, [])`
+# deletes concepts a second build also found, which undoes two runs at once.
+deletes = [s for s in stmts if "DETACH DELETE c" in s]
+check("a concept only this build asserted is deleted", bool(deletes), stmts)
+check("and 'only' means exactly that",
+      all("coalesce(c.builds, []) = [$build]" in s for s in deletes),
+      "matching membership instead of the whole list would take concepts an "
+      "earlier or later build also found")
+edge_deletes = [s for s in stmts if "DELETE r" in s and "DETACH" not in s]
+check("the same is true for edges",
+      all("coalesce(r.builds, []) = [$build]" in s for s in edge_deletes),
+      edge_deletes)
+check("but only if nobody has edited it",
+      all("c.curated_at IS NULL" in s for s in stmts if "DETACH DELETE c" in s),
+      "undoing a machine's work must not throw away a person's")
+check("a concept another build also asserted is kept",
+      any("SET c.builds = [x IN c.builds WHERE x <> $build]" in s for s in stmts),
+      "it was not this run's doing, and removing it would undo two builds")
+check("and loses only this build from its record",
+      any("size(c.builds) > 1" in s for s in stmts), stmts)
+check("edges follow the same rule",
+      any("DELETE r" in s and "DETACH" not in s for s in stmts)
+      and any("SET r.builds" in s for s in stmts), stmts)
+check("a kept concept stops claiming the undone build",
+      stmts[-1].count("SET c.builds") == 1,
+      "otherwise undoing a second build later would find it and think it was "
+      "that build's")
+check("the whole undo is one transaction", len(rec.sent) > 1 and
+      len([1 for s in stmts if "DETACH DELETE" in s]) == 1, "")
+
+c, rec = client()
+try:
+    c.undo_build("kurs-1", "")
+    check("undoing without naming a build is refused", False, "it ran")
+except nc.GraphInputError:
+    check("undoing without naming a build is refused", True)
+check("and sent nothing", not rec.sent,
+      "an empty build id would match coalesce(builds, []) = [''] — or worse")
+
+c, rec = client()
+c.build_contribution("kurs-1", "build-7")
+preview = re.sub(r"\s+", " ", " ".join(statements_of(rec)))
+check("the preview counts what would go and what would stay",
+      "concepts_removed" in preview and "concepts_shared" in preview
+      and "concepts_curated" in preview, preview[:200])
+check("and writes nothing",
+      not any(w in preview for w in ("DELETE", "SET ", "MERGE", "CREATE")),
+      preview[:200])
+
 # ─── Naming nothing is refused, rather than removing everything ─────────────
 c, rec = client()
 try:

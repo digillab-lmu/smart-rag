@@ -45,6 +45,23 @@
 </form>
 {% endif %}
 
+{% if undoable %}
+<details style="margin:.6em 0">
+  <summary>{{ t('graph_undo_heading', undoable|length) }}</summary>
+  <p class="note">{{ t('graph_undo_note') }}</p>
+  {% for b in undoable %}
+  <form method="post" style="margin:.3em 0">
+    <input type="hidden" name="action" value="undo_build">
+    <input type="hidden" name="build_id" value="{{ b.id }}">
+    <button type="submit" class="secondary"
+            onclick='return confirm({{ t("graph_undo_confirm")|tojson }});'>
+      {{ t('graph_undo_one', b.applied_at, (b.proposal.concepts|length) if b.proposal else 0) }}
+    </button>
+  </form>
+  {% endfor %}
+</details>
+{% endif %}
+
 {% if stale %}
 <div class="warning">
   <p>{{ t('graph_stale_sources', stale.concepts, stale.orphaned) }}</p>

@@ -200,6 +200,37 @@ def abandon(build_id: str, reason: str = "") -> bool:
                     error=(reason or "Abandoned by the operator; it was not "
                                      "reporting back."), finished=True)
 
+def undone(build_id: str) -> bool:
+    """Mark an applied build as taken back out again."""
+    with db.connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE graph_builds SET state = 'failed', "
+                "  error = 'Applied, then undone by the operator.', "
+                "  applied_at = NULL "
+                "WHERE id = %s AND state = 'applied'", (build_id,))
+            changed = cur.rowcount
+        conn.commit()
+    return changed > 0
+
+
+def undoable(course_id: str, limit: int = 5) -> list[dict]:
+    """Builds that were applied and could be taken back out.
+
+    Newest first, and a short list: undoing something from three months ago is
+    not a thing anybody does on purpose, and offering it invites the accident.
+    """
+    with db.connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT {_COLUMNS} FROM graph_builds WHERE course_id = %s "
+                "AND state = 'applied' ORDER BY applied_at DESC NULLS LAST "
+                "LIMIT %s", (course_id, limit))
+            rows = cur.fetchall()
+        conn.commit()
+    return [_row(r) for r in rows]
+
+
 def forget_course(course_id: str) -> int:
     """Builds go with their course. The cascade in the schema does this too;
     this exists for the caller that deletes a course's traces explicitly."""

@@ -61,6 +61,26 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Added
 
+- **A build can be taken back out of the graph.** The operator asked the
+  honest question about the review — *how realistic is it that a person can
+  actually check this?* — and for forty-three concepts in a JSON box the
+  answer is barely, and for five hundred it is no. A review that cannot be
+  done is one that gets clicked through, and then "nothing is written without
+  review" is true on paper and worthless in fact.
+
+  This changes what the reading has to achieve. Every concept and edge records
+  the builds that asserted it, so a run can be removed exactly: what only that
+  run added goes, and what an earlier or later build also found stays, as does
+  anything somebody has edited by hand — undoing a machine's work must not
+  throw away a person's. A map you can remove in one action is one you may
+  apply and then check against a real graph, instead of against a wall of
+  text.
+
+  The page offers the last few applied builds, with what each would remove.
+  Six mutations turn the suite red, including the two that matter most:
+  deleting a concept a second build also found, and deleting one that had been
+  edited.
+
 - **The concept-map workflow.** The other half of the build: an n8n workflow
   that reads the course's material, has the strong model draft the concepts
   and their prerequisites, and posts the result back for review.

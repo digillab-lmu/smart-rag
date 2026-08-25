@@ -384,6 +384,102 @@ class Neo4jClient:
         }])
         return before
 
+    def build_contribution(self, course_id: str, build_id: str) -> dict:
+        """What taking one build back out would remove, and what it would not.
+
+        Asked before undoing, and the three numbers are not decoration. A
+        concept only this build ever asserted goes. One that an earlier build
+        also asserted stays — it was not this run's doing. And one somebody
+        has since edited by hand stays whatever else is true of it: undoing a
+        machine's work must not throw away a person's.
+        """
+        if not build_id:
+            raise GraphInputError("No build named, so there is nothing to undo.")
+        results = self._run([{
+            "statement": (
+                "MATCH (c:Concept {course_id: $course}) "
+                "WHERE $build IN coalesce(c.builds, []) "
+                "RETURN "
+                "  count(CASE WHEN size(c.builds) = 1 AND c.curated_at IS NULL "
+                "             THEN 1 END) AS concepts_removed, "
+                "  count(CASE WHEN size(c.builds) > 1 THEN 1 END) AS concepts_shared, "
+                "  count(CASE WHEN size(c.builds) = 1 AND c.curated_at IS NOT NULL "
+                "             THEN 1 END) AS concepts_curated"),
+            "parameters": {"course": course_id, "build": build_id},
+        }, {
+            "statement": (
+                "MATCH (:Concept {course_id: $course})-[r:PREREQUISITE_FOR]->"
+                "(:Concept {course_id: $course}) "
+                "WHERE $build IN coalesce(r.builds, []) "
+                "RETURN "
+                "  count(CASE WHEN size(r.builds) = 1 THEN 1 END) AS edges_removed, "
+                "  count(CASE WHEN size(r.builds) > 1 THEN 1 END) AS edges_shared"),
+            "parameters": {"course": course_id, "build": build_id},
+        }])
+        out = {}
+        for result in results:
+            rows = _rows(result)
+            if rows:
+                out.update(rows[0])
+        return out
+
+    def undo_build(self, course_id: str, build_id: str) -> dict:
+        """Take one build's contribution back out of the graph.
+
+        The reason this exists is not tidiness. A proposal of five hundred
+        concepts cannot honestly be reviewed line by line, and pretending
+        otherwise makes the review a formality that gets clicked through. An
+        exact undo changes what review has to achieve: a map you can remove in
+        one action is one you may try, and the reading can happen afterwards,
+        against something real, instead of against a wall of JSON.
+
+        Exact because every concept and edge records the builds that asserted
+        it. Anything a second build also asserted, or a person has edited,
+        stays — with this build struck from its record, so undoing the other
+        one later still knows what to do.
+        """
+        before = self.build_contribution(course_id, build_id)
+        self._run([{
+            # Shorten first, for the same reason as remove_documents: after
+            # the deletes below, these are the ones that survive.
+            "statement": (
+                "MATCH (c:Concept {course_id: $course}) "
+                "WHERE $build IN coalesce(c.builds, []) AND size(c.builds) > 1 "
+                "SET c.builds = [x IN c.builds WHERE x <> $build]"),
+            "parameters": {"course": course_id, "build": build_id},
+        }, {
+            "statement": (
+                "MATCH (:Concept {course_id: $course})-[r:PREREQUISITE_FOR]->"
+                "(:Concept {course_id: $course}) "
+                "WHERE $build IN coalesce(r.builds, []) AND size(r.builds) > 1 "
+                "SET r.builds = [x IN r.builds WHERE x <> $build]"),
+            "parameters": {"course": course_id, "build": build_id},
+        }, {
+            "statement": (
+                "MATCH (:Concept {course_id: $course})-[r:PREREQUISITE_FOR]->"
+                "(:Concept {course_id: $course}) "
+                "WHERE coalesce(r.builds, []) = [$build] "
+                "DELETE r"),
+            "parameters": {"course": course_id, "build": build_id},
+        }, {
+            "statement": (
+                "MATCH (c:Concept {course_id: $course}) "
+                "WHERE coalesce(c.builds, []) = [$build] "
+                "  AND c.curated_at IS NULL "
+                "DETACH DELETE c"),
+            "parameters": {"course": course_id, "build": build_id},
+        }, {
+            # A curated concept survives, but must stop claiming a build that
+            # has been undone, or a later undo of another build would find it
+            # and think it was that build's.
+            "statement": (
+                "MATCH (c:Concept {course_id: $course}) "
+                "WHERE $build IN coalesce(c.builds, []) "
+                "SET c.builds = [x IN c.builds WHERE x <> $build]"),
+            "parameters": {"course": course_id, "build": build_id},
+        }])
+        return before
+
     def delete_concept(self, course_id: str, name: str) -> int:
         results = self._run([{
             "statement": ("MATCH (c:Concept {name: $name, course_id: $course}) "

@@ -37,6 +37,7 @@ db, course = dbfixture.require_database()
 
 import accounts  # noqa: E402
 import app as flask_app  # noqa: E402
+import db  # noqa: E402
 import graph_builds as gb  # noqa: E402
 import n8n_client  # noqa: E402
 import neo4j_client  # noqa: E402
@@ -378,6 +379,91 @@ check("one build per course is enforced by a unique index",
 check("and only for builds that are still going",
       "WHERE state IN ('queued', 'running')" in migration,
       "without the predicate a course could never be built a second time")
+
+# ─── Taking an applied build back out ───────────────────────────────────────
+# The honest answer to "can a person really check 43 concepts in a JSON box"
+# is no. This is what makes that survivable: applying becomes a thing you can
+# reverse, so the reading can happen afterwards against a real graph instead
+# of against a wall of text.
+undone: list = []
+neo4j_client.Neo4jClient.undo_build = lambda self, cid, bid: (
+    undone.append(bid),
+    {"concepts_removed": 40, "edges_removed": 9,
+     "concepts_shared": 2, "concepts_curated": 1})[1]
+
+reset()
+client.post("/graph-guidance", data={"action": "build"})
+applied_build = gb.active(CID)
+client.post("/api/graph-build",
+            json={"build_id": applied_build["id"], "state": "proposed",
+                  "proposal": GOOD}, headers=HEAD)
+client.post("/graph-guidance", data={"action": "apply",
+                                     "proposal": json.dumps(GOOD)})
+check("the build is applied", gb.get(applied_build["id"])["state"] == "applied", "")
+
+page = client.get("/graph-guidance").get_data(as_text=True)
+check("an applied build can be taken back out",
+      'value="undo_build"' in page and applied_build["id"] in page,
+      "without this, applying a large proposal is irreversible and the review "
+      "has to carry weight it cannot carry")
+
+page = client.post("/graph-guidance",
+                   data={"action": "undo_build",
+                         "build_id": applied_build["id"]}).get_data(as_text=True)
+check("exactly that build is undone", undone == [applied_build["id"]], undone)
+check("and the message says what stayed",
+      "40" in page and "9" in page and "3" in page,
+      "a concept an earlier build also found, or one somebody edited, is kept "
+      "— saying nothing about that reads as if everything went")
+check("the build stops counting as applied",
+      gb.get(applied_build["id"])["state"] != "applied", "")
+page = client.get("/graph-guidance").get_data(as_text=True)
+check("and it is no longer offered", 'value="undo_build"' not in page,
+      "undoing the same build twice would report removals that never happened")
+
+undone.clear()
+page = client.post("/graph-guidance",
+                   data={"action": "undo_build",
+                         "build_id": "gb-does-not-exist"}).get_data(as_text=True)
+check("a build that does not exist is refused", not undone, undone)
+
+# A build that exists but belongs to somebody else's course. The first
+# version of this check used an id that existed nowhere, so "is it mine?"
+# and "does it exist?" were the same question and dropping the first one
+# passed.
+# Its own row, created directly: create_course also provisions a Weaviate
+# collection and a Garage bucket, and this needs neither.
+with db.connect() as _conn:
+    with _conn.cursor() as _cur:
+        _cur.execute(
+            "INSERT INTO courses (id, name, collection, bucket) "
+            "VALUES ('fremd-undo', 'Fremdkurs Undo', 'Chunks_fremd', 'fremd') "
+            "ON CONFLICT (id) DO NOTHING")
+    _conn.commit()
+other = {"id": "fremd-undo"}
+gb.forget_course(other["id"])
+other_build = gb.start(other["id"], [1])
+gb.propose(other_build["id"], GOOD)
+gb.applied(other_build["id"])
+undone.clear()
+page = client.post("/graph-guidance",
+                   data={"action": "undo_build",
+                         "build_id": other_build["id"]}).get_data(as_text=True)
+check("a build from another course is refused", not undone,
+      "a course maintainer could otherwise undo another course's map")
+check("and said so", "does not belong" in page.lower(), page[-300:])
+gb.forget_course(other["id"])
+
+reset()
+client.post("/graph-guidance", data={"action": "build"})
+never = gb.active(CID)
+undone.clear()
+page = client.post("/graph-guidance",
+                   data={"action": "undo_build",
+                         "build_id": never["id"]}).get_data(as_text=True)
+check("a build that was never applied is refused", not undone, undone)
+check("with a reason", "never applied" in page.lower(), page[-300:])
+client.post("/graph-guidance", data={"action": "abandon_build"})
 
 gb.forget_course(CID)
 

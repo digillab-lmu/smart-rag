@@ -2021,6 +2021,26 @@ def graph_guidance():
                         error = _t("graph_build_start_failed", exc)
                     else:
                         success = _t("graph_build_started", len(scope))
+            elif action == "undo_build":
+                # The point of this is not tidiness. A proposal of hundreds of
+                # concepts cannot honestly be read line by line, and a review
+                # that cannot be done is a review that gets clicked through.
+                # Being able to remove a build in one action changes what the
+                # reading has to achieve.
+                target = request.form.get("build_id", "").strip()
+                record = graph_builds.get(target)
+                if record is None or record["course_id"] != course_id:
+                    error = _t("graph_undo_unknown")
+                elif record["state"] != "applied":
+                    error = _t("graph_undo_not_applied")
+                else:
+                    gone = client.undo_build(course_id, target)
+                    graph_builds.undone(target)
+                    success = _t("graph_undone",
+                                 gone.get("concepts_removed", 0),
+                                 gone.get("edges_removed", 0),
+                                 gone.get("concepts_shared", 0)
+                                 + gone.get("concepts_curated", 0))
             elif action == "abandon_build":
                 # The way out of a run that is going nowhere. Without it the
                 # one-active index turns a stuck build into a course that can
@@ -2128,7 +2148,8 @@ def graph_guidance():
                                material_note=material_note,
                                concepts=[], edges=[],
                                counts={"concepts": 0, "edges": 0}, unassigned=0,
-                               proposal=proposal, stale=None, build=None)
+                               proposal=proposal, stale=None, build=None,
+                               undoable=[])
 
     # Asked on every load rather than trusted to whoever deleted something.
     # A document can leave the course by paths that never touch this page,
@@ -2165,4 +2186,5 @@ def graph_guidance():
                            warning=warning, material_note=material_note,
                            concepts=concepts, edges=edges, counts=counts,
                            unassigned=unassigned, proposal=proposal,
-                           stale=stale, build=build)
+                           stale=stale, build=build,
+                           undoable=graph_builds.undoable(course_id))
