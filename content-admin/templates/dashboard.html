@@ -27,6 +27,12 @@
 </div>
 {% endif %}
 
+{# One form around the whole table: the scope is a comparison across the ten
+   agents, not ten separate decisions, and ten little save buttons invite
+   saving one and forgetting the rest. #}
+<form method="post" style="margin:0">
+<input type="hidden" name="action" value="graph_scope">
+<p class="note">{{ t('dash_graph_explain') }}</p>
 <table>
   <tr>
     <th>{{ t('dash_col_slot') }}</th>
@@ -34,6 +40,7 @@
     <th>{{ t('dash_col_archetype') }}</th>
     <th>{{ t('dash_col_status') }}</th>
     <th>{{ t('dash_col_public') }}</th>
+    <th>{{ t('dash_col_in_graph') }}</th>
     <th></th>
   </tr>
   {% for num in range(1, 11) %}
@@ -58,10 +65,48 @@
         {% else %}{{ t('dash_public_yes') }}{% endif %}
       {% else %}{{ t('dash_public_no') }}{% endif %}
     </td>
+    <td>
+      {% if s.get('archetype') %}
+        {% set gw = graph_weight.get(num|string) %}
+        <label style="white-space:nowrap">
+          <input type="checkbox" name="in_graph" value="{{ num }}"
+                 {% if s.get('in_graph', True) %}checked{% endif %}>
+          {% if gw %}<span title="{{ t('dash_graph_weight_title') }}">{{ gw.concepts }}{% if gw.only %} ({{ gw.only }}){% endif %}</span>{% endif %}
+        </label>
+        {# The two states the checkbox must not conflate: no longer read, and
+           still present. Without this line an unticked agent looks removed. #}
+        {% if gw and not s.get('in_graph', True) %}
+        <br><span class="note">{{ t('dash_graph_still_in') }}</span>
+        {% endif %}
+      {% else %}<span style="opacity:.5">–</span>{% endif %}
+    </td>
     <td><a href="{{ url_for('slot_view', slot=num) }}">{{ t('dash_edit') }}</a></td>
   </tr>
   {% endfor %}
 </table>
+<button type="submit" class="secondary">{{ t('dash_graph_scope_save') }}</button>
+</form>
+
+{# Removal is its own act, outside the scope form: unticking changes what the
+   next build reads, this changes what is in the graph now. A separate button
+   per agent, shown only where there is something to remove. #}
+{% for num in range(1, 11) %}
+  {% set gw = graph_weight.get(num|string) %}
+  {% set s = slots[num|string] %}
+  {% if gw and not s.get('in_graph', True) %}
+  <form method="post" style="margin:.4em 0">
+    <input type="hidden" name="action" value="graph_drop_agent">
+    <input type="hidden" name="slot" value="{{ num }}">
+    <button type="submit" class="secondary"
+            onclick='return confirm({{ t("dash_graph_drop_confirm", "@@N@@", "@@C@@", "@@O@@")|tojson }}
+              .replace("@@N@@", {{ num|tojson }})
+              .replace("@@C@@", {{ gw.concepts|tojson }})
+              .replace("@@O@@", {{ gw.only|tojson }}));'>
+      {{ t('dash_graph_drop', num) }}
+    </button>
+  </form>
+  {% endif %}
+{% endfor %}
 
 {# Available even when nothing is behind: after a change nobody has noticed
    yet, "re-import everything" is the action, not a diagnosis. #}

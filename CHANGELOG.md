@@ -13,6 +13,29 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Added
 
+- **A checkbox on each agent: is its material part of the concept map?** The
+  map covers a whole course, across every agent — that is what makes it a
+  shared vocabulary rather than ten private ones. It also means a course is a
+  container several people put agents into, and not all of that material
+  belongs together. The agent list now carries the choice, on by default, with
+  a sentence saying what the map spans and, beside each checkbox, how many
+  concepts that agent's material holds up and how many of those nothing else
+  supports.
+
+  **Unticking removes nothing.** It changes what the next build reads, and
+  says so; a concept two agents' documents support has to survive one of them
+  leaving. An agent that is out while its concepts are still in the map says
+  exactly that, and offers the removal as a second, explicit act with the
+  numbers in the confirmation. Ticking a box likewise adds nothing until the
+  next build. Those two states — *no longer read* and *no longer in the map* —
+  are the ones the interface must never conflate, in either direction.
+
+  The removal is not a workflow and needs no model: with provenance it is one
+  Cypher transaction over data already in the database. It belongs with the
+  other graph writes for a reason stronger than speed — a graph whose concepts
+  are gone but whose edges remain is worse than either clean state, and work
+  spread across the nodes of a workflow engine cannot promise it ran whole.
+
 - **Deleting a document now says what it does to the concept map, before you
   do it.** The map is built from the course's documents, so removing one
   leaves concepts citing a work the course no longer holds — and nothing said

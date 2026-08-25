@@ -47,6 +47,10 @@ def _row_to_slot(row) -> dict:
         # never as "up to date".
         "imported_digest": row[6],
         "imported_at": row[7],
+        # Whether this agent's material is read when the concept map is built.
+        # A course is a container several people put agents into, and not all
+        # of that material belongs together.
+        "in_graph": row[8] if len(row) > 8 else True,
     }
 
 
@@ -58,7 +62,8 @@ def all_slots(course_id: str) -> dict[str, dict]:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT slot, archetype, name, content, system_prompt, "
-                "       chatflow_id, published, imported_digest, imported_at "
+                "       chatflow_id, published, imported_digest, imported_at, "
+                "       in_graph "
                 "FROM agent_slots WHERE course_id = %s", (course_id,))
             rows = {r[0]: _row_to_slot(r[1:]) for r in cur.fetchall()}
         conn.commit()
@@ -71,6 +76,24 @@ def all_slots(course_id: str) -> dict[str, dict]:
 def get_slot(course_id: str, slot: int) -> dict:
     return all_slots(course_id).get(str(slot), {})
 
+
+
+def set_in_graph(course_id: str, slot: int, included: bool) -> None:
+    """Whether this agent's material takes part in the next concept-map build.
+
+    Scope only. It removes nothing: a concept two agents' documents support
+    must survive the departure of one of them, and deciding that is a separate
+    act with its own preview. The interface has to keep "no longer included"
+    and "its contribution is still in the graph" apart, or the checkbox is
+    telling a lie.
+    """
+    with db.connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE agent_slots SET in_graph = %s "
+                "WHERE course_id = %s AND slot = %s",
+                (bool(included), course_id, int(slot)))
+        conn.commit()
 
 def name_taken(course_id: str, name: str, exclude_slot: int) -> bool:
     """Case-insensitive, and scoped to the course — the same agent name in two

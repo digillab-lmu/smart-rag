@@ -625,6 +625,36 @@ def use_course(course_id):
     return redirect(request.referrer or url_for("dashboard"))
 
 
+def _sources_by_agent(course: dict) -> dict[str, list[str]]:
+    """This course's documents, grouped by the agent that owns them.
+
+    By source_file, which is the key provenance uses: a title can be edited,
+    and two agents may upload the same filename, while this path carries the
+    agent.
+    """
+    out: dict[str, list[str]] = {}
+    client = _weaviate_client()
+    for doc in client.list_documents(course["collection"], course["id"]):
+        agent = doc.get("agent_id")
+        path = doc.get("source_file") or ""
+        if agent is None or not path:
+            continue
+        out.setdefault(str(agent), []).append(path)
+    return out
+
+
+def _agent_sources(course: dict, slot: str) -> list[str]:
+    """The documents of one agent, or an empty list if it has none."""
+    try:
+        return _sources_by_agent(course).get(str(slot), [])
+    except Exception as exc:  # noqa: BLE001
+        # Guessing here would remove the wrong thing, or nothing while
+        # reporting success.
+        raise Neo4jError(
+            "Could not read this course's documents, so the agent's "
+            f"contribution cannot be identified: {exc}") from exc
+
+
 # ─── Dashboard ───────────────────────────────────────────────────────────────────
 @app.route("/", methods=["GET", "POST"])
 @auth.login_required
@@ -638,6 +668,45 @@ def dashboard():
     # plan is fifty courses with up to ten slots each, and after a change to a
     # template that is five hundred manual imports with no way to tell which
     # ones were done.
+    # Which agents' material the concept map is built from. Saving this is
+    # scope only — it changes what the next build reads and removes nothing,
+    # because a concept two agents' documents support has to survive one of
+    # them leaving. Taking a contribution out is the action below it, with
+    # its own numbers.
+    if request.method == "POST" and request.form.get("action") == "graph_scope":
+        included = set(request.form.getlist("in_graph"))
+        changed = []
+        for num, data in storage.all_slots(g.course["id"]).items():
+            if not data:
+                continue
+            want = num in included
+            if bool(data.get("in_graph", True)) != want:
+                storage.set_in_graph(g.course["id"], int(num), want)
+                changed.append((num, want))
+        success = (_t("dash_graph_scope_saved", len(changed)) if changed
+                   else _t("dash_graph_scope_unchanged"))
+
+    elif request.method == "POST" and request.form.get("action") == "graph_drop_agent":
+        slot_num = request.form.get("slot", "")
+        try:
+            docs = _agent_sources(g.course, slot_num)
+        except Neo4jError as exc:
+            docs, error = [], str(exc)
+        if not docs and not error:
+            error = _t("dash_graph_drop_nothing")
+        elif docs:
+            try:
+                gone = _neo4j_client().remove_documents(g.course["id"], docs)
+            except (Neo4jError, neo4j_client.GraphInputError) as exc:
+                logger.error("Removing agent %s from the graph failed: %s",
+                             slot_num, exc)
+                error = _t("dash_graph_drop_failed", exc)
+            else:
+                success = _t("dash_graph_dropped", slot_num,
+                             gone.get("concepts_removed", 0),
+                             gone.get("concepts_kept", 0),
+                             gone.get("edges_removed", 0))
+
     if request.method == "POST" and request.form.get("action") == "reimport":
         client = _flowise_client()
         if client is None:
@@ -694,9 +763,24 @@ def dashboard():
             # outage must not replace it with an error.
             logger.error("Could not read published states: %s", exc)
 
+    # What each agent is holding up in the concept map. Shown for every agent,
+    # not only unticked ones: the number is what makes unticking a decision
+    # rather than a click, and it has to be there before the click.
+    graph_weight: dict = {}
+    try:
+        by_source = _neo4j_client().by_source(g.course["id"])
+        for num, files in _sources_by_agent(g.course).items():
+            concepts = sum(by_source.get(f, {}).get("concepts", 0) for f in files)
+            only = sum(by_source.get(f, {}).get("only", 0) for f in files)
+            if concepts:
+                graph_weight[num] = {"concepts": concepts, "only": only}
+    except Exception as exc:  # noqa: BLE001 — a column, never a blocker
+        logger.info("Graph weights unavailable for the agent list: %s", exc)
+
     import_state = _import_state(g.course, slots, env)
     return render_template(
         "dashboard.html",
+        graph_weight=graph_weight,
         slots=slots,
         error=error,
         success=success,
