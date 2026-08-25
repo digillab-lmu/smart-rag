@@ -56,7 +56,8 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
   travelled on to the proposal parser, whose first refusal is for an empty box.
 
   Both halves are fixed, because either alone would come back. The concept map
-  now asks with a budget and a timeout of its own (16384 tokens, 180 s) while
+  now asks with a budget and a timeout of its own (16384 tokens, 110 s — kept
+  below gunicorn's 120 s, or the worker is killed before the answer arrives) while
   the short assists keep theirs. And an empty answer is now a failure where it
   happens, for every provider — OpenAI-compatible, Anthropic, Google and
   Cohere alike — naming the finish reason the API gave, the ceiling that was

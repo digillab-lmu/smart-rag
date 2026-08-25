@@ -34,7 +34,16 @@ _MAX_TOKENS = 1024
 # happened and not something an operator can act on.
 _MAX_TOKENS_LONG = 16384
 # The same call sends the course outline, so it is a slow one both ways.
-_TIMEOUT_LONG = 180
+#
+# **Must stay below gunicorn's --timeout in content-admin/Dockerfile (120).**
+# The innermost limit has to be the shortest, or the component that knows why
+# the request stopped never gets to say so — the same ordering the docling and
+# n8n timeouts are held to in tests/test_ingest_limits.sh. Above 120 the
+# worker is killed mid-request and the operator gets a dead connection instead
+# of a sentence. Note also that this image runs a single sync worker, so the
+# whole Content Admin is unresponsive for the duration: this is a ceiling for
+# a pathological case, not a target.
+_TIMEOUT_LONG = 110
 
 
 class LLMError(Exception):

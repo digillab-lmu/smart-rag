@@ -120,7 +120,24 @@ long_timeout = seen["timeout"]
 check("the concept map is asked for with a large budget",
       isinstance(long_tokens, int) and long_tokens >= 8192, long_tokens)
 check("and a timeout that fits a large answer",
-      long_timeout >= 120, long_timeout)
+      long_timeout >= 60, long_timeout)
+
+# The ordering that keeps the error legible, the same one the docling and n8n
+# timeouts are held to: gunicorn kills the worker at --timeout, and a request
+# killed there produces a dead connection, not a message. Whatever waits
+# inside must give up first.
+import re  # noqa: E402
+docker = (REPO / "content-admin" / "Dockerfile").read_text()
+m = re.search(r'"--timeout",\s*"(\d+)"', docker)
+check("gunicorn's timeout was found in the Dockerfile", bool(m), docker[:0])
+if m:
+    worker = int(m.group(1))
+    check("the LLM call gives up before gunicorn kills the worker",
+          long_timeout < worker,
+          f"llm {long_timeout}s vs gunicorn {worker}s — the operator would get "
+          f"a dead connection instead of a sentence")
+    check("with a margin for rendering the answer",
+          worker - long_timeout >= 5, (worker, long_timeout))
 check("the model's answer is returned unchanged",
       answer.startswith('{"concepts"'), answer[:40])
 
