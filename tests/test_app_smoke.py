@@ -339,14 +339,30 @@ if captured_upload.get("language") != "en":
 if captured_upload.get("notify_email") != "dozent@example.com":
     failures.append(f"upload passed wrong notify_email: {captured_upload.get('notify_email')!r}")
 
-# 27. Title falls back to the filename stem when left empty
+# 27. An upload with no title is refused, and nothing is sent on
+# The title used to fall back to the file name, which is how documents reached
+# the index called "some-lecture-notes" — and that string is what an answer
+# then cites as its source. The field is required now, so the fallback is
+# gone and the upload stops here instead of producing a bad citation.
 captured_upload.clear()
-client.post("/upload", data={
+resp = client.post("/upload", data={
     "slot": "4",
     "document": (io.BytesIO(b"%PDF-1.4"), "some-lecture-notes.pdf"),
 }, content_type="multipart/form-data", follow_redirects=True)
-if captured_upload.get("title") != "some-lecture-notes":
-    failures.append(f"empty title didn't fall back to filename stem: {captured_upload.get('title')!r}")
+if captured_upload:
+    failures.append(f"an untitled upload was still forwarded: {captured_upload!r}")
+if b"Titel" not in resp.data and b"title" not in resp.data.lower():
+    failures.append("an untitled upload was refused without saying why")
+
+# …and one with a title goes through unchanged.
+captured_upload.clear()
+client.post("/upload", data={
+    "slot": "4",
+    "title": "Some Lecture Notes",
+    "document": (io.BytesIO(b"%PDF-1.4"), "some-lecture-notes.pdf"),
+}, content_type="multipart/form-data", follow_redirects=True)
+if captured_upload.get("title") != "Some Lecture Notes":
+    failures.append(f"a titled upload passed the wrong title: {captured_upload.get('title')!r}")
 
 # 28. N8nError surfaces to the operator instead of a 500
 class FailingN8nClient:

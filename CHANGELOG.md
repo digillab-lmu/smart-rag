@@ -13,6 +13,26 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **An upload could carry no bibliographic data at all, and the title fell
+  back to the file name.** Only the slot and the file were ever required. Two
+  of three documents on the test installation therefore had no authors and no
+  year — and these are not decoration: `source_title`, `authors` and `year`
+  are in every retrieving agent's `weaviateMetadataKeys`, so they travel with
+  each retrieved passage and are what an answer names its source with.
+
+  The title is now required, and the fallback to the file name is gone — that
+  fallback is how a document reached the index called after its slug, which is
+  then the "source" a student sees. Authors and year are deliberately *not*
+  required: a ministry framework has no personal author, and a mandatory field
+  there buys invented entries. An invented source is worse than a missing one.
+  Their absence is said once, after the upload has succeeded, as a warning
+  rather than a refusal.
+
+  The topic field's help now says what it actually does: it goes into the head
+  of the converted document and is embedded with it, but unlike the other
+  three it is not handed to the agent — checked against all six agent
+  templates, not assumed.
+
 - **A failed ingest could only be waited out.** Its row stayed in the progress
   table for half an hour — long enough to keep describing something the
   operator had already read and dealt with — and there was no way to say so.

@@ -167,6 +167,9 @@
     .error { background: #c0392b1a; border: 1px solid #c0392b; padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem; }
     .success { background: var(--accent-tint); border: 1px solid var(--accent); padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem; }
     .note { opacity: 0.75; font-size: 0.9rem; }
+    .warn { background: var(--warn-tint, rgba(200,150,0,.12));
+            border: 1px solid var(--warn, #b8860b); padding: .75rem;
+            border-radius: 6px; margin-bottom: 1rem; }
     label { display: block; margin-top: 1rem; font-weight: 500; }
     input, textarea, select {
       width: 100%; box-sizing: border-box; padding: 0.5rem; margin-top: 0.25rem;
@@ -388,6 +391,10 @@
 
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
   {% if success %}<div class="success">{{ success }}</div>{% endif %}
+  {# Neither an error nor a success: the thing worked and is worth
+     doing better next time. Rendered here, like the other two, so no
+     page prints it twice. #}
+  {% if warning %}<div class="warn">{{ warning }}</div>{% endif %}
 
   {% block content %}{% endblock %}
 

@@ -434,7 +434,7 @@ the link is used, and the link only works from this message.
     "upload_year_label": "Year",
     "upload_year_help": "Publication year. Example: 2009",
     "upload_topic_label": "Keywords",
-    "upload_topic_help": "A few comma-separated terms describing what this document covers. Example: Cognitive Load, Multimedia Learning, Working Memory",
+    "upload_topic_help": "Optional. A few comma-separated terms describing what this document covers — example: Cognitive Load, Multimedia Learning, Working Memory. They go into the head of the converted document and are embedded with it; unlike the title, authors and year they are not handed to the agent with a retrieved passage. So the benefit is small, but real.",
     "upload_topic_suggest": "Suggest keywords",
     "upload_topic_suggesting": "Thinking…",
     "upload_topic_err": "Could not suggest keywords: %s",
@@ -575,6 +575,11 @@ the link is used, and the link only works from this message.
     "docs_job_dismiss_title": "Remove this line. It clears the progress entry, not the document — a document that was written is in the list below and is removed there.",
     "docs_job_dismissed": "Progress entry cleared. Nothing was removed from the index.",
     "docs_job_dismiss_failed": "That progress entry is not there any more — it may have aged out, or the page was open while it went.",
+    "upload_err_no_title_field": "A title is needed. It is what an answer cites this document with — without it a student sees a file name. It is filled in from the PDF where the PDF says one; correct it rather than clearing it.",
+    "upload_warn_thin_metadata": "Uploaded, and being processed. One thing for next time: %s left empty. Both travel with every passage the agents retrieve and are what an answer names its source with, so a document without them can be found and quoted but not properly attributed. Nothing to redo — this is worth knowing for the next upload.",
+    "upload_field_authors": "the authors were",
+    "upload_field_year": "the year was",
+    "upload_fields_authors_and_year": "the authors and the year were",
 }
 
 
@@ -982,7 +987,7 @@ dieser Nachricht.
     "upload_year_label": "Jahr",
     "upload_year_help": "Erscheinungsjahr. Beispiel: 2009",
     "upload_topic_label": "Schlagwörter",
-    "upload_topic_help": "Einige durch Komma getrennte Begriffe, die den Inhalt beschreiben. Beispiel: Cognitive Load, Multimediales Lernen, Arbeitsgedächtnis",
+    "upload_topic_help": "Optional. Einige durch Komma getrennte Begriffe, die den Inhalt beschreiben — Beispiel: Cognitive Load, Multimediales Lernen, Arbeitsgedächtnis. Sie stehen im Kopf des umgewandelten Dokuments und werden dadurch mit eingebettet; an den Agenten weitergereicht werden sie im Gegensatz zu Titel, Autoren und Jahr nicht. Der Nutzen ist also klein, aber vorhanden.",
     "upload_topic_suggest": "Schlagwörter vorschlagen",
     "upload_topic_suggesting": "Wird überlegt…",
     "upload_topic_err": "Schlagwörter konnten nicht vorgeschlagen werden: %s",
@@ -1120,6 +1125,11 @@ dieser Nachricht.
     "docs_job_dismiss_title": "Diese Zeile entfernen. Das räumt den Fortschrittseintrag weg, nicht das Dokument — ein geschriebenes Dokument steht in der Liste darunter und wird dort entfernt.",
     "docs_job_dismissed": "Fortschrittseintrag weggeräumt. Aus dem Index wurde nichts entfernt.",
     "docs_job_dismiss_failed": "Diesen Fortschrittseintrag gibt es nicht mehr — er ist vielleicht von selbst verfallen, oder die Seite stand offen, während er verschwand.",
+    "upload_err_no_title_field": "Ein Titel wird gebraucht. Mit ihm belegt eine Antwort dieses Dokument — ohne ihn sieht eine studierende Person einen Dateinamen. Er wird aus dem PDF vorbefüllt, wo das PDF einen nennt; korrigiere ihn lieber, als ihn zu leeren.",
+    "upload_warn_thin_metadata": "Hochgeladen und in Verarbeitung. Eines fürs nächste Mal: %s leer geblieben. Beides reist mit jeder Textstelle mit, die die Agenten abrufen, und ist das, womit eine Antwort ihre Quelle benennt — ein Dokument ohne diese Angaben lässt sich finden und zitieren, aber nicht sauber zuordnen. Nichts zu wiederholen; das ist für den nächsten Upload gut zu wissen.",
+    "upload_field_authors": "die Autorenangabe ist",
+    "upload_field_year": "das Jahr ist",
+    "upload_fields_authors_and_year": "Autorenangabe und Jahr sind",
 }
 
 

@@ -310,6 +310,72 @@ client_http.get("/language/en")
 check("Weaviate is reached on its container port",
       m.WEAVIATE_INTERNAL_URL == "http://smartrag-weaviate:8080", m.WEAVIATE_INTERNAL_URL)
 
+# ─── What an upload must carry, and what it only ought to ───────────────────
+# These three fields are not decoration. source_title, authors and year are in
+# every agent's weaviateMetadataKeys — read out of the six agent templates
+# below rather than trusted — so they travel with each retrieved passage and
+# are what an answer names its source with.
+#
+# The title is therefore required: without it a citation degrades to a file
+# name, and "agent_1/digitale-bildung-an-bayerischen-schulen-…md" is what a
+# student would see. Authors and year are not, and that is the deliberate
+# half: a ministry framework has no personal author, and a mandatory field
+# there buys invented entries. An invented source is worse than a missing one.
+import json as _json  # noqa: E402
+from pathlib import Path as _Path  # noqa: E402
+
+def _metadata_keys(path):
+    def walk(o):
+        if isinstance(o, dict):
+            for k, v in o.items():
+                if k == "weaviateMetadataKeys" and isinstance(v, str):
+                    try:
+                        yield from _json.loads(v)
+                    except ValueError:
+                        pass
+                else:
+                    yield from walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                yield from walk(v)
+    return set(walk(_json.loads(_Path(path).read_text())))
+
+agents = sorted((_Path(REPO) / "flowise" / "agents").glob("*.json"))
+retrieving = [a for a in agents if _metadata_keys(a)]
+check("some agents hand metadata to the model", len(retrieving) >= 4,
+      f"{len(retrieving)} of {len(agents)}")
+for a in retrieving:
+    keys = _metadata_keys(a)
+    for field in ("source_title", "authors", "year"):
+        check(f"{a.name} cites with {field}", field in keys, sorted(keys))
+
+src = (_Path(REPO) / "content-admin" / "app.py").read_text()
+# The guard itself, not just the message: a first version looked for the
+# message name and stayed green when the condition around it was disabled.
+check("an upload without a title is refused",
+      'elif not form["title"]:' in src and 'upload_err_no_title_field' in src,
+      "the citation would fall back to a file name")
+check("and there is no file-name fallback left to make one up",
+      'os.path.splitext(upload_file.filename)[0]' not in src,
+      "that fallback is how documents reached the index named after their slug")
+check("…and authors and year are not refused",
+      'upload_err_no_authors' not in src and 'upload_err_no_year' not in src,
+      "a required author field buys invented authors")
+check("their absence is said once, as a warning",
+      'upload_warn_thin_metadata' in src, "")
+# The warning must come after the upload succeeded, not instead of it.
+i_ok = src.find('success = _t("upload_ok"')
+i_warn = src.find('warning = _t("upload_warn_thin_metadata"')
+check("the warning follows the success rather than replacing it",
+      i_ok != -1 and i_warn != -1 and i_ok < i_warn, f"{i_ok} / {i_warn}")
+
+tpl = (_Path(REPO) / "content-admin" / "templates" / "upload.html").read_text()
+check("the title field is marked required in the form too",
+      'name="title"' in tpl and 'required' in tpl.split('name="title"')[1][:80], "")
+for optional in ('authors', 'year', 'topic'):
+    seg = tpl.split(f'name="{optional}"')[1][:80]
+    check(f"{optional} is not marked required", 'required' not in seg, seg)
+
 if failures:
     print("FAILURES:")
     for f in failures:

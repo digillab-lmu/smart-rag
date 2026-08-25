@@ -51,7 +51,7 @@
 
   <label for="title">{{ t('upload_doc_title_label') }}</label>
   <p class="note" style="margin-top: 0.15rem;">{{ t('upload_doc_title_help') }}</p>
-  <input type="text" id="title" name="title" value="{{ form.get('title', '') }}">
+  <input type="text" id="title" name="title" value="{{ form.get('title', '') }}" required>
 
   <label for="authors">{{ t('upload_authors_label') }}</label>
   <p class="note" style="margin-top: 0.15rem;">{{ t('upload_authors_help') }}</p>

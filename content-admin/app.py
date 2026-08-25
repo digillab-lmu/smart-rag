@@ -1132,6 +1132,7 @@ def upload():
 
     error = None
     success = None
+    warning = None
     form = {}
 
     if request.method == "POST":
@@ -1151,6 +1152,15 @@ def upload():
             error = _t("upload_err_no_slot")
         elif not upload_file or not upload_file.filename:
             error = _t("upload_err_no_file")
+        elif not form["title"]:
+            # The one metadata field that is genuinely required. It is handed
+            # to the agent with every retrieved chunk (source_title is in each
+            # agent's weaviateMetadataKeys), so it is what an answer cites
+            # with. Left empty, the citation falls back to a filename slug —
+            # "agent_1/digitale-bildung-an-bayerischen-schulen-…md" is what a
+            # student then sees as the source. The field is pre-filled from
+            # the PDF, so requiring it costs a glance, not typing.
+            error = _t("upload_err_no_title_field")
         elif os.path.splitext(upload_file.filename)[1].lower() not in ALLOWED_UPLOAD_EXTENSIONS:
             error = _t(
                 "upload_err_bad_type",
@@ -1174,7 +1184,11 @@ def upload():
                     # Falling back to the filename matches what the ingest
                     # workflow does anyway if title is empty — doing it here
                     # too just makes the value visible to the operator.
-                    title=form["title"] or os.path.splitext(upload_file.filename)[0],
+                    # No fallback to the file name. There used to be one, and
+                    # it is why documents reached the index titled after their
+                    # slug — which is then what an answer cites. The title is
+                    # required above, so this can only be a real one.
+                    title=form["title"],
                     authors=form["authors"],
                     year=form["year"],
                     topic=form["topic"],
@@ -1204,12 +1218,28 @@ def upload():
                                    upload_file.filename, exc)
                 agent_label = configured[form["slot"]].get("name") or f"Agent {form['slot']}"
                 success = _t("upload_ok", upload_file.filename, agent_label)
+                # Authors and year are not required, and deliberately so: a
+                # ministry framework or a curriculum has no personal author,
+                # and a mandatory field there buys invented entries. An
+                # invented source is worse than a missing one. But both ride
+                # along on every chunk and are what an answer cites with, so
+                # their absence is said once, after the upload has succeeded,
+                # rather than blocking it.
+                thin = [name for name, value in (("authors", form["authors"]),
+                                                 ("year", form["year"]))
+                        if not value]
+                if thin:
+                    warning = _t("upload_warn_thin_metadata",
+                                 _t("upload_field_" + thin[0])
+                                 if len(thin) == 1
+                                 else _t("upload_fields_authors_and_year"))
                 form = {}
 
     return render_template(
         "upload.html",
         max_upload_mb=MAX_UPLOAD_BYTES // (1024 * 1024),
         conversion_minutes=conversion_limit_minutes(),
+        warning=warning,
         configured=configured,
         form=form,
         error=error,
@@ -1347,8 +1377,13 @@ def upload_too_large(_exc):
     return (
         render_template(
             "upload.html",
-        max_upload_mb=MAX_UPLOAD_BYTES // (1024 * 1024),
-        conversion_minutes=conversion_limit_minutes(),
+            max_upload_mb=MAX_UPLOAD_BYTES // (1024 * 1024),
+            conversion_minutes=conversion_limit_minutes(),
+            # No warning here: this handler runs instead of the route, so
+            # nothing was uploaded and there is nothing to have been thin
+            # about. Passing the name unbound would be a NameError raised
+            # from an error handler, which is the worst place for one.
+            warning=None,
             configured={
                 num: data
                 for num, data in storage.all_slots(g.course["id"]).items()
