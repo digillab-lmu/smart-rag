@@ -105,6 +105,27 @@ def active(course_id: str) -> dict | None:
     return _row(row) if row else None
 
 
+def awaiting_review(course_id: str) -> dict | None:
+    """The newest build whose proposal has been produced but not acted on.
+
+    Separate from `latest` on purpose. A proposal is read by a person, maybe
+    not the one who started it and maybe not that day — and in the meantime
+    somebody can start another build. If the page only ever showed the newest
+    build, a second run would hide a finished proposal that nobody had looked
+    at yet, and the work it cost would be invisible. That happened on the
+    first successful run: 43 concepts sat in the table while the page said a
+    build was running and showed an empty graph.
+    """
+    with db.connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT {_COLUMNS} FROM graph_builds WHERE course_id = %s "
+                "AND state = 'proposed' ORDER BY started_at DESC LIMIT 1",
+                (course_id,))
+            row = cur.fetchone()
+        conn.commit()
+    return _row(row) if row else None
+
 def running(build_id: str, stats: dict[str, Any] | None = None) -> bool:
     """The workflow reporting that it has begun, and how far it has come."""
     return _advance(build_id, "running", stats=stats)

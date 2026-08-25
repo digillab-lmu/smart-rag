@@ -166,6 +166,10 @@ check("the page offers a way out of it",
       'value="abandon_build"' in page,
       "a guard against two builds becomes a course that can never be built "
       "again as soon as one gets stuck")
+check("the page reloads itself while a build runs",
+      'http-equiv="refresh"' in page,
+      "the result arrives minutes later through a callback, and a static page "
+      "gives no sign it will ever change")
 check("and says when it started",
       "started" in page.lower() or "gestartet" in page.lower(),
       "how long it has been going is what tells an operator it is stuck")
@@ -173,6 +177,10 @@ check("and says when it started",
 page = client.post("/graph-guidance",
                    data={"action": "abandon_build"}).get_data(as_text=True)
 check("giving up clears the active build", gb.active(CID) is None, "")
+check("and the page stops reloading itself",
+      'http-equiv="refresh"' not in page,
+      "a page that keeps reloading throws away whatever is being typed into "
+      "the review box")
 check("it is recorded as failed rather than deleted",
       gb.get(stuck["id"])["state"] == "failed",
       "a row that vanishes leaves the next person wondering whether it ran")
@@ -275,7 +283,53 @@ check("a second delivery replaces the first while it is still under review",
       stored["concepts"][0]["name"] in ("A", "SPAETER"),
       "either is defensible; what must not happen is a crash or a mix")
 
+# ─── A second run must not hide a proposal nobody has read ──────────────────
+# What happened on the first successful run: 43 concepts sat in the table
+# while the page said a build was running and showed an empty graph, because
+# it only ever looked at the newest build.
+sent.clear()
+client.post("/graph-guidance", data={"action": "build"})
+second = gb.active(CID)
+check("a second build can be started once the first has proposed",
+      second is not None and second["id"] != build["id"], second)
+
+page = client.get("/graph-guidance").get_data(as_text=True)
+unescaped = page.replace("&#34;", '"')
+# Whatever is actually stored on that build, not a name assumed from earlier
+# in this file — a step above replaces the proposal, and the first version of
+# this check looked for the one it had replaced.
+stored_name = gb.get(build["id"])["proposal"]["concepts"][0]["name"]
+check("the earlier proposal is still shown",
+      f'"name": "{stored_name}"' in unescaped,
+      "a finished proposal hidden by a later run is work nobody can see")
+check("and the page says both things are true",
+      "earlier one" in page.lower() or "fr" in page.lower(),
+      "otherwise the running build reads as the reason the box is full")
+check("while the running build is still reported",
+      "build is running" in page.lower(), "")
+
+# Applying now must stamp the proposal that was shown, not the one still
+# running.
+client.post("/graph-guidance", data={"action": "apply",
+                                     "proposal": json.dumps(GOOD)})
+check("applying stamps the build whose proposal was on the page",
+      written and written[-1][2] == build["id"],
+      (written[-1] if written else None))
+check("and that build is the one marked applied",
+      gb.get(build["id"])["state"] == "applied", "")
+check("the running one is untouched",
+      gb.get(second["id"])["state"] in ("queued", "running"),
+      gb.get(second["id"])["state"])
+client.post("/graph-guidance", data={"action": "abandon_build"})
+written.clear()
+
 # ─── Applying ───────────────────────────────────────────────────────────────
+reset()
+client.post("/graph-guidance", data={"action": "build"})
+build = gb.active(CID)
+client.post("/api/graph-build",
+            json={"build_id": build["id"], "state": "proposed",
+                  "proposal": GOOD}, headers=HEAD)
 client.post("/graph-guidance", data={"action": "apply",
                                      "proposal": json.dumps(GOOD)})
 check("applying writes the proposal", written and written[0][:2] == (2, 1), written)

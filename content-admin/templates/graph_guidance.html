@@ -9,9 +9,16 @@
    they belong to whichever course existed at the time, and only a person
    knows which one that was. #}
 {% if build and build.active %}
+{# The page is otherwise static, and the result arrives minutes later through
+   a callback. Without this the operator is left reloading a page that gives
+   no sign it ever will change -- which is exactly what happened on the first
+   successful run: the proposal was in the database while the screen still
+   said "running". Only while a build is active, and only a reload: no
+   polling endpoint, no state in the browser. #}
+<meta http-equiv="refresh" content="20">
 <div class="warning">
   <p><strong>{{ t('graph_build_running') }}</strong></p>
-  <p class="note">{{ t('graph_build_running_note') }}
+  <p class="note">{{ t('graph_build_running_note') }} {{ t('graph_build_refreshes') }}
     {% if build.stats %}<br>{{ build.stats }}{% endif %}
     <br>{{ t('graph_build_started_at', build.started_at) }}</p>
   {# A run that is going nowhere must not lock the course for ever. #}

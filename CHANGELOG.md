@@ -13,6 +13,26 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **The graph page never said the build had finished.** The result arrives
+  minutes later through a callback, and the page was static: the first
+  successful run put 43 concepts in the database while the screen still read
+  "a build is running" and showed an empty graph. It now reloads itself every
+  20 seconds while a build is active — and only while one is, because a page
+  that keeps reloading throws away whatever is being typed into the review
+  box.
+
+  Found while looking into that, and fixed with it: the page only ever showed
+  the *newest* build, so starting a second run would have hidden a finished
+  proposal nobody had read yet. It now shows the newest one awaiting review
+  and says plainly when both are true.
+
+  Also corrects two stale sentences on that page: it announced the automated
+  proposal as something "planned", months after it was built, and asked for
+  the reviewed **Cypher** to be pasted in — the field has taken JSON, and only
+  JSON, since the Cypher route was removed.
+
+### Fixed
+
 - **The build looped over an HTTP response instead of the course material.**
   The progress report sat between the slicing and the loop, and an HTTP node
   replaces the items flowing through it with its own response — so the loop

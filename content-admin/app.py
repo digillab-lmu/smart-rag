@@ -2091,9 +2091,8 @@ def graph_guidance():
                 # a build undoable later — and marks the build as reviewed, so
                 # a finished proposal stops reappearing in the box after it
                 # has been acted on.
-                pending = graph_builds.latest(course_id)
-                build_id = (pending["id"] if pending
-                            and pending["state"] == "proposed" else "")
+                pending = graph_builds.awaiting_review(course_id)
+                build_id = pending["id"] if pending else ""
                 concepts, edges = neo4j_client.parse_proposal(proposal)
                 written = client.apply_proposal(course_id, concepts, edges,
                                                 build_id=build_id)
@@ -2147,11 +2146,20 @@ def graph_guidance():
     # something there — a pasted answer being edited must not be replaced by
     # a stored proposal on every reload.
     build = graph_builds.latest(course_id)
-    if build and build["state"] == "proposed" and not proposal:
-        proposal = json.dumps(build["proposal"], indent=2, ensure_ascii=False)
+    # The proposal to show is the newest one *awaiting review*, which is not
+    # necessarily the newest build: starting a second run must not hide a
+    # finished proposal nobody has read yet.
+    ready = graph_builds.awaiting_review(course_id)
+    if ready and not proposal:
+        proposal = json.dumps(ready["proposal"], indent=2, ensure_ascii=False)
+        stats = ready.get("stats") or {}
         material_note = material_note or _t(
-            "graph_build_from", len(build.get("scope") or []),
-            (build.get("stats") or {}).get("documents", 0))
+            "graph_build_from", len(ready.get("scope") or []),
+            stats.get("documents", 0))
+        if build and build["active"] and build["id"] != ready["id"]:
+            # Both things are true and the page has to say so, or the running
+            # one reads as the reason the box is full.
+            warning = warning or _t("graph_build_older_proposal")
 
     return render_template("graph_guidance.html", error=error, success=success,
                            warning=warning, material_note=material_note,
