@@ -9,6 +9,7 @@
 
 <p class="note">{{ t('upload_intro') }}</p>
 <p class="note">{{ t('upload_timing')|safe }}</p>
+<p class="note">{{ t('upload_limits', max_upload_mb, conversion_minutes) }}</p>
 
 <form method="post" enctype="multipart/form-data">
   <label for="slot">{{ t('upload_slot_label') }}</label>

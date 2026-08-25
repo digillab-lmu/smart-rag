@@ -648,6 +648,41 @@ docker exec smartrag-n8n n8n list:workflow
 
 ---
 
+## A document fails with "Conversion is taking too long"
+
+**Symptom.** The document list shows a document as failed with
+
+```
+504 - {"detail":"Conversion is taking too long. The maximum wait time is
+configure as DOCLING_SERVE_MAX_SYNC_WAIT=120."}
+```
+
+**Cause.** What takes the time is pages, scans and figures — not file size. A
+1.2 MB scanned PDF exceeded 120 seconds on the test machine while text
+documents many times larger convert in seconds.
+
+**Fix.** `DOCLING_MAX_SYNC_WAIT` in `.env`, in seconds, default 1500. Raise
+it, then recreate the container so the new value reaches it:
+
+```bash
+cd /srv/smart-rag && bash scripts/compose.sh up -d --force-recreate smartrag-docling
+```
+
+**One ceiling not to cross.** The workflow node that calls docling has its own
+timeout of 1800 seconds. `DOCLING_MAX_SYNC_WAIT` must stay below it — if
+docling outlasts n8n, the conversion is cut off by n8n instead, and its
+message says only that a request timed out. The component that knows why has
+to be the one that gives up first. `tests/test_ingest_limits.sh` holds that
+ordering; raising the ceiling means raising the node's timeout in
+`n8n/workflows-ingest/ingest-document.json` first and re-importing the
+workflows.
+
+**If it still times out**, the document is genuinely too heavy for one pass —
+split it. A book-length scan is better ingested as chapters anyway: retrieval
+quality does not improve by feeding one enormous document.
+
+---
+
 ## Backing up, or moving to another machine
 
 `sudo smartrag` → *Backup*, or directly:

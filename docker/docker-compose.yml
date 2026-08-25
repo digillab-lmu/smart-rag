@@ -426,6 +426,10 @@ services:
     mem_limit: 4g
     environment:
       DOCLING_DEVICE: "cpu"
+      # Without this the image's own 120 seconds apply, and a scanned PDF of
+      # barely a megabyte exceeds them. See DOCLING_MAX_SYNC_WAIT in .env for
+      # why the number is what it is and what it must stay below.
+      DOCLING_SERVE_MAX_SYNC_WAIT: "${DOCLING_MAX_SYNC_WAIT}"
       TZ: "${TZ}"
     expose: ["5001"]
     networks: [smart-rag-network]

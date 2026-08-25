@@ -570,6 +570,7 @@ the link is used, and the link only works from this message.
     "inv_learner_none_storage": "Nothing — object storage holds the course's documents, and learners upload none",
     "inv_learner_none_accounts": "Nothing — this database holds courses, slots and maintainer accounts",
     "inv_learner_none_note": "Listed so that \"we looked\" is on the record. A system silently missing from this table is indistinguishable from one that was forgotten.",
+    "upload_limits": "Two limits, and the one that bites is usually not the obvious one. A file may be up to %s MB — but a conversion may take at most %s minutes, and what drives the time is pages, scans and figures, not megabytes: a one-megabyte scan can exceed it while a thirty-megabyte text document is done in seconds. If a document times out, the document list says so; split it, or raise DOCLING_MAX_SYNC_WAIT in .env.",
 }
 
 
@@ -1110,6 +1111,7 @@ dieser Nachricht.
     "inv_learner_none_storage": "Nichts — der Objektspeicher hält die Dokumente des Kurses, und Lernende laden keine hoch",
     "inv_learner_none_accounts": "Nichts — diese Datenbank hält Kurse, Slots und Betreuenden-Konten",
     "inv_learner_none_note": "Aufgeführt, damit „wir haben nachgesehen\" belegt ist. Ein System, das stillschweigend in dieser Tabelle fehlt, ist von einem vergessenen nicht zu unterscheiden.",
+    "upload_limits": "Zwei Grenzen, und meist ist nicht die naheliegende die entscheidende. Eine Datei darf bis zu %s MB groß sein — eine Umwandlung darf aber höchstens %s Minuten dauern, und dafür zählen Seiten, Scans und Abbildungen, nicht Megabyte: ein Scan von einem Megabyte kann daran scheitern, während ein Textdokument von dreißig Megabyte in Sekunden fertig ist. Läuft ein Dokument in die Zeit, steht das in der Dokumentliste; dann aufteilen oder DOCLING_MAX_SYNC_WAIT in der .env erhöhen.",
 }
 
 

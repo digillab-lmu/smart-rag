@@ -109,6 +109,24 @@ ALLOWED_UPLOAD_EXTENSIONS = {
 # Guards against a stray multi-GB upload wedging the single gunicorn
 # worker while it streams. Docling itself gets much longer to work.
 MAX_UPLOAD_BYTES = 200 * 1024 * 1024  # 200 MB
+
+
+def conversion_limit_minutes(env: dict | None = None) -> int:
+    """How long a conversion may take, in whole minutes, for the upload page.
+
+    Read from the same DOCLING_MAX_SYNC_WAIT the container is started with
+    rather than written here as a second number — a limit stated on a page and
+    a limit enforced in a container that disagree is worse than not stating
+    it, because the page is what somebody plans around.
+    """
+    raw = (env if env is not None else read_env()).get("DOCLING_MAX_SYNC_WAIT", "")
+    try:
+        seconds = int(str(raw).strip() or 0)
+    except ValueError:
+        seconds = 0
+    # The image's own default, which is what applies when the variable is
+    # missing — an installation whose .env predates this key.
+    return max(1, round((seconds or 120) / 60))
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
 
 
@@ -1190,6 +1208,8 @@ def upload():
 
     return render_template(
         "upload.html",
+        max_upload_mb=MAX_UPLOAD_BYTES // (1024 * 1024),
+        conversion_minutes=conversion_limit_minutes(),
         configured=configured,
         form=form,
         error=error,
@@ -1327,6 +1347,8 @@ def upload_too_large(_exc):
     return (
         render_template(
             "upload.html",
+        max_upload_mb=MAX_UPLOAD_BYTES // (1024 * 1024),
+        conversion_minutes=conversion_limit_minutes(),
             configured={
                 num: data
                 for num, data in storage.all_slots(g.course["id"]).items()

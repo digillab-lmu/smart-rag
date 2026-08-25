@@ -13,6 +13,23 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **Documents failed after two minutes with a message naming an environment
+  variable.** `DOCLING_SERVE_MAX_SYNC_WAIT` was never set, so the image's own
+  120 seconds applied — while the n8n node calling docling waited patiently
+  for 1800. A 1.2 MB scanned PDF was enough to exceed it.
+
+  It is now `DOCLING_MAX_SYNC_WAIT` in `.env`, default 1500 seconds, and it
+  must stay below the node's timeout: the innermost limit has to be the
+  shortest, or the component that knows why a conversion stopped never gets to
+  say so. `tests/test_ingest_limits.sh` holds that ordering, and the size
+  ordering with it — the Content Admin's 200 MB is below n8n's 256 MB, so an
+  oversized file is refused by the page rather than by a webhook.
+
+  The upload page states both limits before the upload rather than after it,
+  and says which one usually bites: not megabytes, but pages and scans. The
+  minutes shown are read from the configured value, not written into the text
+  a second time.
+
 - **Phase 7b worked exactly once per installation.** `garage node id` returns
   the full 64-character key; `garage layout show` prints only its first
   sixteen. The check for "is a layout already applied" compared the full id
