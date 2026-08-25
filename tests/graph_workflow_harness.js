@@ -119,13 +119,51 @@ check('every slice knows how many there are',
 check('excerpts are capped', slices[0].entries.every(e => e.excerpt.length <= plan.EXCERPT_CHARS),
       slices[0].entries[0].excerpt.length);
 
-let emptyThrew = false;
-try {
-  await run('Slice the material', [{ json: { data: { Get: { Chunk: [] } } } }],
-            { 'Plan the run': planOut }, ENV);
-} catch (e) { emptyThrew = true; }
-check('a course with no material is refused rather than guessed at', emptyThrew,
-      'a map from nothing is the model general knowledge, presented as this course');
+// Three answers that all used to look identical from here, and only one of
+// them is an empty course. On the first live run a rejected query was
+// reported to the operator as "this course has no indexed material", which
+// sent them looking at their documents instead of at the query.
+const sliceFails = async (payload) => {
+  try {
+    await run('Slice the material', [{ json: payload }], { 'Plan the run': planOut }, ENV);
+    return null;
+  } catch (e) { return e.message; }
+};
+
+let msg = await sliceFails({ data: { Get: { Chunk: [] } } });
+check('a course with no material is refused rather than guessed at', Boolean(msg), '');
+check('and the refusal names the agents it looked for',
+      msg && /1, 2/.test(msg), msg);
+
+msg = await sliceFails({ errors: [{ message: 'Cannot query field "agent_id"' }] });
+check('a rejected query is not reported as an empty course',
+      msg && /refused the query/.test(msg) && /agent_id/.test(msg), msg);
+check('and says the fault is in the query',
+      msg && /not an empty course/.test(msg), msg);
+
+msg = await sliceFails({ data: { Get: { AndereKlasse: [] } } });
+check('an answer about a different collection says so',
+      msg && /no collection called "Chunk"/.test(msg) && /AndereKlasse/.test(msg), msg);
+
+msg = await sliceFails({ something: 'else' });
+check('an answer with no data section quotes what came back',
+      msg && /no data section/.test(msg), msg);
+
+// A read that comes back exactly full is a course larger than one read, and
+// everything after it would be built from an arbitrary prefix -- arbitrary
+// because Weaviate returns no order of its own. That must stop, not truncate.
+const full = Array.from({ length: plan.READ_LIMIT }, (_, i) => ({
+  source_title: 'W', source_file: 'agent_1/w.md', chapter_title: 'K',
+  section: `S${i}`, section_id: `${i}`, chunk_index: i, text: 'x '.repeat(20) }));
+msg = await sliceFails({ data: { Get: { Chunk: full } } });
+check('a course larger than one read is refused, not truncated',
+      msg && /as many as one read returns/.test(msg), msg);
+check('and the refusal names the setting that fixes it',
+      msg && /QUERY_MAXIMUM_RESULTS/.test(msg), msg);
+check('the read limit stays under Weaviate default ceiling of 10000',
+      plan.READ_LIMIT < 10000,
+      'a limit above the cap is refused outright, not trimmed -- which is how '
+      + 'the first live run was told the course had no material');
 
 // -- Extraction --------------------------------------------------------------
 let asked = [];
