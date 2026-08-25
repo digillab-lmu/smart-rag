@@ -66,10 +66,25 @@
 {% endif %}
 
 <h2>{{ t('graph_add_heading') }}</h2>
-<p class="note">{{ t('graph_prompt_intro') }}</p>
+
+{# The automated route and the manual one ask the same model the same
+   question; the only difference is who fetches the answer. Both land in the
+   same review box below, and neither writes anything until that box is
+   submitted. #}
+<form method="post" style="margin-bottom:1rem">
+  <input type="hidden" name="action" value="propose">
+  <button type="submit">{{ t('graph_propose') }}</button>
+  <p class="note">{{ t('graph_propose_help') }}</p>
+</form>
+
+<details>
+  <summary>{{ t('graph_prompt_manual_summary') }}</summary>
+  <p class="note">{{ t('graph_prompt_intro') }}</p>
 <textarea id="graph-prompt" rows="14" readonly>{{ t('graph_prompt_text', active_course.name) }}</textarea>
 <button type="button" class="copy-btn secondary" data-copy="graph-prompt">{{ t('publish_copy') }}</button>
+</details>
 
+{% if material_note %}<p class="note">{{ material_note }}</p>{% endif %}
 <p class="note">{{ t('graph_run_intro') }}</p>
 <form method="post">
   <input type="hidden" name="action" value="apply">

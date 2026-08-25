@@ -11,6 +11,37 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ## Unreleased
 
+### Added
+
+- **The knowledge graph can now be proposed from the course's own material.**
+  Until now the concept list and its prerequisite edges had to be produced by
+  hand: the page offered a prompt to copy into some chat window and a box to
+  paste the answer back into. That is a reasonable fallback, and it is still
+  there — it needs no API key and no reachable provider — but it made the
+  graph the one part of a course setup that nobody finished.
+
+  *Propose from the material* now reads the course's indexed documents, sends
+  them to the strong model (`LLM_MODEL_STRONG`) and fills the review box with
+  the result. What it sends is an outline, not the corpus: one entry per
+  section — title, chapter, section number and a 400-character excerpt — up
+  to a character budget. Chunks of the same section collapse into one entry,
+  so the budget is spent on the shape of the course rather than on repetition.
+  If the material does not fit, the page says so; a map built from half a
+  course is a different map, and the operator should know which one they are
+  reading.
+
+  Three things it deliberately does not do. It does not write: the proposal
+  lands in the same review box as a pasted one and reaches Neo4j only when
+  somebody submits it. It does not use a prompt of its own — it sends the very
+  text the page offers for copying, so the two routes cannot drift into asking
+  different questions. And it refuses an empty course rather than inventing
+  something: with no material, the model would return its general knowledge of
+  the subject dressed as this course's structure.
+
+  The answer goes through the same `parse_proposal()` as before, so a cycle, a
+  self-loop or an edge naming an unknown concept is caught at the proposal
+  step rather than after it has been applied.
+
 ### Fixed
 
 - **An upload could carry no bibliographic data at all, and the title fell

@@ -580,6 +580,12 @@ the link is used, and the link only works from this message.
     "upload_field_authors": "the authors were",
     "upload_field_year": "the year was",
     "upload_fields_authors_and_year": "the authors and the year were",
+    "graph_propose": "Propose a map from the course material",
+    "graph_propose_help": "Reads the chapters and sections of every document uploaded for this course and asks the configured strong model for a proposal. Nothing is written: the answer lands in the box below for you to read, edit and then run — a concept map decides what the agents treat as a prerequisite for what, and a misread heading would reorder a course without anyone having looked.",
+    "graph_prompt_manual_summary": "Or do it yourself, in an AI of your choice",
+    "graph_proposed_from": "Proposed from %s document(s) and %s section(s) of this course's material.",
+    "graph_proposed_truncated": "Not all of the material fitted: the proposal was built from the beginning of it. Anything the later documents introduce is missing, so read the list below with that in mind — or add the rest by hand.",
+    "graph_propose_failed": "The proposal could not be fetched: %s. The manual route above still works.",
 }
 
 
@@ -1130,6 +1136,12 @@ dieser Nachricht.
     "upload_field_authors": "die Autorenangabe ist",
     "upload_field_year": "das Jahr ist",
     "upload_fields_authors_and_year": "Autorenangabe und Jahr sind",
+    "graph_propose": "Karte aus dem Kursmaterial vorschlagen",
+    "graph_propose_help": "Liest Kapitel und Abschnitte aller Dokumente dieses Kurses und fragt das eingestellte starke Modell nach einem Vorschlag. Geschrieben wird nichts: die Antwort landet unten im Feld, zum Lesen, Bearbeiten und dann Ausführen — eine Konzeptkarte entscheidet, was die Agenten als Voraussetzung wofür behandeln, und eine falsch gelesene Überschrift würde einen Kurs umsortieren, ohne dass jemand hingesehen hat.",
+    "graph_prompt_manual_summary": "Oder selbst machen, in einer KI deiner Wahl",
+    "graph_proposed_from": "Vorgeschlagen aus %s Dokument(en) und %s Abschnitt(en) des Kursmaterials.",
+    "graph_proposed_truncated": "Es hat nicht alles Material hineingepasst: der Vorschlag entstand aus dessen Anfang. Was die späteren Dokumente einführen, fehlt — lies die Liste unten mit diesem Vorbehalt, oder ergänze den Rest von Hand.",
+    "graph_propose_failed": "Der Vorschlag konnte nicht geholt werden: %s. Der Weg von Hand oben funktioniert weiterhin.",
 }
 
 

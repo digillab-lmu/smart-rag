@@ -18,6 +18,7 @@ Configuration (all via .env, read through env_file.py):
 """
 
 import hmac
+import json
 import logging
 import os
 import secrets
@@ -36,6 +37,7 @@ import courses as courses_service
 import db
 import i18n
 import ingest_status
+import llm_client
 import learners
 import mailer
 import setup_checks
@@ -1754,6 +1756,8 @@ def graph_guidance():
     client = _neo4j_client()
     error = None
     success = None
+    warning = None
+    material_note = None
     proposal = ""
 
     if request.method == "POST":
@@ -1769,6 +1773,39 @@ def graph_guidance():
             elif action == "clear":
                 removed = client.clear_course(course_id)
                 success = _t("graph_cleared", removed, g.course["name"])
+            elif action == "propose":
+                # Reads the course's own material and asks the strong model
+                # for the same JSON the page asks a human to fetch by hand.
+                # The answer is validated here and written into the review box
+                # below — never applied. A concept map decides what an agent
+                # treats as a prerequisite for what, and a model that
+                # misreads a chapter heading would reorder a course without
+                # anyone having looked.
+                env = read_env()
+                wv = _weaviate_client()
+                outline = wv.outline(g.course["collection"], course_id)
+                material = wv.outline_as_text(outline)
+                answer = llm_client.propose_graph(
+                    g.course["name"], material,
+                    _t("graph_prompt_text", g.course["name"]), env)
+                # Through the same parser a pasted answer goes through, and
+                # written back canonically: reviewing text that differs from
+                # what would be applied is worse than not reviewing.
+                concepts_p, edges_p = neo4j_client.parse_proposal(answer)
+                # Empty optional fields are dropped rather than written as
+                # null: this text is read by a person deciding whether to
+                # trust it, and three nulls per concept is noise between them
+                # and the names they are checking.
+                proposal = json.dumps(
+                    {"concepts": [{k: v for k, v in c.items() if v is not None}
+                                  for c in concepts_p],
+                     "prerequisites": edges_p},
+                    indent=2, ensure_ascii=False)
+                material_note = _t(
+                    "graph_proposed_from",
+                    len(outline["documents"]), outline["sections"])
+                if outline["truncated"]:
+                    warning = _t("graph_proposed_truncated")
             else:
                 proposal = request.form.get("proposal", "")
                 concepts, edges = neo4j_client.parse_proposal(proposal)
@@ -1779,7 +1816,12 @@ def graph_guidance():
             # The reader did not write this input — a model did — so the
             # message says which part to fix rather than "invalid".
             error = str(exc)
-        except Neo4jError as exc:
+        except LLMError as exc:
+            # No key, no material, a provider having a bad minute. None of
+            # that is a graph problem, and the manual path on this same page
+            # still works — so it is said here rather than raised.
+            error = _t("graph_propose_failed", exc)
+        except (WeaviateError, Neo4jError) as exc:
             error = str(exc)
 
     try:
@@ -1789,10 +1831,13 @@ def graph_guidance():
         unassigned = client.unassigned_count()
     except Neo4jError as exc:
         return render_template("graph_guidance.html", error=error or str(exc),
-                               success=success, concepts=[], edges=[],
+                               success=success, warning=warning,
+                               material_note=material_note,
+                               concepts=[], edges=[],
                                counts={"concepts": 0, "edges": 0}, unassigned=0,
                                proposal=proposal)
 
     return render_template("graph_guidance.html", error=error, success=success,
+                           warning=warning, material_note=material_note,
                            concepts=concepts, edges=edges, counts=counts,
                            unassigned=unassigned, proposal=proposal)

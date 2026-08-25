@@ -204,6 +204,38 @@ def suggest_keywords(
     return cleaned[:count]
 
 
+def propose_graph(course_name: str, material: str, instruction: str,
+                  env: dict) -> str:
+    """Ask the strong model for a concept map, and return its raw answer.
+
+    Raw on purpose. The answer goes through neo4j_client.parse_proposal like
+    a pasted one — same validation, same refusals for a cycle or a
+    prerequisite naming an unknown concept — and then into the same review
+    box the guided path fills by hand. One path from here on, so a proposal
+    cannot reach the graph through a door the manual one does not have.
+
+    `instruction` is the very prompt the page offers for copying into an AI
+    of one's own. Passing it in rather than writing a second one here is the
+    point: the two routes must ask for the same thing, or the automated one
+    quietly becomes a different feature that happens to share a page.
+    """
+    if not material.strip():
+        raise LLMError(
+            "There is no material to read yet — upload course documents first. "
+            "A concept map proposed from nothing would be the model's general "
+            "knowledge of the subject, not this course.")
+
+    system_prompt = (
+        "You build concept maps for university courses. You answer with JSON "
+        "and nothing else: no explanation, no commentary, no code fence."
+    )
+    user_prompt = (
+        f"{instruction}\n\n"
+        f"--- Course material for \"{course_name}\" ---\n{material}\n--- end ---"
+    )
+    return _complete(system_prompt, user_prompt, env)
+
+
 def _parse_suggestion(text: str) -> dict:
     text = text.strip()
     if text.startswith("```"):

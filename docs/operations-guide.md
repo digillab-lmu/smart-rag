@@ -264,9 +264,16 @@ What you do there:
   ISBN, and suggest keywords. Processing runs asynchronously in n8n;
   a large scanned PDF can take tens of minutes, and you get an email when
   it's done. **This needs the n8n step above to be finished.**
-- **Knowledge Graph** — a guided (not automated) path to seed the Neo4j
-  concept graph: the data model explained, a ready-to-copy prompt for an
-  AI of your choice, and a box to paste and run the resulting Cypher.
-  `neo4j/seed.example.cypher` is a starting point for doing it by hand.
+- **Knowledge Graph** — two ways to seed the Neo4j concept graph, both
+  ending at the same review box. *Propose from the material* reads the
+  course's indexed documents and has the strong model draft the concept list
+  and its prerequisite edges; the draft appears in the box for you to read and
+  edit, and is written only when you submit it. The manual path is unchanged
+  and needs no API key: the data model is explained on the page and the prompt
+  is there to copy into an AI of your choice, with the answer pasted back into
+  the same box. What the box accepts is JSON — concepts and prerequisites —
+  not Cypher; free-form Cypher from a browser field is no longer executed
+  against the database. `neo4j/seed.example.cypher` remains a worked example
+  of the resulting data model.
 
 The interface is available in English and German (switch top right).

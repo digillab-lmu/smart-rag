@@ -240,6 +240,89 @@ for path in sorted((REPO / "flowise" / "agents").glob("*.json")):
         check(f"{label} takes the course from the import substitution",
               "{{COURSE_ID}}" in code, "")
 
+# ─── Proposing a map from the course's own material ─────────────────────────
+# The automated route must not become a second, laxer door into the graph.
+# Everything below is about that: it asks the same question the page hands a
+# human, it goes through the same parser, and it writes nothing.
+app_src = (APP_DIR / "app.py").read_text()
+llm_src = (APP_DIR / "llm_client.py").read_text()
+wv_src = (APP_DIR / "weaviate_client.py").read_text()
+tpl = (REPO / "content-admin" / "templates" / "graph_guidance.html").read_text()
+
+check("there is a propose action", 'action == "propose"' in app_src, "")
+# The same prompt the page offers for copying — not a second one written for
+# the automated path, which would quietly make it a different feature.
+check("it sends the page's own prompt",
+      '_t("graph_prompt_text"' in app_src.split('action == "propose"')[1][:1400],
+      "a separate prompt here means the two routes stop agreeing")
+check("the material comes from the course's documents",
+      ".outline(" in app_src and "outline_as_text" in app_src, "")
+
+# The safety property. A proposal reaches the graph only through the review
+# box, and only when that box is submitted.
+propose_block = app_src.split('action == "propose"')[1].split('else:')[0]
+check("the proposal is parsed before it is shown",
+      "parse_proposal(" in propose_block,
+      "an unvalidated proposal in the review box is one a cycle could survive")
+check("and nothing is applied by proposing",
+      "apply_proposal" not in propose_block,
+      "proposing must never write — the operator has not read it yet")
+check("what is shown is what would be applied",
+      "json.dumps(" in propose_block,
+      "reviewing the model's raw text while applying something else is a trap")
+
+# No material, no proposal: a map invented from an empty course would be the
+# model's general knowledge of the subject, presented as this course's.
+check("an empty course is refused rather than guessed at",
+      "There is no material to read yet" in llm_src, "")
+
+# The outline is bounded, and says when it did not fit. Run for real against a
+# stubbed Weaviate: a budget that is only *named* in the source is one a later
+# edit can stop honouring without any test noticing.
+import weaviate_client as wc  # noqa: E402
+
+rows = [{"source_title": "Skript", "chapter_title": f"Kapitel {i}",
+         "section": f"{i}.1", "section_id": f"{i}.1", "chunk_index": i,
+         "text": "Lorem ipsum " * 60} for i in range(40)]
+wc.WeaviateClient._graphql = lambda self, q: {"data": {"Get": {"C": rows}}}
+client = wc.WeaviateClient.__new__(wc.WeaviateClient)
+
+whole = client.outline("C", "course-1", char_budget=10 ** 7)
+check("all sections are listed when they fit",
+      whole["sections"] == 40 and not whole["truncated"], whole["sections"])
+
+cut = client.outline("C", "course-1", char_budget=2000)
+check("a budget that is exceeded stops the outline",
+      cut["characters"] <= 2000, cut["characters"])
+check("and it is fewer sections than the whole course",
+      0 < cut["sections"] < 40, cut["sections"])
+check("and the caller is told it was cut",
+      cut["truncated"] is True, cut)
+check("a truncated outline counts only the sections it kept",
+      cut["sections"] == sum(len(d["sections"]) for d in cut["documents"]),
+      (cut["sections"], [len(d["sections"]) for d in cut["documents"]]))
+check("the page reports truncation to the operator",
+      "graph_proposed_truncated" in app_src,
+      "a map built from half a course is a different map")
+
+# One entry per section, not per chunk: the excerpt list is for orientation,
+# and repeating a section forty times would spend the budget on nothing.
+dupes = [dict(rows[0], chunk_index=i) for i in range(20)]
+wc.WeaviateClient._graphql = lambda self, q: {"data": {"Get": {"C": dupes}}}
+one = client.outline("C", "course-1")
+check("repeated chunks of one section collapse to one entry",
+      sum(len(d["sections"]) for d in one["documents"]) == 1,
+      [len(d["sections"]) for d in one["documents"]])
+check("and the reported count agrees with what is listed",
+      one["sections"] == 1, one["sections"])
+
+check("the page offers the button", 'value="propose"' in tpl, "")
+check("and keeps the manual route", 'graph-prompt' in tpl,
+      "the automated one needs a key and a reachable provider; the other does not")
+# The review box is the only writer, and it is a separate submission.
+check("applying is still its own form",
+      'value="apply"' in tpl, "")
+
 if failures:
     print("FAILURES:")
     for f in failures:

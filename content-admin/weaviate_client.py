@@ -218,6 +218,105 @@ class WeaviateClient:
             key=lambda d: (d["agent_id"] if d["agent_id"] is not None else -1, d["source_title"]),
         )
 
+    def outline(self, collection: str, course_id: str,
+                char_budget: int = 60_000, limit: int = 3000) -> dict:
+        """The course's material as a structure a model can reason about.
+
+        Not the full text. A course of three hundred chunks is far more than
+        needs to be read to say which concepts exist and which come first,
+        and sending all of it would make the feature slow, expensive and
+        no better. What goes out is the shape of each document — its
+        chapters and sections in order — with the opening of each section
+        underneath, which is where a section says what it is about.
+
+        Returns {"documents": [...], "sections": n, "truncated": bool,
+        "characters": n}. `truncated` is not decoration: a proposal built
+        from half a course is a different thing from one built from all of
+        it, and the page says which it got rather than letting the operator
+        assume.
+        """
+        course_literal = json.dumps(course_id)
+        query = f"""
+        {{
+          Get {{
+            {collection}(
+              limit: {int(limit)}
+              where: {{ path: ["course_id"], operator: Equal, valueText: {course_literal} }}
+            ) {{
+              source_title
+              chapter_title
+              section
+              section_id
+              chunk_index
+              text
+            }}
+          }}
+        }}
+        """
+        data = self._graphql(query)
+        rows = (((data or {}).get("data") or {}).get("Get") or {}).get(collection) or []
+
+        # Chunk order within a document is what makes "comes before" mean
+        # anything, and Weaviate returns no order of its own.
+        rows.sort(key=lambda r: ((r.get("source_title") or ""),
+                                 r.get("chunk_index") if isinstance(r.get("chunk_index"), int) else 0))
+
+        documents: list[dict] = []
+        by_title: dict[str, dict] = {}
+        seen_sections: set[tuple] = set()
+        used = 0
+        truncated = False
+
+        for row in rows:
+            title = (row.get("source_title") or "").strip() or "(untitled)"
+            chapter = (row.get("chapter_title") or "").strip()
+            section = (row.get("section") or "").strip()
+            marker = (title, chapter, section)
+            if marker in seen_sections:
+                continue          # one entry per section, not per chunk
+            seen_sections.add(marker)
+
+            excerpt = " ".join((row.get("text") or "").split())[:400]
+            cost = len(title) + len(chapter) + len(section) + len(excerpt)
+            if used + cost > char_budget:
+                truncated = True
+                break
+            used += cost
+
+            doc = by_title.get(title)
+            if doc is None:
+                doc = {"title": title, "sections": []}
+                by_title[title] = doc
+                documents.append(doc)
+            doc["sections"].append({
+                "chapter": chapter, "section": section,
+                "section_id": (row.get("section_id") or "").strip(),
+                "excerpt": excerpt,
+            })
+
+        return {"documents": documents,
+                "sections": len(seen_sections) - (1 if truncated else 0),
+                "characters": used, "truncated": truncated}
+
+    @staticmethod
+    def outline_as_text(outline: dict) -> str:
+        """The outline as the plain text that goes to the model.
+
+        Deliberately plain: a model reads an indented list as well as it
+        reads JSON, and this is also what the page can show the operator when
+        they want to know what was sent.
+        """
+        lines: list[str] = []
+        for doc in outline.get("documents", []):
+            lines.append(f"# {doc['title']}")
+            for sec in doc["sections"]:
+                head = " · ".join(p for p in (sec.get("chapter"), sec.get("section")) if p)
+                lines.append(f"  ## {head or '(section)'}")
+                if sec.get("excerpt"):
+                    lines.append(f"     {sec['excerpt']}")
+            lines.append("")
+        return "\n".join(lines).strip()
+
     def count_chunks(self, collection: str, course_id: str) -> int:
         """Total chunks for a course — used to tell "no documents" apart from
         "the list was truncated"."""
