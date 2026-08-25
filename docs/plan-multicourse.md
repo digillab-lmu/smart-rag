@@ -335,6 +335,56 @@ through, and then "nothing is written without review" is true on paper and
 worthless in fact. The review has to group by document and show what is new
 against what the graph already holds.
 
+### What a shared course graph does when the course is not shared
+
+Raised by the operator, and it is the part of this phase that can actually
+do harm: *"I know my colleagues."* A course is a container several people
+will put agents into, and not all of that material will belong together. One
+of them presses rebuild.
+
+**Stated precisely, because the obvious reading is wrong.** `apply_proposal`
+uses MERGE throughout: a rebuild does not overwrite the graph, it *adds* to
+it. So the risk is not that curated work is destroyed. It is that unrelated
+material is mixed in **and cannot be separated again** — a concept records
+`name`, `course_id`, `chapter`, `section_id`, `description`, and nothing
+about where it came from. The only removals that exist are one concept by
+name, and `clear_course`, which takes the curated work with it. That is the
+real defect: not destruction, but contamination with no way back.
+
+**An explanation protects the person who reads it.** The colleague in the
+scenario does not read it. The page must still say plainly that the graph
+covers the whole course across every agent — but the measures that actually
+protect are automatic detection and reversibility.
+
+  1. **Provenance on every concept and every edge.** Which documents it came
+     from, and therefore which agents. Nothing else on this list is possible
+     without it, and it is the one thing that cannot be retrofitted onto
+     concepts already written without their sources.
+  2. **Every build has an id, and can be undone.** Because writing is
+     additive, undo is exact rather than a snapshot: remove what this build
+     introduced, and shorten the source lists it extended. "Rebuild" stops
+     being a one-way door.
+  3. **Remove one agent's contribution.** With provenance, "take out
+     everything only agent 5's material supports" is a query. Today it is an
+     afternoon of clicking or `clear_course`.
+  4. **Every proposed edge must cite the material that justifies it,** and
+     the citation must name a document that is actually in the corpus. An
+     edge between two unrelated subjects has no such document. This does not
+     make edges correct, but it removes the most damaging class of invention
+     and gives the reviewer something checkable.
+  5. **Disconnected components are reported before anything is applied.**
+     "This build produced three groups of concepts with no link between
+     them" is the data saying, without being asked, that the course holds
+     unrelated material. It is also a legitimate result — a course may have
+     two strands — so it is a report, not a refusal.
+  6. **The build is scoped, and the scope is remembered.** Which agents take
+     part is a choice, defaulting to all. Excluding a colleague's unrelated
+     agent becomes deliberate rather than a thing you failed to prevent.
+  7. **Hand-written descriptions are protected.** Today a model-supplied
+     description overwrites one a person wrote — `coalesce` only guards the
+     empty case. A curated concept must be marked as such, and a rebuild must
+     show the disagreement rather than resolve it silently.
+
 **Proven by** a build over a course whose material exceeds one prompt several
 times over, where the concept count rises with the material rather than
 stopping at the budget; a second run after one new upload that reads only the
