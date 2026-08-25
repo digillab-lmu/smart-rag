@@ -127,6 +127,49 @@ grep -qi 'rmdir' <<<"$out"
 check "naming rmdir rather than rm -rf" $? "$out"
 rm -rf "$TMP"
 
+# ─── Phase 7b must be re-runnable ───────────────────────────────────────────
+# `garage node id` returns the full 64-character key; `garage layout show`
+# prints only its first sixteen. The presence check compared the full one
+# against that display, so it never matched: every re-run took the "no layout
+# yet" branch and tried to assign a layout that was already correct, and
+# `layout apply` refused. Phase 7b therefore worked exactly once per
+# installation — invisible until a --continue after a wiped data directory,
+# 2026-08-25.
+grep -q 'NODE_ID_SHORT' "$DEPLOY"
+check "the layout check uses the truncated node id" $? \
+      "layout show prints 16 characters; node id returns 64"
+layout_block="$(sed -n '/─── 2. Layout/,/─── 3. Buckets/p' "$DEPLOY")"
+grep -qE 'grep -qi "\$NODE_ID"' <<<"$layout_block"
+check "and never the full one" $(( $? == 0 ? 1 : 0 )) "$layout_block"
+
+# Against Garage's real output, both ways round.
+PRESENT='==== CURRENT CLUSTER LAYOUT ====
+ID                Tags  Zone  Capacity  Usable capacity
+268fd14c29aea569  []    dc1   93.1 GiB  93.1 GiB (100.0%)
+Current cluster layout version: 1'
+FULL_ID="268fd14c29aea569b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4"
+grep -qi "${FULL_ID:0:16}" <<<"$PRESENT"
+check "the truncated id matches an existing layout" $? ""
+grep -qi "$FULL_ID" <<<"$PRESENT"
+check "the full id does not — which is what broke it" $(( $? == 0 ? 1 : 0 )) ""
+
+# The version to apply is read from Garage's own hint rather than computed.
+# Hardening rather than a proven bug: on the output shape seen so far the old
+# expression happened to land on the same number, because the hint is last.
+STAGED='==== CURRENT CLUSTER LAYOUT ====
+Current cluster layout version: 3
+
+==== STAGED ROLE CHANGES ====
+To enact the staged role changes, type:
+        garage layout apply --version 4'
+v="$(grep -oE "apply --version [0-9]+" <<<"$STAGED" | grep -oE "[0-9]+" | tail -1)"
+[[ "$v" == "4" ]]
+check "the version comes from Garage's own hint" $? "got $v"
+grep -q 'apply --version' <<<"$layout_block"
+check "and the script reads it that way" $? ""
+grep -q 'current:-0' <<<"$layout_block"
+check "with current+1 as the fallback" $? ""
+
 # ─── Nothing starts before that file is a file ──────────────────────────────
 STARTER="$REPO/scripts/start-services.sh"
 grep -q 'garage.toml' "$STARTER"

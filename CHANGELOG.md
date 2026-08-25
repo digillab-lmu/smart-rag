@@ -13,6 +13,20 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **Phase 7b worked exactly once per installation.** `garage node id` returns
+  the full 64-character key; `garage layout show` prints only its first
+  sixteen. The check for "is a layout already applied" compared the full id
+  against that display, so it never matched — every re-run took the
+  no-layout-yet branch, tried to assign a layout that was already correct, and
+  died on `layout apply`. Invisible until a `--continue`, which is exactly
+  when it matters. The script had already truncated the same id for display
+  two lines earlier.
+
+  The version to apply is now read from the hint Garage prints after staging
+  a change, with current + 1 as the fallback. Hardening rather than a second
+  bug: on the output seen so far the previous expression — the last "version
+  N" anywhere in the output — happened to land on the same number.
+
 - **The same failure one phase later: the staged Weaviate schema.** Phase 4
   writes three things. `.env` is in the repository and survives anything; the
   other two land under `BASE_DATA_PATH`, which is the one directory an

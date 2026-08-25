@@ -85,7 +85,15 @@ ok "$(t garage_node_up "${NODE_ID:0:16}")"
 # ─── 2. Layout ───────────────────────────────────────────────────────────────
 # The step with no MinIO equivalent, and the one whose absence is invisible:
 # without it Garage is healthy and refuses every write.
-if g layout show 2>/dev/null | grep -qi "$NODE_ID"; then
+# The SHORT id, which is the only form `layout show` prints. `node id`
+# returns the full 64-character key and this compared that against a display
+# showing its first sixteen — so the match never happened, the branch below
+# ran on every re-run, and `layout apply` failed against a layout that was
+# already correct. Phase 7b was therefore usable exactly once per
+# installation, which nobody noticed until a --continue after a data wipe.
+# Line 83 already truncates for display; this is the same truncation.
+NODE_ID_SHORT="${NODE_ID:0:16}"
+if g layout show 2>/dev/null | grep -qi "$NODE_ID_SHORT"; then
     ok "$(t garage_layout_present)"
 else
     info "$(t garage_layout_applying)"
@@ -97,11 +105,20 @@ else
         g layout show | sed 's/^/    /'
         exit 1
     fi
-    # The version to apply is whatever the pending layout has become — hard-
-    # coding 1 works exactly once and then fails for the rest of the
-    # installation's life.
-    next_version="$(g layout show 2>/dev/null | grep -oiE 'version [0-9]+' | grep -oE '[0-9]+' | tail -1)"
-    next_version="${next_version:-1}"
+    # Garage prints the number to use itself, in the hint it gives after
+    # staging a change ("To enact the staged role changes, type: garage layout
+    # apply --version N"). Taking it from there beats arithmetic on the
+    # current version, and beats what stood here before: the last "version N"
+    # anywhere in the output, which on a staged layout is as likely to be the
+    # current one as the next. Falls back to current + 1.
+    layout_out="$(g layout show 2>/dev/null || true)"
+    next_version="$(grep -oE 'apply --version [0-9]+' <<<"$layout_out" \
+                    | grep -oE '[0-9]+' | tail -1)"
+    if [[ -z "$next_version" ]]; then
+        current="$(grep -oiE 'layout version: *[0-9]+' <<<"$layout_out" \
+                   | grep -oE '[0-9]+' | tail -1)"
+        next_version=$(( ${current:-0} + 1 ))
+    fi
     if g layout apply --version "$next_version" >/dev/null 2>&1; then
         ok "$(t garage_layout_applied "$next_version")"
     else
