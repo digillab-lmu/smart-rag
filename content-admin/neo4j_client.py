@@ -136,16 +136,32 @@ class Neo4jClient:
         return _rows(results[0]) if results else []
 
     def counts(self, course_id: str) -> dict:
+        """How many concepts and how many prerequisites this course has.
+
+        Two statements, not one. Counted together they were a cartesian
+        product: the OPTIONAL MATCH for the edges stood in no relation to the
+        concept it was matched beside, so every concept was paired with every
+        edge and the page reported concepts × edges. A course with 43 concepts
+        and 5 prerequisites announced 215 of them — and the number looked
+        plausible enough that it took an operator asking about it.
+        """
         results = self._run([{
+            "statement": ("MATCH (c:Concept {course_id: $course}) "
+                          "RETURN count(c) AS concepts"),
+            "parameters": {"course": course_id},
+        }, {
             "statement": (
-                "MATCH (c:Concept {course_id: $course}) "
-                "OPTIONAL MATCH (:Concept {course_id: $course})-[r:PREREQUISITE_FOR]->"
+                "MATCH (:Concept {course_id: $course})-[r:PREREQUISITE_FOR]->"
                 "(:Concept {course_id: $course}) "
-                "RETURN count(DISTINCT c) AS concepts, count(r) AS edges"),
+                "RETURN count(r) AS edges"),
             "parameters": {"course": course_id},
         }])
-        rows = _rows(results[0]) if results else []
-        return rows[0] if rows else {"concepts": 0, "edges": 0}
+        out = {"concepts": 0, "edges": 0}
+        for result in results:
+            rows = _rows(result)
+            if rows:
+                out.update(rows[0])
+        return out
 
     def unassigned_count(self) -> int:
         """Concepts from before the graph knew about courses.

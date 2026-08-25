@@ -105,6 +105,13 @@
        still inside what is comfortable to read and no longer looks like a
        different layout from the fields underneath it. */
     p, li, .note { max-width: 92ch; }
+    /* A note written as a <span> is an inline box, and max-width does nothing
+       to one — so half the explanations on a page wrapped at the measure and
+       the other half ran the full width of the container, which reads as two
+       different layouts on one page. Reported from the graph page and true on
+       eight others. inline-block gives the box a width to respect while
+       leaving it on the same line as whatever it follows. */
+    span.note { display: inline-block; }
     /* Help that belongs to one field follows that field's width instead: it
        is read in the same glance as the input, not as prose. */
     label + .note, input + .note, textarea + .note, select + .note { max-width: none; }

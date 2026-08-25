@@ -13,6 +13,21 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **The graph page reported concepts × edges as the number of
+  prerequisites.** Both were counted in one Cypher statement whose edge match
+  stood in no relation to the concept matched beside it, so every concept was
+  paired with every edge. A course with 43 concepts and 5 prerequisites
+  announced **215** — plausible enough that it survived until an operator
+  asked about it. Counted separately now.
+
+- **Half the explanations on a page ran the full width, the other half wrapped
+  at the measure.** A note written as `<span class="note">` is an inline box,
+  and `max-width` does nothing to one — so the same sentence looked like a
+  different layout depending on which tag it happened to use. True on nine
+  templates. Fixed once in the stylesheet rather than in twenty-five places.
+
+### Fixed
+
 - **Chatflow ids were read from the database in no defined order.** Three
   queries selected them without `ORDER BY`, so the order followed the physical
   rows and changed after any unrelated update to a slot — and it reaches the
@@ -70,6 +85,15 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
   afterwards is refused rather than resurrecting it.
 
 ### Added
+
+- **The graph page explains itself.** Five short paragraphs, open by default:
+  what the map is, how to fill it, how to check it, what to watch for, and
+  what to do if it goes wrong. Everything on that page is new to whoever opens
+  it, and none of the consequences are visible from the controls.
+
+  The button that writes the proposal said **"Run against Neo4j"** — the name
+  of a product somebody installed, not of the thing that is about to happen to
+  their course. It now says "Write this into the course's graph".
 
 - **The proposal can be edited as rows, and the drawing answers questions.**
   Long names are wrapped over up to three lines and the boxes grow to hold

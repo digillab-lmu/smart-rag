@@ -205,6 +205,24 @@ check("and both ends are matched, never created",
           for st in edge_stmts),
       "an edge that creates its endpoints invents concepts nobody proposed")
 
+# Counting concepts and edges in one statement multiplies them: the edge
+# match stands in no relation to the concept matched beside it, so every
+# concept is paired with every edge. A live course with 43 concepts and 5
+# prerequisites announced 215 — plausible enough that it took an operator
+# asking about it.
+r = Recorder()
+r.counts("mathe-1")
+count_stmts = [st["statement"] for st in r.sent]
+check("concepts and edges are counted separately", len(count_stmts) == 2,
+      count_stmts)
+check("and no statement counts across both",
+      not any("count(c)" in st and "count(r)" in st for st in count_stmts),
+      "one statement over both is a cartesian product")
+check("no count query pairs a concept match with an unrelated edge match",
+      not any(st.count("MATCH") > 1 and "PREREQUISITE_FOR" in st
+              and "(c:Concept" in st for st in count_stmts),
+      count_stmts)
+
 for method, args in (("concepts", ("mathe-1",)), ("edges", ("mathe-1",)),
                      ("counts", ("mathe-1",)),
                      ("delete_concept", ("mathe-1", "A")),

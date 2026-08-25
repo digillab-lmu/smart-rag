@@ -4,6 +4,16 @@
 <h1>{{ t('graph_heading') }}</h1>
 <p class="note">{{ t('graph_intro') }}</p>
 
+{# Everything on this page is new to whoever opens it, and the consequences of
+   getting it wrong are not obvious from the controls. Open by default rather
+   than hidden behind a summary: a first-time reader does not know to look. #}
+<details open style="margin:.8em 0;padding:.6em .8em;border:1px solid #ddd;border-radius:6px">
+  <summary><strong>{{ t('graph_howto_heading') }}</strong></summary>
+  {% for i in range(1, 6) %}
+  <p class="note">{{ t('graph_howto_' ~ i)|safe }}</p>
+  {% endfor %}
+</details>
+
 
 {# Concepts from before the graph knew about courses. Not moved silently:
    they belong to whichever course existed at the time, and only a person

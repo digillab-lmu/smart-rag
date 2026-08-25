@@ -228,6 +228,19 @@ client.post("/api/graph-build",
             json={"build_id": build["id"], "state": "running",
                   "stats": {"documents": 1}}, headers=HEAD)
 page = client.get("/graph-guidance").get_data(as_text=True)
+# Everything on this page is new to whoever opens it, and the consequences of
+# getting it wrong are not visible from the controls.
+check("the page explains itself before anything else",
+      "How this page works" in page or "Wie diese Seite funktioniert" in page,
+      "an operator who has never seen a concept map cannot infer what the "
+      "buttons will do to their course")
+check("and the explanation is open, not hidden behind a click",
+      "<details open" in page,
+      "a first-time reader does not know to look inside a summary")
+check("no button names the database instead of the act",
+      "Neo4j" not in page,
+      "\"Run against Neo4j\" tells somebody which product is installed, not "
+      "what pressing it does to their course")
 check("a running build is visible on the page",
       "build is running" in page.lower(), "")
 check("and the start button is gone while it runs",

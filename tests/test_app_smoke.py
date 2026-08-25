@@ -532,6 +532,42 @@ for tpl in sorted(TEMPLATES.glob("*.html")):
         failures.append(f"{tpl.name}: renders the flash messages itself, so "
                         "base.html and the page both print them")
 
+def assert_that(name, ok, detail=""):
+    """This file's own `check` takes an HTTP response; these are plain
+    assertions about the templates, so they get their own name rather than
+    overloading it."""
+    if not ok:
+        failures.append(f"{name}: {detail}")
+
+
+# ─── One measure per page ───────────────────────────────────────────────────
+# Reported by the operator, and true on nine templates: "die Texte sind in
+# unterschiedlicher Breite". Explanations written as <p class="note"> wrapped
+# at the measure; the same explanation written as <span class="note"> ran the
+# full width of the container, because max-width does nothing to an inline
+# box. On one page that reads as two different layouts.
+_TPL = Path(__file__).resolve().parent.parent / "content-admin" / "templates"
+if not _TPL.is_dir() and Path("/app/templates").is_dir():
+    _TPL = Path("/app/templates")
+base_css = (_TPL / "base.html").read_text()
+
+assert_that("prose has a measure", "p, li, .note { max-width: 92ch; }" in base_css, "")
+assert_that("and an inline note is given a box to apply it to",
+      "span.note { display: inline-block; }" in base_css,
+      "max-width has no effect on an inline element, so these ran full width "
+      "beside paragraphs that did not")
+
+# Nothing should be setting its own width in a way that reintroduces the
+# split. A style attribute with a hard width on a note is the shape to catch.
+import re as _re2  # noqa: E402
+for tpl in sorted(_TPL.glob("*.html")):
+    for m in _re2.finditer(r'class="note"[^>]*style="([^"]*)"', tpl.read_text()):
+        if _re2.search(r"\bwidth\s*:", m.group(1)):
+            assert_that(f"{tpl.name}: no note sets its own width", False, m.group(1))
+            break
+    else:
+        assert_that(f"{tpl.name}: no note sets its own width", True)
+
 if failures:
     print("FAILURES:")
     for f in failures:
