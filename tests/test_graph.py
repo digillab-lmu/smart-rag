@@ -191,8 +191,19 @@ check("adopting old concepts gives them a key",
       (APP_DIR / "neo4j_client.py").read_text(),
       "an adopted concept without a key is invisible to the next MERGE, "
       "which then creates a second node beside it")
+# Matched on both ends and merged in the middle. Written as intent rather
+# than as one literal string: the relationship acquired a variable when it
+# started carrying provenance, and a check on the exact text failed for a
+# change that kept every property it was guarding.
+edge_stmts = [st["statement"] for st in r.sent if "PREREQUISITE_FOR" in st["statement"]]
+check("an edge statement is sent", bool(edge_stmts), r.sent)
 check("edges are merged onto existing concepts",
-      any("MERGE (a)-[:PREREQUISITE_FOR]->(b)" in st["statement"] for st in r.sent), "")
+      any(re.search(r"MERGE \(a\)-\[\w*:PREREQUISITE_FOR\]->\(b\)", st)
+          for st in edge_stmts), edge_stmts)
+check("and both ends are matched, never created",
+      all(st.count("MATCH") >= 2 and "MERGE (a:Concept" not in st
+          for st in edge_stmts),
+      "an edge that creates its endpoints invents concepts nobody proposed")
 
 for method, args in (("concepts", ("mathe-1",)), ("edges", ("mathe-1",)),
                      ("counts", ("mathe-1",)),

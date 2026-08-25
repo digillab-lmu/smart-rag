@@ -377,9 +377,31 @@ protect are automatic detection and reversibility.
      them" is the data saying, without being asked, that the course holds
      unrelated material. It is also a legitimate result — a course may have
      two strands — so it is a report, not a refusal.
-  6. **The build is scoped, and the scope is remembered.** Which agents take
-     part is a choice, defaulting to all. Excluding a colleague's unrelated
-     agent becomes deliberate rather than a thing you failed to prevent.
+  6. **The build is scoped by a checkbox on the agent** (decided 2026-08-25):
+     *include this agent's material in the concept map*, default on. A scope
+     chosen at build time is a decision nobody records; a checkbox beside the
+     agent is a property, visible to whoever configures it rather than only to
+     whoever builds. Default on, because a default of off makes the feature
+     look broken — nothing would ever enter the map. The default is only
+     delicate for an agent added *after* a build, and that is not solved by
+     the default: those are listed before the next build and their inclusion
+     asked for, so the ordinary case stays quiet and the awkward one is
+     visible without anybody having read anything first.
+
+     **Unticking removes nothing by itself, and the removal is not a
+     workflow.** Building means deciding — many model calls, long, with rate
+     limits — which is what n8n is for. Removing means bookkeeping: with
+     provenance, "delete the concepts supported only by these documents" is
+     one Cypher transaction over data already in the database, and it belongs
+     with every other graph write in `neo4j_client`, synchronous, with a
+     preview and a confirmation. The deciding argument is not speed but
+     atomicity: a graph whose concepts are gone and whose edges remain is
+     worse than either clean state, and a removal spread across the nodes of
+     a workflow engine cannot promise it ran whole.
+
+     Two states the interface must keep apart, or the checkbox lies: *no
+     longer included* and *its contribution is still in the graph*. Likewise
+     the other way — ticking a box adds nothing until the next build.
   7. **Hand-written descriptions are protected.** Today a model-supplied
      description overwrites one a person wrote — `coalesce` only guards the
      empty case. A curated concept must be marked as such, and a rebuild must
