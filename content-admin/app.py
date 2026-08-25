@@ -48,6 +48,7 @@ from llm_client import LLMError, optimize_field, suggest_keywords
 from n8n_client import N8nClient, N8nError
 from weaviate_client import WeaviateClient, WeaviateError
 import graph_builds
+import graph_view
 import neo4j_client
 from neo4j_client import Neo4jClient, Neo4jError
 
@@ -2149,7 +2150,7 @@ def graph_guidance():
                                concepts=[], edges=[],
                                counts={"concepts": 0, "edges": 0}, unassigned=0,
                                proposal=proposal, stale=None, build=None,
-                               undoable=[])
+                               view=None, undoable=[])
 
     # Asked on every load rather than trusted to whoever deleted something.
     # A document can leave the course by paths that never touch this page,
@@ -2182,9 +2183,21 @@ def graph_guidance():
             # one reads as the reason the box is full.
             warning = warning or _t("graph_build_older_proposal")
 
+    # The same proposal, rearranged for reading. Read-only: the textarea is
+    # still the only thing that gets submitted, so there is one writing path
+    # and the picture cannot disagree with what is applied.
+    view = None
+    if proposal:
+        try:
+            view = graph_view.view_of(json.loads(proposal))
+        except (ValueError, TypeError, KeyError) as exc:
+            # A proposal being edited by hand is unparseable half the time.
+            # That is not an error worth shouting about; the box still works.
+            logger.debug("Proposal not renderable while being edited: %s", exc)
+
     return render_template("graph_guidance.html", error=error, success=success,
                            warning=warning, material_note=material_note,
                            concepts=concepts, edges=edges, counts=counts,
                            unassigned=unassigned, proposal=proposal,
-                           stale=stale, build=build,
+                           stale=stale, build=build, view=view,
                            undoable=graph_builds.undoable(course_id))

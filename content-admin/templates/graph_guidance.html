@@ -153,6 +153,53 @@
 </details>
 
 {% if material_note %}<p class="note">{{ material_note }}</p>{% endif %}
+
+{% if view %}
+{# The proposal, rearranged for reading. Read-only on purpose: the textarea
+   below is still the only thing submitted, so the picture can never disagree
+   with what gets applied. #}
+<h3>{{ t('graph_view_heading') }}</h3>
+<p class="note">{{ t('graph_view_summary', view.concepts|length, view.edges|length, view.orphans|length) }}</p>
+
+{% if view.svg %}
+<h4>{{ t('graph_view_order') }}</h4>
+<p class="note">{{ t('graph_view_order_note') }}</p>
+<div style="overflow-x:auto;border:1px solid #ddd;border-radius:6px;padding:.5em;background:#fff">
+  {{ view.svg|safe }}
+</div>
+<table style="margin-top:.6em">
+  <tr><th>{{ t('graph_view_before') }}</th><th></th><th>{{ t('graph_view_after') }}</th><th>{{ t('graph_view_because') }}</th></tr>
+  {% for e in view.edges %}
+  <tr>
+    <td>{{ e.before }}</td><td>&rarr;</td><td>{{ e.after }}</td>
+    <td class="note">{% for s in e.sources %}<code>{{ s }}</code>{% if not loop.last %}, {% endif %}{% else %}&mdash;{% endfor %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="note"><strong>{{ t('graph_view_no_edges') }}</strong></p>
+{% endif %}
+
+<h4>{{ t('graph_view_concepts') }}</h4>
+{% for source, rows in view.groups.items() %}
+<details{% if view.groups|length == 1 %} open{% endif %}>
+  <summary><code>{{ source }}</code> &middot; {{ rows|length }}</summary>
+  <table>
+    <tr><th>{{ t('graph_view_name') }}</th><th>{{ t('graph_view_where') }}</th>
+        <th>{{ t('graph_view_what') }}</th><th>{{ t('graph_view_linked') }}</th></tr>
+    {% for c in rows %}
+    <tr>
+      <td>{{ c.name }}</td>
+      <td class="note">{{ c.chapter or '' }}{% if c.section_id %} · {{ c.section_id }}{% endif %}</td>
+      <td class="note">{{ c.description or '' }}</td>
+      <td>{% if c.name in view.connected %}&#10003;{% else %}<span style="opacity:.4">&ndash;</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</details>
+{% endfor %}
+{% endif %}
+
 <p class="note">{{ t('graph_run_intro') }}</p>
 <form method="post">
   <input type="hidden" name="action" value="apply">

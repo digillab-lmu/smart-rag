@@ -61,6 +61,23 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Added
 
+- **The proposal is shown as a drawing, a table and a number — not only as
+  JSON.** The thing being reviewed is a graph, and JSON is the worst possible
+  rendering of one. The prerequisites are now drawn left to right in teaching
+  order, with arrowheads so the direction is visible; the concepts are tabled
+  under the work each came from, with chapter, one-line description and a mark
+  for whether anything connects to them; and the number of concepts nothing
+  connects to is stated outright, because a map that is mostly unconnected is
+  a vocabulary list and that judgement belongs to the operator.
+
+  Rendered on the server as plain SVG — no library, nothing fetched, and names
+  escaped, since they come from a model reading uploaded documents into a page.
+  It is strictly read-only: the text field is still the only thing submitted,
+  so the picture can never disagree with what is applied. And it does not
+  flatter the proposal: an edge naming a concept that is not in the list is
+  neither drawn nor tabled, because showing a connection that will not exist
+  is worse than showing none.
+
 - **A build can be taken back out of the graph.** The operator asked the
   honest question about the review — *how realistic is it that a person can
   actually check this?* — and for forty-three concepts in a JSON box the

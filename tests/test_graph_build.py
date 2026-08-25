@@ -272,6 +272,17 @@ check("with its provenance intact for the reviewer to check",
       "a citation the reviewer cannot see is one they cannot check")
 check("and the page says what it was drafted from",
       "drafted from" in page.lower() or "entworfen aus" in page.lower(), "")
+# The proposal is a graph, and JSON is the worst rendering of one. The page
+# has to show it as something a person can judge, or the review is a
+# formality.
+check("the proposal is also shown as something other than JSON",
+      "What this proposal says" in page or "Was dieser Vorschlag sagt" in page,
+      "a reviewer handed only a text field cannot check a graph")
+check("with the concepts tabled by the work they came from",
+      "agent_1/a.md" in page and "<details" in page, "")
+check("and the JSON is still the thing that gets submitted",
+      'name="proposal"' in page,
+      "two writing paths would let the picture disagree with what is applied")
 
 # A late duplicate delivery must not overwrite what is being read.
 client.post("/api/graph-build",
