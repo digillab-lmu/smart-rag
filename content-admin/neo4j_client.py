@@ -238,6 +238,48 @@ class Neo4jClient:
         self._run(statements)
         return {"concepts": len(concepts), "edges": len(edges)}
 
+    def by_source(self, course_id: str) -> dict:
+        """How much of the map each document is holding up.
+
+        One query rather than a preview per document: the documents page shows
+        this for every row, and forty round trips to render a list is how a
+        page becomes something people stop opening.
+
+        `only` is the number that matters when somebody is about to delete.
+        "This document supports 12 concepts, 5 of which nothing else
+        supports" is a different decision from "12 concepts, all of them also
+        in three other works", and the difference is invisible without it.
+        """
+        results = self._run([{
+            "statement": (
+                "MATCH (c:Concept {course_id: $course}) "
+                "UNWIND coalesce(c.sources, []) AS src "
+                "RETURN src AS source, count(c) AS concepts, "
+                "       count(CASE WHEN size(c.sources) = 1 THEN 1 END) AS only"),
+            "parameters": {"course": course_id},
+        }])
+        return {r["source"]: {"concepts": r["concepts"], "only": r["only"]}
+                for r in (_rows(results[0]) if results else [])}
+
+    def stale_sources(self, course_id: str, present: list[str]) -> dict:
+        """Citations naming material this course no longer holds.
+
+        A document can leave the course by paths that never touch this file —
+        a bulk clean-up, a course-wide operation, a future feature nobody has
+        written yet. Rather than trusting each of them to remember the graph,
+        the graph page asks this question every time it is opened, so a
+        dangling citation is something the operator is told about rather than
+        something they find out when a proposal cites a work that is gone.
+        """
+        have = {str(x).strip() for x in present if str(x).strip()}
+        counts = self.by_source(course_id)
+        stale = {src: n for src, n in counts.items() if src not in have}
+        return {
+            "sources": sorted(stale),
+            "concepts": sum(n["concepts"] for n in stale.values()),
+            "orphaned": sum(n["only"] for n in stale.values()),
+        }
+
     def contribution_of(self, course_id: str, documents: list[str]) -> dict:
         """What would go, and what would only shrink, if these documents left.
 

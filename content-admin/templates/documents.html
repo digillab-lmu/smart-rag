@@ -85,6 +85,7 @@
     <th>{{ t('docs_col_agent') }}</th>
     <th>{{ t('docs_col_meta') }}</th>
     <th>{{ t('docs_col_chunks') }}</th>
+    <th>{{ t('docs_col_graph') }}</th>
     <th>{{ t('docs_col_action') }}</th>
   </tr>
   {% for d in documents %}
@@ -118,11 +119,32 @@
     </td>
     <td>{{ d.chunks }}</td>
     <td>
+      {% set gw = graph_weight.get(d.source_file) %}
+      {% if gw %}<span title="{{ t('docs_graph_weight_title') }}">{{ gw.concepts }}{% if gw.only %} ({{ gw.only }}){% endif %}</span>
+      {% else %}<span style="opacity:.5">–</span>{% endif %}
+    </td>
+    <td>
+      {% set g = graph_weight.get(d.source_file) %}
       <form method="post" style="margin: 0;"
-            onsubmit='return confirm({{ t("docs_delete_confirm", "@@TITLE@@", "@@N@@")|tojson }}.replace("@@TITLE@@", {{ (d.source_title or d.source_file)|tojson }}).replace("@@N@@", {{ d.chunks|tojson }}));'>
+            onsubmit='return confirm(
+              {{ t("docs_delete_confirm", "@@TITLE@@", "@@N@@")|tojson }}
+                .replace("@@TITLE@@", {{ (d.source_title or d.source_file)|tojson }})
+                .replace("@@N@@", {{ d.chunks|tojson }})
+              {%- if g %} + "\n\n" + {{ t("docs_delete_graph_warn", "@@C@@", "@@O@@")|tojson }}
+                .replace("@@C@@", {{ g.concepts|tojson }})
+                .replace("@@O@@", {{ g.only|tojson }}){%- endif %});'>
         <input type="hidden" name="source_title" value="{{ d.source_title }}">
+        <input type="hidden" name="source_file" value="{{ d.source_file }}">
         {% if d.agent_id is not none %}
         <input type="hidden" name="agent_id" value="{{ d.agent_id }}">
+        {% endif %}
+        {# Only offered when there is something to remove. A checkbox that
+           never does anything teaches people to ignore it. #}
+        {% if g %}
+        <label style="display:block;font-size:.85em;margin-bottom:.35em">
+          <input type="checkbox" name="also_graph" value="1" checked>
+          {{ t('docs_delete_also_graph') }}
+        </label>
         {% endif %}
         <button type="submit" class="secondary" style="margin-top: 0;">{{ t('docs_delete') }}</button>
       </form>

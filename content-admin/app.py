@@ -1704,6 +1704,8 @@ def documents():
             error = _t("docs_job_dismiss_failed")
     elif request.method == "POST":
         title = request.form.get("source_title", "").strip()
+        source_file = request.form.get("source_file", "").strip()
+        also_graph = request.form.get("also_graph") == "1"
         raw_agent = request.form.get("agent_id", "")
         agent_id = int(raw_agent) if raw_agent.isdigit() else None
         if not title:
@@ -1718,6 +1720,29 @@ def documents():
                 logger.info("Deleted %s chunk(s) of %r (course=%s, agent=%s)",
                             removed, title, course_id, agent_id)
                 success = _t("docs_deleted", removed, title)
+                # The concept map is built from these documents, so deleting
+                # one changes it. Doing that silently leaves concepts citing a
+                # work the course no longer has — and the operator finds out
+                # when a proposal cites something that is gone.
+                #
+                # Deliberately after the chunks are gone, and deliberately not
+                # in the same breath: if this fails, the document is still
+                # deleted and the graph is merely stale, which the graph page
+                # reports. The reverse order could remove a document's
+                # concepts and then fail to remove the document.
+                if also_graph and source_file:
+                    try:
+                        gone = _neo4j_client().remove_documents(
+                            course_id, [source_file])
+                    except (Neo4jError, neo4j_client.GraphInputError) as exc:
+                        logger.error("Graph clean-up after deleting %r failed: %s",
+                                     source_file, exc)
+                        success = _t("docs_deleted_graph_failed", removed, title)
+                    else:
+                        success = _t("docs_deleted_with_graph", removed, title,
+                                     gone.get("concepts_removed", 0),
+                                     gone.get("concepts_kept", 0),
+                                     gone.get("edges_removed", 0))
 
     documents: list[dict] = []
     total = 0
@@ -1733,12 +1758,43 @@ def documents():
         # showing a short list as if it were complete.
         truncated = sum(d["chunks"] for d in documents) < total
 
+    # What each document is holding up in the concept map, so the weight of a
+    # deletion is on the page before the click rather than in the aftermath.
+    # A graph that cannot be reached is not an error here: the documents page
+    # has its own job, and it still does it.
+    graph_weight: dict = {}
+    try:
+        graph_weight = _neo4j_client().by_source(course_id)
+    except Exception as exc:  # noqa: BLE001 — a display column, never a blocker
+        logger.info("Graph weights unavailable for the document list: %s", exc)
+
     return render_template(
         "documents.html", documents=documents, slots=slots, truncated=truncated,
-        jobs=jobs, total=total, error=error, success=success)
+        jobs=jobs, total=total, error=error, success=success,
+        graph_weight=graph_weight)
 
 
 # ─── Knowledge-graph guidance ────────────────────────────────────────────────────
+def _present_sources(course_id: str) -> list[str]:
+    """The documents this course currently holds, by source_file.
+
+    source_file rather than the title: provenance has to survive a document
+    being re-titled, and two agents may legitimately upload the same filename
+    — the agent is part of this path, the title is not.
+    """
+    try:
+        client = _weaviate_client()
+        return [d.get("source_file", "") for d
+                in client.list_documents(g.course["collection"], course_id)
+                if d.get("source_file")]
+    except Exception as exc:  # noqa: BLE001
+        # Refusing to guess: an empty list here would look like "no documents
+        # at all", and every citation in the graph would be reported stale.
+        raise Neo4jError(
+            "Could not read the course's documents, so which citations are "
+            f"stale cannot be decided: {exc}") from exc
+
+
 @app.route("/graph-guidance", methods=["GET", "POST"])
 @auth.login_required
 @with_course
@@ -1767,6 +1823,20 @@ def graph_guidance():
                 name = request.form.get("name", "")
                 removed = client.delete_concept(course_id, name)
                 success = _t("graph_deleted", name) if removed else _t("graph_not_found", name)
+            elif action == "clean_stale":
+                # Removing what only vanished material supported. Same
+                # machinery as unticking an agent, reached from the other
+                # end: no model, no workflow, one transaction.
+                present = _present_sources(course_id)
+                stale = client.stale_sources(course_id, present)
+                if not stale["sources"]:
+                    success = _t("graph_stale_none")
+                else:
+                    gone = client.remove_documents(course_id, stale["sources"])
+                    success = _t("graph_stale_cleaned",
+                                 gone.get("concepts_removed", 0),
+                                 gone.get("concepts_kept", 0),
+                                 gone.get("edges_removed", 0))
             elif action == "adopt":
                 moved = client.adopt_unassigned(course_id)
                 success = _t("graph_adopted", moved, g.course["name"])
@@ -1835,9 +1905,21 @@ def graph_guidance():
                                material_note=material_note,
                                concepts=[], edges=[],
                                counts={"concepts": 0, "edges": 0}, unassigned=0,
-                               proposal=proposal)
+                               proposal=proposal, stale=None)
+
+    # Asked on every load rather than trusted to whoever deleted something.
+    # A document can leave the course by paths that never touch this page,
+    # and a citation to material that is gone should be something the
+    # operator is told about, not something a later proposal reveals.
+    stale = None
+    try:
+        found = client.stale_sources(course_id, _present_sources(course_id))
+        if found["concepts"]:
+            stale = found
+    except (Neo4jError, Exception) as exc:  # noqa: BLE001 — a notice, not the page
+        logger.info("Could not check for stale citations: %s", exc)
 
     return render_template("graph_guidance.html", error=error, success=success,
                            warning=warning, material_note=material_note,
                            concepts=concepts, edges=edges, counts=counts,
-                           unassigned=unassigned, proposal=proposal)
+                           unassigned=unassigned, proposal=proposal, stale=stale)

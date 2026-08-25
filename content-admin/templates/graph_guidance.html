@@ -8,6 +8,20 @@
 {# Concepts from before the graph knew about courses. Not moved silently:
    they belong to whichever course existed at the time, and only a person
    knows which one that was. #}
+{% if stale %}
+<div class="warning">
+  <p>{{ t('graph_stale_sources', stale.concepts, stale.orphaned) }}</p>
+  <details>
+    <summary>{{ t('graph_stale_which') }}</summary>
+    <ul>{% for s in stale.sources %}<li><code>{{ s }}</code></li>{% endfor %}</ul>
+  </details>
+  <form method="post" style="margin:0">
+    <input type="hidden" name="action" value="clean_stale">
+    <button type="submit" class="secondary">{{ t('graph_stale_clean') }}</button>
+  </form>
+</div>
+{% endif %}
+
 {% if unassigned %}
 <div class="error">
   {{ t('graph_unassigned', unassigned) }}

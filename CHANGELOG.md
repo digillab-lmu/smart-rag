@@ -13,6 +13,22 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Added
 
+- **Deleting a document now says what it does to the concept map, before you
+  do it.** The map is built from the course's documents, so removing one
+  leaves concepts citing a work the course no longer holds — and nothing said
+  so. The document list now shows, per document, how many concepts it holds
+  up and how many of those nothing else supports; the confirmation repeats it;
+  and the clean-up is offered as a ticked box rather than done silently,
+  because replacing a document with a newer edition is not the same act as
+  deleting one that was wrong.
+
+  The graph page also checks for itself, on every load, whether anything cites
+  material the course no longer has — documents can leave by paths that never
+  touch the document list — and offers to remove exactly what only the missing
+  material supported. If the document list cannot be read at all, it reports
+  nothing and cleans nothing: an empty list reads as "no documents", which
+  would condemn every citation in the map.
+
 - **The knowledge graph can now be proposed from the course's own material.**
   Until now the concept list and its prerequisite edges had to be produced by
   hand: the page offered a prompt to copy into some chat window and a box to
