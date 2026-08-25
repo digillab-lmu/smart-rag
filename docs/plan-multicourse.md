@@ -269,6 +269,77 @@ question that is still with the data protection officer.
 nothing, with the "nothing" counted and visible — a silent 40% miss rate
 would make every number computed on top of it wrong in the same direction.
 
+## Phase 7b · Building the concept map at the size a course actually is
+
+**Measured, 2026-08-25, on the test installation.** One course, four works,
+299 chunks. The outline the single-shot proposal sends keeps one entry per
+section — 257 entries, about 113,000 characters against a budget of 60,000.
+The operator got a proposal built from the first half of the course and a
+sentence saying so.
+
+Nothing collapsed: docling produces headings, and every document carried
+section metadata. But the `wissensbausteine` document turned 215 chunks into
+213 entries — there, one entry per section is one entry per chunk, and the
+outline is the corpus at 400 characters a piece. A larger budget moves that
+wall; it does not remove it. The target is up to ten agents in one course,
+each with its own material, so ten to forty times this.
+
+**The material never has to fit in one prompt.** The task is two halves that
+scale differently:
+
+  * **Concepts are found locally.** A concept is in a document; finding it
+    needs that document and nothing else. Per work, and never again for a
+    work already read.
+  * **Prerequisites are decided globally — over the concept list, not the
+    material.** Whether one concept precedes another is answered from names,
+    chapters and a sentence each. 500 concepts (`MAX_CONCEPTS`) in that form
+    is about 60,000 characters: one call. This step costs the same for forty
+    works as for four.
+
+**Shape (decided 2026-08-25).** Its own n8n workflow, driven by the strong
+model, allowed to take as long as it takes; the finished proposal is posted
+back and appears in the Content Admin's existing review box.
+
+  1. The Content Admin starts it and returns immediately.
+  2. The workflow reads the course's chunks from Weaviate, groups them by
+     document, and slices a document that is too large by chapter — so a
+     215-section work is several calls rather than one truncation.
+  3. One extraction call per slice: candidate concepts with a one-line
+     description and where they occur.
+  4. Merge by normalised name, keeping every occurrence. Near-synonyms are
+     *proposed* by one small call over the name list, never merged silently.
+     Over `MAX_CONCEPTS`, the list is cut by how many works mention a concept,
+     and what was cut is stated.
+  5. One edge call over the consolidated list, with each concept's position —
+     order in the course material is the strongest prerequisite signal there
+     is, and chapter and `section_id` already carry it.
+  6. Posted back to a token-protected endpoint, stored, shown for review.
+     Nothing reaches Neo4j without the review submit, exactly as now.
+
+**The single-shot Python route goes away with this.** Keeping it would mean
+two automated paths asking the same question differently, one of which
+silently sees half the course. The manual copy-a-prompt route stays — it
+needs no API key and no reachable provider, and it is the fallback when the
+workflow cannot run.
+
+**Cost, and the reason for a cache.** A full course is one call per document
+slice plus one for the edges. Re-running it from scratch after every upload
+would charge for the whole corpus each time, and then nobody would run it.
+Extraction results are therefore stored per document, keyed by a hash of its
+content: an unchanged work is never read twice, and a newly uploaded one
+costs one extraction plus the one edge pass.
+
+**Review is the part that quietly breaks.** Four works fit in a textarea;
+forty do not. Five hundred concepts as raw JSON is a block that gets waved
+through, and then "nothing is written without review" is true on paper and
+worthless in fact. The review has to group by document and show what is new
+against what the graph already holds.
+
+**Proven by** a build over a course whose material exceeds one prompt several
+times over, where the concept count rises with the material rather than
+stopping at the budget; a second run after one new upload that reads only the
+new document; and a proposal reaching Neo4j only through the review submit.
+
 ## Phase 8 · Moving the installation to another server (built 2026-08-19, one proof outstanding)
 
 Asked for while phase 4 was being proven: this deployment will move to
