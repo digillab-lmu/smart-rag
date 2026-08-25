@@ -323,11 +323,9 @@ _print_next_steps() {
     printf "          %s\n"                          "$(t next_flowise_2_name)"
     printf "          %s\n"                          "$(t next_flowise_2_perms)"
     printf "            • %s\n"                      "$(t next_flowise_perm_chatflows)"
-    printf "              %s\n"                      "$(t next_flowise_perm_chatflows_why)"
+    printf "            • %s\n"                      "$(t next_flowise_perm_agentflows)"
     printf "            • %s\n"                      "$(t next_flowise_perm_credentials)"
-    printf "            • %s\n"                      "$(t next_flowise_perm_variables)"
-    printf "          %s\n"                          "$(t next_flowise_2_view)"
-    printf "          %s\n\n"                        "$(t next_flowise_2_agentflows)"
+    printf "            • %s\n\n"                    "$(t next_flowise_perm_variables)"
 
     printf "  ${BOLD}2.${RESET} ${BOLD}%s${RESET}\n"  "$(t next_n8n)"
     printf "     ${BOLD}%s${RESET}\n\n"               "$n8n_url"

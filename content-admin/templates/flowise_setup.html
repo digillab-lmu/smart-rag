@@ -4,8 +4,18 @@
 <h1>{{ t('flowise_heading') }}</h1>
 <p>{{ t('flowise_intro') }}</p>
 <ol>
-  <li>{{ t('flowise_step1') }}</li>
-  <li>{{ t('flowise_step2_pre') }} <strong>{{ t('flowise_step2_path') }}</strong>.</li>
+  <li>
+    {% if flowise_url %}
+      {# The instance, as a link. Retyping a MagicDNS name from a screen is
+         the kind of small friction that turns a five-minute step into a
+         support question. #}
+      <a href="{{ flowise_url }}" target="_blank" rel="noopener">{{ t('flowise_step1_link') }}</a>
+      {{ t('flowise_step1_rest') }}
+    {% else %}
+      {{ t('flowise_step1') }}
+    {% endif %}
+  </li>
+  <li>{{ t('flowise_step2_pre') }} <strong>{{ t('flowise_step2_path') }}</strong>. {{ t('flowise_step2_note') }}</li>
   <li>{{ t('flowise_step3')|safe }}</li>
   <li>{{ t('flowise_step4') }}</li>
 </ol>

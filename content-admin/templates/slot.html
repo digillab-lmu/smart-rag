@@ -37,7 +37,15 @@
   <p class="note">{{ t('slot_examples_note') }}</p>
 
   {% for field in fields %}
-  <label for="{{ field }}">{{ field_labels.get(field) or field.replace('_', ' ').title() }}</label>
+  <label for="{{ field }}">
+    {{ field_labels.get(field) or field.replace('_', ' ').title() }}
+    {# The placeholder's own name, quietly. Whoever edits the system prompt
+       below sees {{ '{{' }}FIELD{{ '}}' }} there and has to match it to a
+       German label three screens up; without this that is a guess. Also the
+       honest answer to "is my input even used" — the name here is the name
+       in the prompt. #}
+    <code class="field-var">{{ '{{' }}{{ field }}{{ '}}' }}</code>
+  </label>
   {% if field_help.get(field) %}
   <p class="note" style="margin-top: 0.15rem;">{{ field_help.get(field) }}</p>
   {% endif %}

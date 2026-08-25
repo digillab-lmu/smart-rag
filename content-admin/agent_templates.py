@@ -287,7 +287,7 @@ AUTO_FILLED_FIELDS = {
 # text) is what actually shows the operator what a good answer looks like.
 FIELD_HELP_BY_LANG: dict[str, dict[str, str]] = {
     "en": {
-        "CONCEPT_LIST": "The specific concepts this agent should know about, one per line or comma-separated.",
+        "CONCEPT_LIST": "The specific concepts this agent should know about — one per line. Not comma-separated: a concept name may contain a comma itself, and then nobody can tell where one ends.",
         "CONCEPT_EXAMPLE": "One concrete concept this persona might mention or struggle with, to make their dialogue feel grounded.",
         "COURSE_KNOWLEDGE_DESCRIPTION": "A short paragraph summarizing what the whole course covers — gives the agent context for what it's retrieving.",
         "EXPERT_DOMAIN": "The specific field of expertise this agent should respond as an expert in.",
@@ -308,7 +308,7 @@ FIELD_HELP_BY_LANG: dict[str, dict[str, str]] = {
         "TOPIC_SUBTOPICS": "The subtopics/sections within this chapter, one per line.",
     },
     "de": {
-        "CONCEPT_LIST": "Die konkreten Konzepte, die dieser Agent kennen soll — eines pro Zeile oder durch Komma getrennt.",
+        "CONCEPT_LIST": "Die konkreten Konzepte, die dieser Agent kennen soll — eines pro Zeile. Nicht durch Komma getrennt: ein Konzeptname kann selbst ein Komma enthalten, und dann ist nicht mehr erkennbar, wo eines aufhört.",
         "CONCEPT_EXAMPLE": "Ein konkretes Konzept, das diese Person ansprechen könnte oder mit dem sie Schwierigkeiten hat — macht den Dialog greifbarer.",
         "COURSE_KNOWLEDGE_DESCRIPTION": "Ein kurzer Absatz dazu, was der gesamte Kurs behandelt — gibt dem Agenten den Rahmen für seine Recherche.",
         "EXPERT_DOMAIN": "Das Fachgebiet, in dem dieser Agent als Expertin bzw. Experte antworten soll.",
@@ -344,8 +344,8 @@ FIELD_HELP: dict[str, str] = FIELD_HELP_BY_LANG["en"]
 FIELD_EXAMPLES_BY_LANG: dict[str, dict[str, str]] = {
     "en": {
         "CONCEPT_LIST": (
-            "Working Memory\nCognitive Load Theory\nIntrinsic, Extraneous, and "
-            "Germane Load\nMultimedia Learning Principles"
+            "Working Memory\nCognitive Load Theory\nIntrinsic Load\n"
+            "Extraneous Load\nGermane Load\nMultimedia Learning Principles"
         ),
         "CONCEPT_EXAMPLE": (
             "Confusing intrinsic load (the inherent difficulty of the material) "
@@ -422,8 +422,9 @@ FIELD_EXAMPLES_BY_LANG: dict[str, dict[str, str]] = {
     },
     "de": {
         "CONCEPT_LIST": (
-            "Arbeitsgedächtnis\nCognitive Load Theory\nIntrinsische, extrinsische "
-            "und lernbezogene Belastung\nPrinzipien multimedialen Lernens"
+            "Arbeitsgedächtnis\nCognitive Load Theory\nIntrinsische Belastung\n"
+            "Extrinsische Belastung\nLernbezogene Belastung\n"
+            "Prinzipien multimedialen Lernens"
         ),
         "CONCEPT_EXAMPLE": (
             "Verwechslung von intrinsischer Belastung (der Schwierigkeit des "

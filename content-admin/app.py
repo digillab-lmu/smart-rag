@@ -405,6 +405,10 @@ def flowise_setup():
         "flowise_setup.html",
         error=error,
         success=success,
+        # The address to click, not one to retype. FLOWISE_PUBLIC_URL is what
+        # the wizard resolved for this deployment — domain or MagicDNS name —
+        # so the link works from wherever the operator is reading this.
+        flowise_url=(env.get("FLOWISE_PUBLIC_URL") or "").strip().rstrip("/"),
         already_set=bool(env.get("FLOWISE_API_KEY")),
     )
 

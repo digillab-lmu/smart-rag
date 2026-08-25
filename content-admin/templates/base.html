@@ -99,7 +99,19 @@
     /* Reading width for running text, independent of the page width. Applies
        to paragraphs and list items, not to table cells — a cell that wraps
        early makes a table taller for no gain. */
-    p, li, .note { max-width: 78ch; }
+    /* A measure for running text, not a column. 78ch was set when the page
+       itself was narrower; beside inputs and tables that now use the full
+       width it read as a cramped strip with empty space to its right. 92ch is
+       still inside what is comfortable to read and no longer looks like a
+       different layout from the fields underneath it. */
+    p, li, .note { max-width: 92ch; }
+    /* Help that belongs to one field follows that field's width instead: it
+       is read in the same glance as the input, not as prose. */
+    label + .note, input + .note, textarea + .note, select + .note { max-width: none; }
+    /* The variable name beside a field label: present for whoever needs it,
+       quiet for whoever does not. */
+    .field-var { font-weight: 400; font-size: .8em; opacity: .55;
+                 margin-left: .5em; }
     /* One row, always. Wrapping was the obvious choice and the wrong one: a
        second row of tabs reads as a different kind of thing from the first,
        and which links land there depends on the window width and the length
