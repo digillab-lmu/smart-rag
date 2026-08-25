@@ -120,7 +120,7 @@
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 2000,
-      "onError": "continueErrorOutput"
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -318,6 +318,11 @@
       "main": [
         [
           {
+            "node": "Loop over slices",
+            "type": "main",
+            "index": 0
+          },
+          {
             "node": "Report: running",
             "type": "main",
             "index": 0
@@ -334,20 +339,7 @@
     },
     "Report: running": {
       "main": [
-        [
-          {
-            "node": "Loop over slices",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Read the failure",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Loop over slices": {

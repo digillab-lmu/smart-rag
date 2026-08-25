@@ -64,9 +64,13 @@ if wf["connections"]["Extract concepts"]["main"][0][0]["node"] != "Loop over sli
 # Content Admin sat at "queued" for ever because nothing told it. So the
 # failure path hangs off each node's error output, the way the ingest workflow
 # already does it, and this checks that none was forgotten.
+# The nodes the build actually passes through. "Report: running" is not one
+# of them: it hangs off the slicing as a side branch, because an HTTP node in
+# the path replaces the items with its response — and a progress report that
+# fails must not take the build with it, which is the opposite rule and is
+# checked separately below.
 main_path = ["Plan the run", "Read the course material", "Slice the material",
-             "Report: running", "Extract concepts", "Merge candidates",
-             "Propose prerequisites"]
+             "Extract concepts", "Merge candidates", "Propose prerequisites"]
 by_name = {n["name"]: n for n in wf["nodes"]}
 for name in main_path:
     node = by_name.get(name)
@@ -81,6 +85,61 @@ for name in main_path:
     if len(outs) < 2 or not outs[1] or outs[1][0]["node"] != "Read the failure":
         print("FAILURES:")
         print(f"  - {name}'s error output does not reach 'Read the failure'")
+        sys.exit(1)
+
+# An HTTP node replaces the items flowing through it with the response body.
+# Putting one in the middle of the path is therefore not a detour, it is a
+# substitution: the progress report used to sit between the slicing and the
+# loop, and the loop iterated over the report's HTTP answer. The first live
+# run died with "Cannot read properties of undefined (reading 'map')".
+#
+# So every node that consumes real items must be fed by a node that produces
+# them. Checked structurally rather than by inspection, because in the editor
+# a chain through an HTTP node looks exactly like a chain that works.
+http_nodes = {n["name"] for n in wf["nodes"]
+              if n["type"] == "n8n-nodes-base.httpRequest"}
+feeders = {}
+for src, conn in wf["connections"].items():
+    for out_index, outs in enumerate(conn.get("main", [])):
+        for c in (outs or []):
+            # index 1 is the failure path; those items are meant to be
+            # whatever the failing node had.
+            if out_index == 0:
+                feeders.setdefault(c["node"], set()).add(src)
+
+# Who must feed whom, named rather than inferred. "Not an HTTP node" was too
+# weak on its own: reading Weaviate is an HTTP node whose response really is
+# the material, so it was excluded — and then feeding the loop straight from
+# it, skipping the slicing entirely, passed.
+expected_feed = {
+    "Read the course material": {"Plan the run"},
+    "Slice the material":       {"Read the course material"},
+    "Loop over slices":         {"Slice the material", "Extract concepts"},
+    "Merge candidates":         {"Loop over slices"},
+    "Propose prerequisites":    {"Merge candidates"},
+    "Report: proposed":         {"Propose prerequisites"},
+}
+for consumer, allowed in expected_feed.items():
+    src = feeders.get(consumer, set())
+    if not src:
+        print("FAILURES:")
+        print(f"  - nothing feeds {consumer}")
+        sys.exit(1)
+    if not src <= allowed:
+        print("FAILURES:")
+        print(f"  - {consumer} is fed by {', '.join(sorted(src - allowed))}; "
+              f"it must come from {' or '.join(sorted(allowed))}. An HTTP node "
+              "in the path replaces the items with its response, and a skipped "
+              "step looks identical in the editor.")
+        sys.exit(1)
+
+# A progress report is a notice, not a station: if it fails, the build must
+# carry on.
+for name in ("Report: running",):
+    if by_name[name].get("onError") != "continueRegularOutput":
+        print("FAILURES:")
+        print(f"  - {name} aborts the build when it fails; the display is the "
+              "optional part, the build is not")
         sys.exit(1)
 
 if any(n["type"] == "n8n-nodes-base.errorTrigger" for n in wf["nodes"]):

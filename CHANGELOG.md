@@ -13,6 +13,15 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **The build looped over an HTTP response instead of the course material.**
+  The progress report sat between the slicing and the loop, and an HTTP node
+  replaces the items flowing through it with its own response — so the loop
+  iterated over the acknowledgement from `/api/graph-build` and the extraction
+  failed on `slice.entries`. The report is now a side branch off the slicing,
+  and it no longer aborts the build if it fails: the display is the optional
+  part. A test names which node must feed which, because in the editor a chain
+  through an HTTP node looks exactly like a chain that works.
+
 - **A failed build sat at "running" for ever, and nothing could clear it.**
   The first live run errored in n8n, and the Content Admin never heard: the
   workflow's failure path hung off an Error Trigger, and n8n does not fire one
