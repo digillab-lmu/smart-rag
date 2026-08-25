@@ -1654,7 +1654,18 @@ def documents():
 
     client = _weaviate_client()
 
-    if request.method == "POST":
+    if request.method == "POST" and request.form.get("action") == "dismiss_job":
+        # Clearing a progress row, which is not deleting a document. The two
+        # tables sit one above the other and the wording has to keep them
+        # apart: this removes a line that has been read, the one below removes
+        # what an agent can find.
+        job_id = request.form.get("job_id", "").strip()
+        if ingest_status.forget(job_id, course_id):
+            success = _t("docs_job_dismissed")
+            jobs = ingest_status.active(course_id)
+        else:
+            error = _t("docs_job_dismiss_failed")
+    elif request.method == "POST":
         title = request.form.get("source_title", "").strip()
         raw_agent = request.form.get("agent_id", "")
         agent_id = int(raw_agent) if raw_agent.isdigit() else None

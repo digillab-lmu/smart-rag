@@ -215,6 +215,38 @@ def forget_course(course_id: str) -> int:
     return removed
 
 
+def forget(job_id: str, course_id: str = "") -> bool:
+    """Drop one progress row. True when it was there and went.
+
+    For the row an operator is done looking at — a failure they have read, a
+    job that went quiet and will not come back. Finished rows disappear on
+    their own after KEEP_FINISHED_SECONDS, but half an hour is a long time to
+    look at a red line describing something you have already dealt with, and
+    the alternative was waiting.
+
+    `course_id` is a guard, not a filter: the page offering this is
+    course-scoped, and a job id from another course must not be removable
+    through it. Passing none skips the check, which is for callers that
+    already know the row is theirs.
+
+    Removes the status entry and nothing else. The document, if one was
+    written, is in the index and is deleted from the list below this table —
+    two different things that look adjacent on screen.
+    """
+    if not job_id:
+        return False
+    with _LOCK:
+        data = _load()
+        row = data.get(job_id)
+        if row is None:
+            return False
+        if course_id and row.get("course_id", "") != course_id:
+            return False
+        del data[job_id]
+        _save(data)
+    return True
+
+
 def any_running(course_id: str = "") -> bool:
     """Whether the page has a reason to keep refreshing itself."""
     return any(not r["finished"] for r in active(course_id))

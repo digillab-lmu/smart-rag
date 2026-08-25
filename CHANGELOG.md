@@ -13,6 +13,19 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **A failed ingest could only be waited out.** Its row stayed in the progress
+  table for half an hour — long enough to keep describing something the
+  operator had already read and dealt with — and there was no way to say so.
+  Rows that have stopped moving now have a *Clear* button. Running ones do
+  not: hiding a running job would not stop it, and the next page load would
+  bring it back looking new.
+
+  It clears the progress entry and nothing else. Two tables sit one above the
+  other on that page, and the wording keeps them apart: a document that was
+  written is in the list below and is removed there. The clear is scoped to
+  the selected course — the browser sends only a job id, and a job id from
+  another course must not be removable through it.
+
 - **Documents failed after two minutes with a message naming an environment
   variable.** `DOCLING_SERVE_MAX_SYNC_WAIT` was never set, so the image's own
   120 seconds applied — while the n8n node calling docling waited patiently

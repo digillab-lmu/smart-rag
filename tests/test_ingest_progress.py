@@ -375,6 +375,46 @@ check("a row in progress shows it is moving", 'class="spinner"' in tpl, "")
 check("…and the page refreshes while it is",
       "location.replace" in tpl, "")
 
+# ─── A row that has stopped moving can be cleared ───────────────────────────
+# A failure lingers for KEEP_FINISHED_SECONDS — half an hour of looking at a
+# red line describing something already dealt with, with no way to say "yes, I
+# read it". Reported from a real install.
+#
+# What must not become possible along with it: clearing somebody else's row.
+# The page is course-scoped, so the job id is the only thing the browser
+# sends, and a job id from another course must not be removable through it.
+ingest_status.start("clear-a", "a.pdf", 1, course_id="kurs-a")
+ingest_status.update("clear-a", "failed", "504")
+ingest_status.start("clear-b", "b.pdf", 1, course_id="kurs-b")
+
+check("a foreign course's row cannot be cleared",
+      ingest_status.forget("clear-a", "kurs-b") is False)
+check("…and it is still there",
+      any(r["job_id"] == "clear-a" for r in ingest_status.active("kurs-a")))
+check("the owning course can clear it", ingest_status.forget("clear-a", "kurs-a") is True)
+check("and then it is gone",
+      not any(r["job_id"] == "clear-a" for r in ingest_status.active("kurs-a")))
+check("clearing it twice reports nothing to clear",
+      ingest_status.forget("clear-a", "kurs-a") is False)
+check("the other course's row is untouched",
+      any(r["job_id"] == "clear-b" for r in ingest_status.active("kurs-b")))
+check("an empty job id clears nothing", ingest_status.forget("", "kurs-b") is False)
+ingest_status.forget("clear-b", "kurs-b")
+
+# The button is offered only for rows that have stopped. Hiding a running job
+# would not stop it, and the next page load would bring it back looking new.
+tpl = (REPO / "content-admin" / "templates" / "documents.html").read_text()
+check("the clear button exists", "dismiss_job" in tpl, tpl[:0])
+check("and only for a row that has stopped",
+      "j.failed or j.finished or j.stalled" in tpl,
+      "a running job must not be dismissable")
+# Two tables sit one above the other; the wording has to keep them apart.
+import i18n as _i18n  # noqa: E402
+for lang in ("en", "de"):
+    msg = _i18n.t("docs_job_dismiss_title", lang=lang)
+    check(f"the {lang} tooltip says it is not the document",
+          ("not the document" in msg) or ("nicht das Dokument" in msg), msg)
+
 if failures:
     print("FAILURES:")
     for f in failures:

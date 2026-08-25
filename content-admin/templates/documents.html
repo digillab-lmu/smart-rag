@@ -20,6 +20,7 @@
     <th>{{ t('docs_col_agent') }}</th>
     <th>{{ t('docs_col_stage') }}</th>
     <th>{{ t('docs_col_elapsed') }}</th>
+    <th></th>
   </tr>
   {% for j in jobs %}
   <tr>
@@ -48,6 +49,18 @@
       {% endif %}
     </td>
     <td>{{ (j.elapsed // 60) }}&nbsp;min</td>
+    <td>
+      {# Only for a row that has stopped moving. A running job is not
+         something to tidy away: hiding it would not stop it, and the next
+         page load would bring it back looking like a new one. #}
+      {% if j.failed or j.finished or j.stalled %}
+      <form method="post" style="margin:0">
+        <input type="hidden" name="action" value="dismiss_job">
+        <input type="hidden" name="job_id" value="{{ j.job_id }}">
+        <button type="submit" title="{{ t('docs_job_dismiss_title') }}">{{ t('docs_job_dismiss') }}</button>
+      </form>
+      {% endif %}
+    </td>
   </tr>
   {% endfor %}
 </table>
