@@ -461,8 +461,15 @@ def inventory(course_id: str,
             with db.connect() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
+                        # By slot. Without ORDER BY, Postgres returns these in
+                        # whatever physical order the rows happen to be in, which
+                        # changes when any of them is updated — so a deletion
+                        # report listed the agents in a different order after an
+                        # unrelated edit, and a test that asserted the order
+                        # started failing on its second run.
                         "SELECT chatflow_id FROM agent_slots "
-                        "WHERE course_id = %s AND chatflow_id IS NOT NULL",
+                        "WHERE course_id = %s AND chatflow_id IS NOT NULL "
+                        "ORDER BY slot",
                         (course_id,))
                     ids = [r[0] for r in cur.fetchall()]
                 conn.commit()
@@ -545,8 +552,11 @@ def delete_course(course_id: str,
         with db.connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
+                    # By slot, for the same reason as above: the order
+                    # reaches the operator in what the deletion reports.
                     "SELECT chatflow_id FROM agent_slots "
-                    "WHERE course_id = %s AND chatflow_id IS NOT NULL",
+                    "WHERE course_id = %s AND chatflow_id IS NOT NULL "
+                    "ORDER BY slot",
                     (course_id,))
                 chatflow_ids = [r[0] for r in cur.fetchall()]
             conn.commit()

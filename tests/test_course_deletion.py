@@ -194,6 +194,11 @@ check("the collection goes as a whole",
 for cls in ("ChatHistory", "UserMemory", "TestResults"):
     check(f"{cls} is filtered by course", ("weaviate.class", cls) in log, list(log))
 check("the graph is cleared", ("neo4j.clear", CID) in log, list(log))
+# In slot order, not in whatever order the rows happen to sit in. This
+# assertion was already here and passed for months; it began failing on the
+# second run of the suite once another test updated a slot, because an UPDATE
+# moves the row and the SELECT had no ORDER BY. The order reaches the operator
+# in what the deletion reports, so it is worth pinning rather than relaxing.
 check("both chatflows are deleted",
       [c for c in log if c[0] == "flowise.delete"] ==
       [("flowise.delete", "cf-1"), ("flowise.delete", "cf-2")], list(log))
@@ -320,6 +325,32 @@ check("…it renders both", "s.error" in report and "s.detail" in report, "")
 # somebody navigates away from it.
 src = Path(courses_service.__file__).read_text()
 check("a failed step is logged", "logger.error(\"Deleting %s" in src, "")
+
+# ─── Order that reaches a person must be asked for ──────────────────────────
+# Checked in the source, deliberately. A missing ORDER BY is only wrong
+# sometimes — it follows the physical row order, so it is right until an
+# unrelated UPDATE moves a row. Re-running the suite cannot catch that
+# reliably; reading the query can.
+import re as _re  # noqa: E402
+
+_APP = Path(__file__).resolve().parent.parent / "content-admin"
+if not _APP.is_dir() and Path("/app/db.py").exists():
+    _APP = Path("/app")
+
+for module in ("courses.py", "learners.py"):
+    text = (_APP / module).read_text()
+    # A window after each SELECT, not "up to the next cur.execute" — in this
+    # codebase cur.execute comes *before* the query string, so the first
+    # version of this check looked at the wrong side of it and passed on the
+    # very query it was written for.
+    ok = True
+    for match in _re.finditer(r"SELECT chatflow_id FROM agent_slots", text):
+        window = text[match.end(): match.end() + 260]
+        if "ORDER BY" not in window:
+            ok = False
+    check(f"{module}: chatflow ids are read in a defined order", ok,
+          "without ORDER BY the order changes after any update to a slot, and "
+          "it reaches the operator in what deletion reports")
 
 if failures:
     print("FAILURES:")

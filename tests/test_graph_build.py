@@ -280,9 +280,49 @@ check("the proposal is also shown as something other than JSON",
       "a reviewer handed only a text field cannot check a graph")
 check("with the concepts tabled by the work they came from",
       "agent_1/a.md" in page and "<details" in page, "")
-check("and the JSON is still the thing that gets submitted",
-      'name="proposal"' in page,
-      "two writing paths would let the picture disagree with what is applied")
+check("and the JSON is still available for pasting",
+      'name="proposal"' in page, "")
+check("the proposal can be edited as rows rather than as JSON",
+      'name="c_name_0"' in page and 'value="apply_edited"' in page,
+      "asking somebody to approve a graph by editing punctuation is asking "
+      "them not to check it")
+check("with the prerequisites tickable one by one",
+      'name="e_keep"' in page, "")
+
+# Editing and applying: the rows are another way of writing the proposal, and
+# they must go through the same validation.
+edited = {"action": "apply_edited", "c_keep": ["0", "1"], "e_keep": ["0"],
+          "c_name_0": "A", "c_orig_0": "A", "c_src_0": "agent_1/a.md",
+          "c_name_1": "B", "c_orig_1": "B", "c_src_1": "agent_1/a.md",
+          "e_before_0": "A", "e_after_0": "B", "e_src_0": "agent_1/a.md"}
+written.clear()
+client.post("/graph-guidance", data=edited)
+check("applying the edited rows writes them",
+      written and written[-1][:2] == (2, 1), written)
+
+# That applied the build, and the sections below need one still awaiting
+# review. Put the world back rather than letting this block quietly change
+# what comes after it — the first version did, and two later checks failed
+# for reasons that had nothing to do with them.
+client.post("/graph-guidance", data={"action": "build"})
+build = gb.active(CID)
+client.post("/api/graph-build",
+            json={"build_id": build["id"], "state": "proposed",
+                  "proposal": GOOD}, headers=HEAD)
+
+# And a rejected edit must not throw the editing away. No reset here: the
+# build in flight is what the checks after this one still need, and the first
+# version of this block wiped it.
+written.clear()
+cyclic = dict(edited, new_before="B", new_after="A")
+cyclic["c_desc_0"] = "Von Hand berichtigt."
+page = client.post("/graph-guidance", data=cyclic).get_data(as_text=True)
+check("a prerequisite that closes a circle is refused",
+      not written and "circle" in page.lower(), page[-400:])
+check("and the corrections survive the refusal",
+      "Von Hand berichtigt." in page,
+      "losing an afternoon of edits to one bad row is how people stop "
+      "editing and start clicking through")
 
 # A late duplicate delivery must not overwrite what is being read.
 client.post("/api/graph-build",
@@ -452,7 +492,14 @@ with db.connect() as _conn:
             "ON CONFLICT (id) DO NOTHING")
     _conn.commit()
 other = {"id": "fremd-undo"}
+# Its builds *and* its row: this file runs after test_course_deletion
+# alphabetically, so a leftover course is invisible on this run and fails
+# that suite on the next one. Which is exactly what happened.
 gb.forget_course(other["id"])
+with db.connect() as _conn:
+    with _conn.cursor() as _cur:
+        _cur.execute("DELETE FROM courses WHERE id = %s", (other["id"],))
+    _conn.commit()
 other_build = gb.start(other["id"], [1])
 gb.propose(other_build["id"], GOOD)
 gb.applied(other_build["id"])

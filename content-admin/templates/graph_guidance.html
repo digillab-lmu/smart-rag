@@ -164,40 +164,156 @@
 {% if view.svg %}
 <h4>{{ t('graph_view_order') }}</h4>
 <p class="note">{{ t('graph_view_order_note') }}</p>
+<style>
+  /* Clicking a box answers the question a reader actually has — what does
+     this one depend on, and what depends on it — by dimming everything with
+     no bearing on it. Pure CSS classes toggled by the small script below;
+     without JavaScript the drawing is unchanged and still readable. */
+  .cmap .cnode { cursor: pointer; }
+  .cmap .cnode rect { transition: fill .12s, stroke-width .12s; }
+  .cmap .cnode:hover rect, .cmap .cnode:focus rect { fill: #dcecdc; }
+  .cmap.has-sel .cnode { opacity: .25; }
+  .cmap.has-sel .cedge { opacity: .12; }
+  .cmap.has-sel .cnode.sel, .cmap.has-sel .cnode.near { opacity: 1; }
+  .cmap.has-sel .cedge.near { opacity: 1; stroke: #1d3a1d; stroke-width: 2.5; }
+  .cmap .cnode.sel rect { fill: #cfe4cf; stroke-width: 2.5; }
+  tr.cmap-hit { background: #eef4ee; }
+</style>
 <div style="overflow-x:auto;border:1px solid #ddd;border-radius:6px;padding:.5em;background:#fff">
   {{ view.svg|safe }}
 </div>
-<table style="margin-top:.6em">
-  <tr><th>{{ t('graph_view_before') }}</th><th></th><th>{{ t('graph_view_after') }}</th><th>{{ t('graph_view_because') }}</th></tr>
-  {% for e in view.edges %}
-  <tr>
-    <td>{{ e.before }}</td><td>&rarr;</td><td>{{ e.after }}</td>
-    <td class="note">{% for s in e.sources %}<code>{{ s }}</code>{% if not loop.last %}, {% endif %}{% else %}&mdash;{% endfor %}</td>
-  </tr>
-  {% endfor %}
-</table>
+<p class="note">{{ t('graph_view_click_hint') }}</p>
+<script>
+(function () {
+  var svg = document.querySelector('svg.cmap');
+  if (!svg) return;
+  var nodes = svg.querySelectorAll('.cnode');
+  var edges = svg.querySelectorAll('.cedge');
+  function clear() {
+    svg.classList.remove('has-sel');
+    nodes.forEach(function (n) { n.classList.remove('sel', 'near'); });
+    edges.forEach(function (e) { e.classList.remove('near'); });
+    document.querySelectorAll('tr.cmap-hit').forEach(function (r) {
+      r.classList.remove('cmap-hit');
+    });
+  }
+  function select(node) {
+    var was = node.classList.contains('sel');
+    clear();
+    if (was) return;
+    svg.classList.add('has-sel');
+    node.classList.add('sel');
+    edges.forEach(function (e) {
+      var a = e.getAttribute('data-a'), b = e.getAttribute('data-b');
+      if (a === node.id || b === node.id) {
+        e.classList.add('near');
+        var other = svg.getElementById(a === node.id ? b : a);
+        if (other) other.classList.add('near');
+      }
+    });
+    // And the row in the table below, so the description and the citation
+    // are one glance away rather than one search.
+    var name = node.getAttribute('data-name');
+    document.querySelectorAll('input[type=hidden][name^=c_orig_]').forEach(function (i) {
+      if (i.value === name) {
+        var row = i.closest('tr');
+        if (row) {
+          row.classList.add('cmap-hit');
+          var box = row.closest('details');
+          if (box && !box.open) box.open = true;
+        }
+      }
+    });
+  }
+  nodes.forEach(function (n) {
+    n.addEventListener('click', function () { select(n); });
+    n.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); select(n); }
+    });
+  });
+  svg.addEventListener('click', function (ev) { if (ev.target === svg) clear(); });
+})();
+</script>
 {% else %}
 <p class="note"><strong>{{ t('graph_view_no_edges') }}</strong></p>
 {% endif %}
 
+{# ── The editor ──────────────────────────────────────────────────────────
+   Rows rather than JSON. Unticking a concept removes it and any prerequisite
+   that touched it; renaming one carries its edges across, which the hidden
+   original name makes possible. Everything here goes through the same
+   validation as a pasted answer. #}
+<form method="post">
+<input type="hidden" name="action" value="apply_edited">
+
+<h4>{{ t('graph_view_edges_heading') }}</h4>
+{% if view.edges %}
+<table>
+  <tr><th>{{ t('graph_view_keep') }}</th><th>{{ t('graph_view_before') }}</th><th></th>
+      <th>{{ t('graph_view_after') }}</th><th>{{ t('graph_view_because') }}</th></tr>
+  {% for e in view.edges %}
+  {# The index is captured here because the inner loop over the citations
+     shadows `loop`, and this Jinja has no loop.parent to reach back with. #}
+  {% set ei = loop.index0 %}
+  <tr>
+    <td><input type="checkbox" name="e_keep" value="{{ ei }}" checked></td>
+    <td>{{ e.before }}<input type="hidden" name="e_before_{{ ei }}" value="{{ e.before }}"></td>
+    <td>&rarr;</td>
+    <td>{{ e.after }}<input type="hidden" name="e_after_{{ ei }}" value="{{ e.after }}"></td>
+    <td class="note">
+      {% for s in e.sources %}<code>{{ s }}</code><input type="hidden" name="e_src_{{ ei }}" value="{{ s }}">{% if not loop.last %}, {% endif %}{% else %}&mdash;{% endfor %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="note">{{ t('graph_view_no_edges') }}</p>
+{% endif %}
+
+<p class="note">{{ t('graph_view_add_edge') }}</p>
+<p>
+  <select name="new_before">
+    <option value="">&mdash;</option>
+    {% for c in view.concepts %}<option value="{{ c.name }}">{{ c.name }}</option>{% endfor %}
+  </select>
+  &rarr;
+  <select name="new_after">
+    <option value="">&mdash;</option>
+    {% for c in view.concepts %}<option value="{{ c.name }}">{{ c.name }}</option>{% endfor %}
+  </select>
+</p>
+
 <h4>{{ t('graph_view_concepts') }}</h4>
+<p class="note">{{ t('graph_view_edit_note') }}</p>
+{% set counter = namespace(i=0) %}
 {% for source, rows in view.groups.items() %}
 <details{% if view.groups|length == 1 %} open{% endif %}>
   <summary><code>{{ source }}</code> &middot; {{ rows|length }}</summary>
   <table>
-    <tr><th>{{ t('graph_view_name') }}</th><th>{{ t('graph_view_where') }}</th>
-        <th>{{ t('graph_view_what') }}</th><th>{{ t('graph_view_linked') }}</th></tr>
+    <tr><th>{{ t('graph_view_keep') }}</th><th>{{ t('graph_view_name') }}</th>
+        <th>{{ t('graph_view_where') }}</th><th>{{ t('graph_view_what') }}</th>
+        <th>{{ t('graph_view_linked') }}</th></tr>
     {% for c in rows %}
+    {% set i = counter.i %}{% set counter.i = counter.i + 1 %}
     <tr>
-      <td>{{ c.name }}</td>
-      <td class="note">{{ c.chapter or '' }}{% if c.section_id %} · {{ c.section_id }}{% endif %}</td>
-      <td class="note">{{ c.description or '' }}</td>
+      <td><input type="checkbox" name="c_keep" value="{{ i }}" checked></td>
+      <td>
+        <input type="text" name="c_name_{{ i }}" value="{{ c.name }}" size="28">
+        <input type="hidden" name="c_orig_{{ i }}" value="{{ c.name }}">
+        {% for s in c.sources or [] %}<input type="hidden" name="c_src_{{ i }}" value="{{ s }}">{% endfor %}
+      </td>
+      <td><input type="text" name="c_chapter_{{ i }}" value="{{ c.chapter or '' }}" size="6">
+          <input type="hidden" name="c_section_{{ i }}" value="{{ c.section_id or '' }}"></td>
+      <td><input type="text" name="c_desc_{{ i }}" value="{{ c.description or '' }}" size="46"></td>
       <td>{% if c.name in view.connected %}&#10003;{% else %}<span style="opacity:.4">&ndash;</span>{% endif %}</td>
     </tr>
     {% endfor %}
   </table>
 </details>
 {% endfor %}
+
+<button type="submit">{{ t('graph_view_apply_edited') }}</button>
+</form>
 {% endif %}
 
 <p class="note">{{ t('graph_run_intro') }}</p>

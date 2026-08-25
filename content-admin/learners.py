@@ -134,12 +134,16 @@ def _chatflow_ids(course_id: str | None) -> list[str]:
     chatflow that exists in Flowise but belongs to no slot is not part of any
     course and is not this system's to touch.
     """
+    # Ordered, so a person's inventory lists their agents the same way twice
+    # running. Without it the order follows the physical rows and changes
+    # after any unrelated update.
     sql = ("SELECT chatflow_id FROM agent_slots "
            "WHERE chatflow_id IS NOT NULL")
     args: tuple = ()
     if course_id:
         sql += " AND course_id = %s"
         args = (course_id,)
+    sql += " ORDER BY course_id, slot"
     with db.connect() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, args)

@@ -2106,7 +2106,15 @@ def graph_guidance():
                 if outline["truncated"]:
                     warning = _t("graph_proposed_truncated")
             else:
-                proposal = request.form.get("proposal", "")
+                if action == "apply_edited":
+                    # The edited rows, turned back into a proposal. Same
+                    # validation and same write as a pasted answer: the form
+                    # is another way of writing the proposal, not another way
+                    # into the graph.
+                    proposal = json.dumps(graph_view.from_form(request.form),
+                                          indent=2, ensure_ascii=False)
+                else:
+                    proposal = request.form.get("proposal", "")
                 # The build this proposal came from, if it came from one. It
                 # gives every concept and edge a build id, which is what makes
                 # a build undoable later — and marks the build as reviewed, so

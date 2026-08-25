@@ -13,6 +13,16 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **Chatflow ids were read from the database in no defined order.** Three
+  queries selected them without `ORDER BY`, so the order followed the physical
+  rows and changed after any unrelated update to a slot — and it reaches the
+  operator in what course deletion reports. Found because a test that had
+  passed for months began failing on the *second* run of the suite once
+  another test updated a slot. Now ordered by slot, and checked in the source
+  rather than by re-running, because a missing `ORDER BY` is only wrong
+  sometimes.
+
+
 - **The graph page never said the build had finished.** The result arrives
   minutes later through a callback, and the page was static: the first
   successful run put 43 concepts in the database while the screen still read
@@ -60,6 +70,27 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
   afterwards is refused rather than resurrecting it.
 
 ### Added
+
+- **The proposal can be edited as rows, and the drawing answers questions.**
+  Long names are wrapped over up to three lines and the boxes grow to hold
+  them — the first version cut at 26 characters, which removed exactly the
+  part that tells you whether a concept belongs. Clicking a box dims
+  everything with no bearing on it, so *what does this depend on, and what
+  depends on it* is one click rather than a search, and it highlights the
+  concept's row in the table below. Keyboard-reachable, and unchanged without
+  JavaScript.
+
+  Underneath, the proposal is now a form: tick a concept to keep it, correct
+  its name or description, untick a prerequisite, add one the model missed.
+  Unticking a concept drops any prerequisite that touched it, and renaming one
+  carries its prerequisites across — edges refer to concepts by name, so a
+  correction would otherwise orphan them and the whole proposal would be
+  refused for naming something that is not in the list. The JSON field stays
+  for pasting an answer from elsewhere; both go through the same validation
+  and the same write.
+
+  A refused submission keeps the editing. Losing an afternoon's corrections to
+  one bad row is how people stop editing and start clicking through.
 
 - **The proposal is shown as a drawing, a table and a number — not only as
   JSON.** The thing being reviewed is a graph, and JSON is the worst possible

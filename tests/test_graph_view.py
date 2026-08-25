@@ -147,6 +147,117 @@ c = graph_view.view_of(cyclic)
 check("a cycle does not hang the layout", c["svg"].count("<rect") == 2,
       c["svg"].count("<rect"))
 
+# ─── Long names are wrapped, not cut ────────────────────────────────────────
+# The first version truncated at 26 characters, and "Kompetenzorientierte
+# Leistungsmessung" became "Kompetenzorientierte Leis…" — which removes
+# exactly the part somebody needs to judge whether the concept belongs.
+long_name = "Digitalisierungsbezogene Kernkompetenzen von Lehrkraeften"
+wide = {"concepts": [concept(long_name), concept("Kurz")],
+        "prerequisites": [{"before": long_name, "after": "Kurz"}]}
+w = graph_view.view_of(wide)
+check("a long name is not cut off", "\u2026" not in w["svg"], w["svg"][:200])
+check("it is broken over several lines",
+      w["svg"].count("<text") > w["svg"].count("<rect"),
+      "one text element per box means one line per box, which is where the "
+      "truncation came from")
+# Anchored on the attribute order the renderer writes, because a greedy
+# [^>]* matches stroke-width="1" instead and the check then measures the
+# outline rather than the box.
+box_widths = [int(x) for x in
+              re.findall(r'<rect x="\d+" y="\d+" width="(\d+)"', w["svg"])]
+check("and the box grew to hold it", box_widths and max(box_widths) > 200,
+      box_widths)
+
+# Wrapping has to give up somewhere, and when it does the full name must
+# still be reachable.
+endless = " ".join(["Wort"] * 40)
+e_view = graph_view.view_of({"concepts": [concept(endless), concept("B")],
+                             "prerequisites": [{"before": endless, "after": "B"}]})
+check("an unwrappable name is elided rather than overflowing",
+      "\u2026" in e_view["svg"], "")
+check("but the whole name is still in the title",
+      f"<title>{endless}</title>" in e_view["svg"], "")
+
+# ─── Clickable, and identifiable from the table ─────────────────────────────
+check("each box is a group that can be clicked",
+      w["svg"].count('class="cnode"') == 2, w["svg"].count('class="cnode"'))
+check("and carries its name for the table to match on",
+      'data-name="Kurz"' in w["svg"], "")
+check("each edge names both ends it connects",
+      'data-a="' in w["svg"] and 'data-b="' in w["svg"],
+      "highlighting what a concept depends on needs the edge to say what it "
+      "joins")
+check("boxes are reachable without a mouse", 'tabindex="0"' in w["svg"], "")
+
+# ─── The editor rebuilds a proposal from rows ───────────────────────────────
+from werkzeug.datastructures import MultiDict  # noqa: E402
+
+form = MultiDict([
+    ("c_keep", "0"), ("c_keep", "1"),
+    ("c_name_0", "Medienkompetenz"), ("c_orig_0", "Medienkompetenzen"),
+    ("c_chapter_0", "1"), ("c_desc_0", "Berichtigt."), ("c_src_0", "a.md"),
+    ("c_name_1", "Mediendidaktik"), ("c_orig_1", "Mediendidaktik"),
+    ("c_chapter_1", "2"), ("c_desc_1", ""), ("c_src_1", "a.md"),
+    ("c_name_2", "Weg damit"), ("c_orig_2", "Weg damit"), ("c_src_2", "a.md"),
+    ("e_keep", "0"),
+    ("e_before_0", "Medienkompetenzen"), ("e_after_0", "Mediendidaktik"),
+    ("e_src_0", "a.md"),
+    ("e_before_1", "Mediendidaktik"), ("e_after_1", "Weg damit"),
+    ("e_src_1", "a.md"),
+])
+built = graph_view.from_form(form)
+names = [c["name"] for c in built["concepts"]]
+check("an unticked concept is left out", "Weg damit" not in names, names)
+check("a corrected name is used", "Medienkompetenz" in names, names)
+check("edits to the description survive",
+      built["concepts"][0]["description"] == "Berichtigt.", built["concepts"][0])
+check("an empty field is omitted rather than stored as an empty string",
+      "description" not in built["concepts"][1], built["concepts"][1])
+check("provenance is carried through the form",
+      built["concepts"][0]["sources"] == ["a.md"], built["concepts"][0])
+
+pairs = [(e["before"], e["after"]) for e in built["prerequisites"]]
+check("a renamed concept keeps its prerequisites",
+      ("Medienkompetenz", "Mediendidaktik") in pairs,
+      "edges refer to concepts by name, so a correction would orphan them and "
+      "the whole proposal would then be refused for naming a concept that is "
+      "not in the list")
+check("an unticked edge is gone", ("Mediendidaktik", "Weg damit") not in pairs, pairs)
+
+# An edge whose endpoint was struck out must go quietly with it, rather than
+# failing the whole submission.
+form2 = MultiDict(list(form.items(multi=True)) + [("e_keep", "1")])
+built2 = graph_view.from_form(form2)
+check("an edge to a removed concept drops with it",
+      all("Weg damit" not in (e["before"], e["after"])
+          for e in built2["prerequisites"]),
+      built2["prerequisites"])
+
+# Adding the one the model missed.
+form3 = MultiDict(list(form.items(multi=True)) +
+                  [("new_before", "Mediendidaktik"), ("new_after", "Medienkompetenz")])
+built3 = graph_view.from_form(form3)
+check("a hand-added prerequisite is included",
+      ("Mediendidaktik", "Medienkompetenz")
+      in [(e["before"], e["after"]) for e in built3["prerequisites"]], "")
+check("and carries no invented citation",
+      all(e["sources"] == [] for e in built3["prerequisites"]
+          if (e["before"], e["after"]) == ("Mediendidaktik", "Medienkompetenz")),
+      "a person asserting a dependency is the citation; naming a document "
+      "they did not consult would be worse than naming none")
+
+for bad in ({"new_before": "Mediendidaktik", "new_after": "Mediendidaktik"},
+            {"new_before": "Mediendidaktik", "new_after": "Gibt es nicht"},
+            {"new_before": "", "new_after": "Mediendidaktik"}):
+    f = MultiDict(list(form.items(multi=True)) + list(bad.items()))
+    check(f"a nonsense addition is ignored ({bad})",
+          len(graph_view.from_form(f)["prerequisites"]) == 1,
+          graph_view.from_form(f)["prerequisites"])
+
+check("nothing ticked yields an empty proposal, not a crash",
+      graph_view.from_form(MultiDict([("c_name_0", "A"), ("c_orig_0", "A")]))
+      == {"concepts": [], "prerequisites": []}, "")
+
 if failures:
     print("FAILURES:")
     for f_ in failures:
