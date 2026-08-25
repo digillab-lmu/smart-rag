@@ -133,8 +133,23 @@ ADMIN_ONLY = {"accounts_page", "flowise_setup", "delete_course_view",
 # Logged in, but not tied to one course: a citation lookup and a keyword
 # suggestion act on text the caller typed, not on stored material.
 LOGIN_ONLY = {"upload_lookup", "upload_keywords"}
+# "Public" as far as the session decorators go. The two api_* endpoints are
+# not open: they are called by n8n, which has no session, and are guarded by
+# a shared token compared in constant time. Listing them here is a statement
+# that this was decided, not an omission — and the checks below assert the
+# token guard, so a route that lost it does not simply become public.
 PUBLIC = {"login", "setup", "forgot_password", "reset_password", "logout",
-          "set_language", "static", "api_ingest_status"}
+          "set_language", "static", "api_ingest_status", "api_graph_build"}
+
+# Each token-guarded endpoint must actually refuse an unauthenticated call.
+# Without this, adding a name to PUBLIC above would be enough to make a real
+# hole invisible to this file.
+for path in ("/api/ingest-status", "/api/graph-build"):
+    resp = flask_app.app.test_client().post(path, json={})
+    check(f"{path} refuses a caller with no token",
+          resp.status_code == 401,
+          f"got {resp.status_code} — this endpoint is reachable from "
+          "anywhere on the Docker network")
 
 rules = {r.endpoint: r for r in flask_app.app.url_map.iter_rules()}
 unclassified = (set(rules) - COURSE_BOUND - ADMIN_ONLY - LOGIN_ONLY - PUBLIC

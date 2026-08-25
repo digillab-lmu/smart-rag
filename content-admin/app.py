@@ -47,6 +47,7 @@ from flowise_client import FlowiseClient, FlowiseError
 from llm_client import LLMError, optimize_field, suggest_keywords
 from n8n_client import N8nClient, N8nError
 from weaviate_client import WeaviateClient, WeaviateError
+import graph_builds
 import neo4j_client
 from neo4j_client import Neo4jClient, Neo4jError
 
@@ -1369,6 +1370,73 @@ def api_ingest_status():
     return jsonify({"applied": applied}), 200
 
 
+# ─── The concept-map build, reported by the workflow itself ──────────────────
+@app.route("/api/graph-build", methods=["POST"])
+def api_graph_build():
+    """Called by the concept-map workflow as it works, never by a browser.
+
+    Shares INGEST_STATUS_TOKEN with the ingest callback rather than inventing
+    a second secret: it is the same trust boundary — the n8n container talking
+    to this one over the Docker network — and a second token would mean a
+    wizard question, a line in .env.example and a step for every existing
+    installation, in exchange for nothing.
+
+    Unlike the ingest callback, this one answers 4xx to what it does not
+    understand. There the display was the optional part and the pipeline was
+    not; here the payload *is* the product, and a proposal quietly dropped
+    because a field was misspelled would leave a build running for ever with
+    nobody able to say why.
+    """
+    expected = read_env().get("INGEST_STATUS_TOKEN", "").strip()
+    supplied = request.headers.get("X-Ingest-Token", "")
+    if not expected or not hmac.compare_digest(expected, supplied):
+        return jsonify({"error": "unauthorized"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    build_id = str(payload.get("build_id", "")).strip()
+    state = str(payload.get("state", "")).strip()
+    if not build_id or state not in ("running", "proposed", "failed"):
+        return jsonify({"error": "build_id and a state of running, proposed "
+                                 "or failed are required"}), 400
+
+    build = graph_builds.get(build_id)
+    if build is None:
+        return jsonify({"error": "unknown build"}), 404
+
+    stats = payload.get("stats") if isinstance(payload.get("stats"), dict) else None
+
+    if state == "running":
+        return jsonify({"applied": graph_builds.running(build_id, stats)}), 200
+
+    if state == "failed":
+        message = str(payload.get("error", "")).strip() or "no reason given"
+        return jsonify({"applied": graph_builds.fail(build_id, message)}), 200
+
+    # A proposal is validated here, before it is stored — not when somebody
+    # opens the review. A build that reports success and produces something
+    # unusable should fail while the workflow is still there to say why, and
+    # the reviewer should never be handed a box of nonsense to approve.
+    proposal = payload.get("proposal")
+    if not isinstance(proposal, dict):
+        graph_builds.fail(build_id, "the proposal was not an object")
+        return jsonify({"error": "proposal must be an object"}), 400
+    try:
+        known = _present_sources_for(build["course_id"])
+        concepts, edges = neo4j_client.parse_proposal(
+            json.dumps(proposal), known_sources=known)
+    except neo4j_client.GraphInputError as exc:
+        graph_builds.fail(build_id, f"the proposal was rejected: {exc}")
+        return jsonify({"error": str(exc)}), 422
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Could not check build %s: %s", build_id, exc)
+        return jsonify({"error": "could not be checked"}), 503
+
+    stored = graph_builds.propose(
+        build_id, {"concepts": concepts, "prerequisites": edges}, stats)
+    return jsonify({"applied": stored, "concepts": len(concepts),
+                    "edges": len(edges)}), 200
+
+
 @app.route("/upload/lookup", methods=["POST"])
 @auth.login_required
 def upload_lookup():
@@ -1859,6 +1927,21 @@ def documents():
 
 
 # ─── Knowledge-graph guidance ────────────────────────────────────────────────────
+def _present_sources_for(course_id: str) -> list[str]:
+    """The documents a course holds, by source_file, without needing g.course.
+
+    The workflow's callback carries a build id, not a session, so the
+    request-scoped course of _present_sources is not available to it.
+    """
+    course = courses_service.get_course(course_id)
+    if course is None:
+        raise Neo4jError(f"No such course: {course_id}")
+    client = _weaviate_client()
+    return [d.get("source_file", "") for d
+            in client.list_documents(course["collection"], course_id)
+            if d.get("source_file")]
+
+
 def _present_sources(course_id: str) -> list[str]:
     """The documents this course currently holds, by source_file.
 
@@ -1907,6 +1990,37 @@ def graph_guidance():
                 name = request.form.get("name", "")
                 removed = client.delete_concept(course_id, name)
                 success = _t("graph_deleted", name) if removed else _t("graph_not_found", name)
+            elif action == "build":
+                # Start the workflow and return. The scope is read now and
+                # stored with the build: the question asked about a proposal
+                # later is what it was built from, and today's checkboxes are
+                # not that answer.
+                scope = [int(num) for num, data
+                         in storage.all_slots(course_id).items()
+                         if data and data.get("in_graph", True)]
+                if not scope:
+                    error = _t("graph_build_no_scope")
+                else:
+                    build = graph_builds.start(
+                        course_id, scope, session.get("username", ""))
+                    try:
+                        _n8n_client().start_graph_build({
+                            "build_id": build["id"],
+                            "course_id": course_id,
+                            "course_name": g.course["name"],
+                            "collection": g.course["collection"],
+                            "agents": scope,
+                            "language": current_language(),
+                        })
+                    except Exception as exc:  # noqa: BLE001
+                        # A build nobody is working on must not sit in the
+                        # table as "queued" for ever, blocking every later
+                        # attempt through the one-active index.
+                        graph_builds.fail(build["id"], f"could not be started: {exc}")
+                        logger.error("Could not start the graph build: %s", exc)
+                        error = _t("graph_build_start_failed", exc)
+                    else:
+                        success = _t("graph_build_started", len(scope))
             elif action == "clean_stale":
                 # Removing what only vanished material supported. Same
                 # machinery as unticking an agent, reached from the other
@@ -1962,10 +2076,26 @@ def graph_guidance():
                     warning = _t("graph_proposed_truncated")
             else:
                 proposal = request.form.get("proposal", "")
+                # The build this proposal came from, if it came from one. It
+                # gives every concept and edge a build id, which is what makes
+                # a build undoable later — and marks the build as reviewed, so
+                # a finished proposal stops reappearing in the box after it
+                # has been acted on.
+                pending = graph_builds.latest(course_id)
+                build_id = (pending["id"] if pending
+                            and pending["state"] == "proposed" else "")
                 concepts, edges = neo4j_client.parse_proposal(proposal)
-                written = client.apply_proposal(course_id, concepts, edges)
+                written = client.apply_proposal(course_id, concepts, edges,
+                                                build_id=build_id)
+                if build_id:
+                    graph_builds.applied(build_id)
                 success = _t("graph_applied", written["concepts"], written["edges"])
                 proposal = ""
+        except graph_builds.BuildError as exc:
+            # A refusal with a sentence in it — an already-running build, most
+            # often. Uncaught this was a 500, so the one guard against paying
+            # twice for the same corpus reached nobody who needed it.
+            error = str(exc)
         except neo4j_client.GraphInputError as exc:
             # The reader did not write this input — a model did — so the
             # message says which part to fix rather than "invalid".
@@ -1989,7 +2119,7 @@ def graph_guidance():
                                material_note=material_note,
                                concepts=[], edges=[],
                                counts={"concepts": 0, "edges": 0}, unassigned=0,
-                               proposal=proposal, stale=None)
+                               proposal=proposal, stale=None, build=None)
 
     # Asked on every load rather than trusted to whoever deleted something.
     # A document can leave the course by paths that never touch this page,
@@ -2003,7 +2133,18 @@ def graph_guidance():
     except (Neo4jError, Exception) as exc:  # noqa: BLE001 — a notice, not the page
         logger.info("Could not check for stale citations: %s", exc)
 
+    # A finished build fills the review box, unless this request already put
+    # something there — a pasted answer being edited must not be replaced by
+    # a stored proposal on every reload.
+    build = graph_builds.latest(course_id)
+    if build and build["state"] == "proposed" and not proposal:
+        proposal = json.dumps(build["proposal"], indent=2, ensure_ascii=False)
+        material_note = material_note or _t(
+            "graph_build_from", len(build.get("scope") or []),
+            (build.get("stats") or {}).get("documents", 0))
+
     return render_template("graph_guidance.html", error=error, success=success,
                            warning=warning, material_note=material_note,
                            concepts=concepts, edges=edges, counts=counts,
-                           unassigned=unassigned, proposal=proposal, stale=stale)
+                           unassigned=unassigned, proposal=proposal,
+                           stale=stale, build=build)

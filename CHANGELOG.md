@@ -13,6 +13,33 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Added
 
+- **The concept map can be built as a background job.** A button on the graph
+  page starts a run over every document of the agents ticked on the agent
+  list; it returns at once and the work happens in an n8n workflow, because
+  reading a whole course and drafting from it takes minutes to hours and the
+  Content Admin has one worker behind a 120-second timeout. The page shows a
+  run in progress, keeps the result if you close it, and fills the review box
+  when the draft arrives — with its citations, so the reviewer can check them.
+
+  Nothing reaches Neo4j until the review is submitted. What is applied is
+  stamped with the build that produced it, which is what will make a build
+  undoable.
+
+  The refusals are the substance here. A second click is refused in a
+  sentence rather than buying a second pass over the same corpus — enforced
+  by a partial unique index, because two clicks a second apart both pass a
+  check. A workflow that cannot be reached is reported and leaves no build
+  behind blocking the course. A proposal is validated when it arrives rather
+  than when somebody opens the review, so a run that "succeeded" while
+  producing nonsense fails while the workflow is still there to say why; one
+  citing material the course does not hold is rejected with the reason kept.
+  And a late or duplicated callback cannot reopen a build that was already
+  applied.
+
+  This is the half that runs without the workflow existing yet: every path
+  above is driven end to end in `tests/test_graph_build.py`, and the callback
+  can be exercised with `curl`. The workflow itself follows.
+
 - **A checkbox on each agent: is its material part of the concept map?** The
   map covers a whole course, across every agent — that is what makes it a
   shared vocabulary rather than ten private ones. It also means a course is a

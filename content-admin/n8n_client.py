@@ -118,3 +118,15 @@ class N8nClient:
             data["bucket"] = bucket
 
         self._request("POST", "/webhook/document-ingest", files=files, data=data)
+
+    def start_graph_build(self, payload: dict) -> None:
+        """Ask the concept-map workflow to begin, and return immediately.
+
+        Same shape as the ingest webhook and for the same reason: the work
+        takes minutes to hours, and a request that waited for it would be
+        killed by gunicorn long before an answer. What comes back here is an
+        acknowledgement that the workflow was reached — everything after that
+        arrives through /api/graph-build.
+        """
+        self._request("POST", "/webhook/graph-build", json=payload)
+

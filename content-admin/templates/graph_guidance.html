@@ -8,6 +8,27 @@
 {# Concepts from before the graph knew about courses. Not moved silently:
    they belong to whichever course existed at the time, and only a person
    knows which one that was. #}
+{% if build and build.active %}
+<div class="warning">
+  <p><strong>{{ t('graph_build_running') }}</strong></p>
+  <p class="note">{{ t('graph_build_running_note') }}
+    {% if build.stats %}<br>{{ build.stats }}{% endif %}</p>
+</div>
+{% elif build and build.state == 'failed' %}
+<div class="error">
+  <p>{{ t('graph_build_failed') }}</p>
+  <pre style="white-space:pre-wrap">{{ build.error }}</pre>
+</div>
+{% endif %}
+
+{% if not (build and build.active) %}
+<form method="post" style="margin:.6em 0">
+  <input type="hidden" name="action" value="build">
+  <button type="submit">{{ t('graph_build_start') }}</button>
+  <span class="note">{{ t('graph_build_start_note') }}</span>
+</form>
+{% endif %}
+
 {% if stale %}
 <div class="warning">
   <p>{{ t('graph_stale_sources', stale.concepts, stale.orphaned) }}</p>

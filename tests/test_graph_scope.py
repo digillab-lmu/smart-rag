@@ -39,6 +39,7 @@ db, course = dbfixture.require_database()
 import accounts  # noqa: E402
 import app as flask_app  # noqa: E402
 import neo4j_client  # noqa: E402
+import db  # noqa: E402
 import storage  # noqa: E402
 import weaviate_client  # noqa: E402
 
@@ -53,11 +54,16 @@ def check(name, ok, detail=""):
 CID = course["id"]
 storage.save_slot(CID, 1, "tutor", {}, "Eins", "p")
 storage.save_slot(CID, 2, "tutor", {}, "Zwei", "p")
-# Slot 3 exists only to be freshly created, because the default is what is
-# being checked and slots 1 and 2 survive earlier runs of this file. A test
-# that reads leftover state passes or fails for reasons that have nothing to
-# do with the code.
 storage.save_slot(CID, 3, "tutor", {}, "Drei", "p")
+# What a newly created agent gets, asked of the database rather than of
+# whatever the last run left behind: slots persist, the course fixture is
+# shared, and another suite ticks and unticks the same numbers. DEFAULT is
+# the column's own answer, which is the thing being checked.
+with db.connect() as _conn:
+    with _conn.cursor() as _cur:
+        _cur.execute("UPDATE agent_slots SET in_graph = DEFAULT "
+                     "WHERE course_id = %s AND slot = 3", (CID,))
+    _conn.commit()
 storage.set_in_graph(CID, 1, True)
 storage.set_in_graph(CID, 2, True)
 
