@@ -1,0 +1,459 @@
+{
+  "id": "smartrag-graph-build",
+  "name": "SMART RAG Graph - Build the concept map",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "graph-build",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -460,
+        0
+      ],
+      "id": "gb-webhook",
+      "name": "Build Webhook",
+      "webhookId": "smartrag-graph-build"
+    },
+    {
+      "parameters": {
+        "jsCode": "// What this run will read, decided once and carried by every later node.\n//\n// The webhook answers immediately (responseMode: onReceived), so nothing\n// downstream can report a problem to the caller. Everything that can be\n// wrong with the request is therefore caught here and thrown, which the\n// error trigger turns into a \"failed\" callback the Content Admin can show —\n// a build that dies silently leaves a row saying \"running\" for ever.\nconst body = $input.first().json.body || {};\n\nconst buildId    = (body.build_id || '').trim();\nconst courseId   = (body.course_id || '').trim();\nconst collection = (body.collection || '').trim();\nconst agents     = Array.isArray(body.agents) ? body.agents.map(Number).filter(n => n > 0) : [];\n\nif (!buildId)    throw new Error('This run carries no build_id, so nothing could be reported back and the Content Admin would wait for ever.');\nif (!courseId)   throw new Error('This run names no course, so its concepts would belong to none.');\nif (!collection) throw new Error('This run names no collection, so there is nothing to read.');\nif (!agents.length) throw new Error('No agent is included in the map, so there is no material to read.');\n\n// The Content Admin's own limit, repeated here because this workflow decides\n// how many candidates to keep and a list that exceeded it would be refused\n// on arrival, after every call had been paid for.\nconst MAX_CONCEPTS = 500;\n\n// One slice of material per model call. Well below any provider's context\n// limit, and small enough that a slice which fails can be retried on its own\n// rather than costing a whole document.\nconst SLICE_CHARS = 40000;\n// Per section, so a 400-character excerpt plus its headings.\nconst EXCERPT_CHARS = 400;\n\nreturn [{\n  json: {\n    buildId, courseId, collection, agents,\n    courseName: (body.course_name || '').trim() || courseId,\n    language: (body.language || 'en').trim(),\n    MAX_CONCEPTS, SLICE_CHARS, EXCERPT_CHARS,\n    adminUrl: 'http://smartrag-content-admin:5000',\n    startedAt: new Date().toISOString(),\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        0
+      ],
+      "id": "gb-plan-the-run",
+      "name": "Plan the run"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://smartrag-weaviate:{{ $env.WEAVIATE_HTTP_PORT || 8080 }}/v1/graphql",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.WEAVIATE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: `{ Get { ${$json.collection}(limit: 20000, where: { operator: And, operands: [{ path: [\\\"course_id\\\"], operator: Equal, valueText: ${JSON.stringify($json.courseId)} },{ operator: Or, operands: [${$json.agents.map(a => `{ path: [\\\"agent_id\\\"], operator: Equal, valueInt: ${a} }`).join(',')}] }] }) { source_title source_file chapter_title section section_id chunk_index text } } }` }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -20,
+        0
+      ],
+      "id": "gb-read-weaviate",
+      "name": "Read the course material",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "// The corpus, cut into pieces a model can be asked about one at a time.\n//\n// The map covers a whole course across up to ten agents, so the material is\n// far larger than any single prompt: measured on the test installation, four\n// works came to 257 sections and ~113k characters, and the target is ten\n// agents' worth. The way out is not a bigger prompt. Concepts are found\n// *locally* — a concept is in a document, and finding it needs that document\n// and nothing else — so extraction happens per slice and the corpus never has\n// to fit anywhere at once. Only the prerequisite pass needs a global view, and\n// that one reads the concept list, which is capped, not the material.\n//\n// One entry per section rather than per chunk: neighbouring chunks of the same\n// section repeat each other, and the budget is better spent on the shape of\n// the course.\nconst plan = $('Plan the run').first().json;\nconst rows = (($input.first().json?.data?.Get || {})[plan.collection]) || [];\n\nif (!rows.length) {\n  throw new Error(\n    'This course has no indexed material for the agents included in the map. ' +\n    'A concept map proposed from nothing would be the model’s general ' +\n    'knowledge of the subject, presented as this course’s.');\n}\n\n// Order within a document is what makes \"comes before\" mean anything, and\n// Weaviate returns no order of its own.\nrows.sort((a, b) => {\n  const t = String(a.source_title || '').localeCompare(String(b.source_title || ''));\n  if (t !== 0) return t;\n  return (Number.isInteger(a.chunk_index) ? a.chunk_index : 0)\n       - (Number.isInteger(b.chunk_index) ? b.chunk_index : 0);\n});\n\nconst docs = new Map();   // source_file -> {title, file, entries[]}\nconst seen = new Set();\n\nfor (const row of rows) {\n  const file = (row.source_file || '').trim();\n  if (!file) continue;                 // provenance keys on source_file\n  const title   = (row.source_title || '').trim() || file;\n  const chapter = (row.chapter_title || '').trim();\n  const section = (row.section || '').trim();\n  const marker  = `${file}::${chapter}::${section}`;\n  if (seen.has(marker)) continue;      // one entry per section, not per chunk\n  seen.add(marker);\n\n  const excerpt = String(row.text || '').replace(/\\s+/g, ' ').trim().slice(0, plan.EXCERPT_CHARS);\n  if (!excerpt) continue;\n\n  if (!docs.has(file)) docs.set(file, { title, file, entries: [] });\n  docs.get(file).entries.push({\n    chapter, section,\n    section_id: (row.section_id || '').trim(),\n    excerpt,\n  });\n}\n\n// Slice each document on its own. A slice never spans two works: the model is\n// asked \"what does this text introduce\", and mixing two subjects in one\n// question is how a concept ends up attributed to the wrong one — which\n// provenance would then record as fact.\nconst slices = [];\nfor (const doc of docs.values()) {\n  let current = [];\n  let used = 0;\n  const flush = () => {\n    if (!current.length) return;\n    slices.push({\n      buildId: plan.buildId, courseId: plan.courseId, courseName: plan.courseName,\n      language: plan.language, adminUrl: plan.adminUrl,\n      source_file: doc.file, source_title: doc.title,\n      part: slices.filter(s => s.source_file === doc.file).length + 1,\n      entries: current,\n    });\n    current = [];\n    used = 0;\n  };\n  for (const e of doc.entries) {\n    const cost = e.chapter.length + e.section.length + e.section_id.length + e.excerpt.length + 8;\n    if (used + cost > plan.SLICE_CHARS && current.length) flush();\n    current.push(e);\n    used += cost;\n  }\n  flush();\n}\n\n// Each slice says how many there are in total, so the last one can tell the\n// merge step it is the last without the loop having to carry state.\nconst total = slices.length;\nreturn slices.map((s, i) => ({ json: { ...s, sliceIndex: i + 1, sliceTotal: total,\n                                       documents: docs.size, sections: seen.size } }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        0
+      ],
+      "id": "gb-slice-the-material",
+      "name": "Slice the material"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://smartrag-content-admin:5000/api/graph-build",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Ingest-Token",
+              "value": "={{ $env.INGEST_STATUS_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ build_id: $json.buildId, state: 'running', stats: { documents: $json.documents, sections: $json.sections, slices: $json.sliceTotal } }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        420,
+        -180
+      ],
+      "id": "gb-report-running",
+      "name": "Report: running",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        420,
+        0
+      ],
+      "id": "gb-loop",
+      "name": "Loop over slices"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── One text completion, against whichever provider is configured ──────────\n// The same six-way dispatch as content-admin/llm_client.py and the image\n// description in ingest-document.json — same endpoints, headers and auth,\n// text only. Copied rather than imported because n8n Code nodes cannot share\n// a module; kept identical so a provider that works for one feature works for\n// all of them.\nasync function complete(systemPrompt, userPrompt, maxTokens) {\n  const provider = ($env.LLM_PROVIDER || '').trim();\n  const apiKey   = $env.LLM_API_KEY || '';\n  const model    = $env.LLM_MODEL_STRONG || '';\n  const baseUrl  = $env.LLM_BASE_URL || '';\n  // No fallback: calling a different vendor than the configured one produces\n  // an auth error that points away from the real problem, an empty variable.\n  if (!provider) throw new Error('LLM_PROVIDER is empty in .env.');\n  if (!apiKey)   throw new Error('LLM_API_KEY is empty in .env.');\n  if (!model)    throw new Error('LLM_MODEL_STRONG is empty in .env.');\n\n  let url, headers, body, extractText, finishReason;\n\n  if (provider === 'anthropic') {\n    url = 'https://api.anthropic.com/v1/messages';\n    headers = { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' };\n    body = { model, max_tokens: maxTokens, system: systemPrompt,\n             messages: [{ role: 'user', content: userPrompt }] };\n    extractText  = (d) => (d.content || []).find(b => b.type === 'text')?.text || '';\n    finishReason = (d) => d.stop_reason || '';\n  } else if (provider === 'google') {\n    url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;\n    headers = { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' };\n    body = { systemInstruction: { parts: [{ text: systemPrompt }] },\n             contents: [{ role: 'user', parts: [{ text: userPrompt }] }],\n             generationConfig: { maxOutputTokens: maxTokens } };\n    extractText  = (d) => d?.candidates?.[0]?.content?.parts?.[0]?.text || '';\n    finishReason = (d) => d?.candidates?.[0]?.finishReason || '';\n  } else if (provider === 'cohere') {\n    url = 'https://api.cohere.com/v2/chat';\n    headers = { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };\n    body = { model, max_tokens: maxTokens, stream: false,\n             messages: [{ role: 'system', content: systemPrompt },\n                        { role: 'user', content: userPrompt }] };\n    extractText  = (d) => d?.message?.content?.[0]?.text || '';\n    finishReason = (d) => d?.finish_reason || '';\n  } else {\n    if (provider === 'openai') url = 'https://api.openai.com/v1/chat/completions';\n    else if (provider === 'mistral') url = 'https://api.mistral.ai/v1/chat/completions';\n    else if (provider === 'openrouter') url = 'https://openrouter.ai/api/v1/chat/completions';\n    else if (provider === 'custom') url = `${(baseUrl || '').replace(/\\/$/, '')}/chat/completions`;\n    else throw new Error(`Unknown LLM_PROVIDER: ${provider}`);\n    headers = { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };\n    body = { model, messages: [{ role: 'system', content: systemPrompt },\n                               { role: 'user', content: userPrompt }] };\n    // OpenAI rejects max_tokens outright on current models; the others still\n    // want it. Same split as llm_client.py.\n    if (provider === 'openai') body.max_completion_tokens = maxTokens;\n    else body.max_tokens = maxTokens;\n    extractText  = (d) => d?.choices?.[0]?.message?.content || '';\n    finishReason = (d) => d?.choices?.[0]?.finish_reason || '';\n  }\n\n  const raw = await this.helpers.request({ method: 'POST', url, headers,\n                                           body: JSON.stringify(body), json: false });\n  const data = JSON.parse(raw);\n  const text = (extractText(data) || '').trim();\n  if (!text) {\n    // An empty answer is a failure where it happens. Measured on the test\n    // installation: a reasoning model spent the whole budget thinking and\n    // returned an empty string with finish_reason \"length\", which the API\n    // calls a success — and the emptiness was then reported several layers\n    // away as something that had not happened.\n    const why = finishReason(data) || 'not stated';\n    throw new Error(`The model returned an empty answer (finish reason: ${why}). ` +\n      (/len|max_token/i.test(why)\n        ? `The budget of ${maxTokens} tokens was spent before any text was written.`\n        : ''));\n  }\n  return text;\n}\n\n// Models wrap JSON in a fence often enough that stripping it is leniency\n// about the wrapper, not about the format.\nfunction parseJson(text, what) {\n  let raw = text.trim();\n  const fence = raw.match(/^```(?:json)?\\s*([\\s\\S]*?)\\s*```$/);\n  if (fence) raw = fence[1];\n  try {\n    return JSON.parse(raw);\n  } catch (e) {\n    throw new Error(`${what}: the model did not return valid JSON (${e.message}). ` +\n                    `First 200 characters: ${raw.slice(0, 200)}`);\n  }\n}\n// ── One slice of one document → the concepts it introduces ─────────────────\n// Runs once per slice, because N8N_RUNNERS_TASK_TIMEOUT is 1800 seconds and a\n// single node looping over forty documents would be killed halfway with\n// nothing to show. One slice per execution also means a slice that fails is\n// the only thing retried.\nconst slice = $input.first().json;\nconst plan  = $('Plan the run').first().json;\n\nconst material = slice.entries.map(e => {\n  const head = [e.chapter, e.section].filter(Boolean).join(' · ');\n  const id   = e.section_id ? ` [${e.section_id}]` : '';\n  return `## ${head || '(no heading)'}${id}\\n${e.excerpt}`;\n}).join('\\n\\n');\n\nconst systemPrompt =\n  'You extract the concepts a piece of university course material teaches. ' +\n  'You answer with JSON and nothing else: no explanation, no commentary, no ' +\n  'code fence.';\n\nconst userPrompt =\n  `Below is part of \"${slice.source_title}\" from the course ` +\n  `\"${slice.courseName}\" — one entry per section, each with a short excerpt.\\n\\n` +\n  'Name the concepts this material *teaches*. A concept is something a ' +\n  'student has to understand: a term, a model, a method, a distinction. Not ' +\n  'a heading, not an author, not the name of the document, and not a topic ' +\n  'so broad it covers the whole course.\\n\\n' +\n  'For each one give:\\n' +\n  '  \"name\"        — as this material calls it, in its own language\\n' +\n  '  \"description\" — one sentence, what a student needs to grasp\\n' +\n  '  \"chapter\"     — the chapter or section it is introduced in, if stated\\n' +\n  '  \"section_id\"  — the section number, if the material gives one\\n\\n' +\n  'Prefer fewer, well-chosen concepts to an exhaustive list. If this part ' +\n  'introduces nothing new — a foreword, a bibliography, a table of ' +\n  'contents — answer with an empty list; that is a useful answer, not a ' +\n  'failure.\\n\\n' +\n  'Answer exactly:\\n' +\n  '{\"concepts\": [{\"name\": \"...\", \"description\": \"...\", \"chapter\": \"...\", \"section_id\": \"...\"}]}\\n\\n' +\n  `--- Material ---\\n${material}\\n--- end ---`;\n\nconst answer = await complete.call(this, systemPrompt, userPrompt, 8192);\nconst parsed = parseJson(answer, `Extracting from \"${slice.source_title}\"`);\n\nconst out = [];\nfor (const c of (parsed.concepts || [])) {\n  const name = String(c?.name ?? '').trim();\n  if (!name || name.length > 120) continue;\n  out.push({\n    name,\n    description: String(c?.description ?? '').trim().slice(0, 500) || null,\n    chapter: String(c?.chapter ?? '').trim() || null,\n    section_id: String(c?.section_id ?? '').trim() || null,\n    // Provenance, attached here and nowhere else. The model is asked about\n    // titles it can read; the file path is what the graph stores, and this\n    // is the only place that knows both.\n    source_file: slice.source_file,\n    source_title: slice.source_title,\n  });\n}\n\nreturn [{ json: { sliceIndex: slice.sliceIndex, sliceTotal: slice.sliceTotal,\n                  source_file: slice.source_file, concepts: out } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        120
+      ],
+      "id": "gb-extract-concepts",
+      "name": "Extract concepts"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── Every slice's candidates, made into one vocabulary ─────────────────────\n// The same concept turns up in several documents, and that is the useful\n// case, not the awkward one: it tells us the concept is central and it gives\n// it more than one citation, which is what lets it survive one of its\n// documents being deleted.\n//\n// Merging is mechanical here — exact match after normalising case, spacing\n// and trailing punctuation. Near-synonyms (\"Medienkompetenz\" /\n// \"Medienkompetenzen\") are deliberately *not* merged by guesswork: a wrong\n// merge silently destroys a distinction the course draws, and neither a\n// string distance nor a model is right often enough to do that unattended.\n// They stay separate and a person can merge them in the review.\nconst plan  = $('Plan the run').first().json;\nconst items = $input.all().map(i => i.json);\n\nconst norm = (s) => String(s || '').toLowerCase()\n  .normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '')\n  .replace(/[\\s\\u00a0]+/g, ' ')\n  .replace(/[.,;:!?]+$/, '')\n  .trim();\n\nconst byKey = new Map();\nlet candidates = 0;\n\nfor (const item of items) {\n  for (const c of (item.concepts || [])) {\n    candidates++;\n    const key = norm(c.name);\n    if (!key) continue;\n    let entry = byKey.get(key);\n    if (!entry) {\n      entry = { name: c.name, description: c.description, chapter: c.chapter,\n                section_id: c.section_id, sources: [], titles: [], mentions: 0 };\n      byKey.set(key, entry);\n    }\n    entry.mentions++;\n    // First non-empty wins for the prose fields: the earliest document is the\n    // one that introduces a concept, and later mentions describe it in\n    // passing. Overwriting would replace a definition with an aside.\n    if (!entry.description && c.description) entry.description = c.description;\n    if (!entry.chapter && c.chapter) entry.chapter = c.chapter;\n    if (!entry.section_id && c.section_id) entry.section_id = c.section_id;\n    if (c.source_file && !entry.sources.includes(c.source_file)) entry.sources.push(c.source_file);\n    if (c.source_title && !entry.titles.includes(c.source_title)) entry.titles.push(c.source_title);\n  }\n}\n\nlet concepts = [...byKey.values()];\nconst merged = candidates - concepts.length;\n\n// The cap is the Content Admin's, and a list over it would be refused on\n// arrival — after every call had been paid for. Cut by how many documents\n// mention a concept: something three works discuss belongs in a course map\n// more than something one paragraph names in passing.\nlet dropped = 0;\nif (concepts.length > plan.MAX_CONCEPTS) {\n  concepts.sort((a, b) => (b.sources.length - a.sources.length)\n                       || (b.mentions - a.mentions)\n                       || a.name.localeCompare(b.name));\n  dropped = concepts.length - plan.MAX_CONCEPTS;\n  concepts = concepts.slice(0, plan.MAX_CONCEPTS);\n}\n\n// Back into reading order, which is what the prerequisite pass needs: where\n// something appears in the course is the strongest evidence there is about\n// what comes before what.\nconcepts.sort((a, b) =>\n  String(a.chapter || '').localeCompare(String(b.chapter || ''), undefined, { numeric: true })\n  || String(a.section_id || '').localeCompare(String(b.section_id || ''), undefined, { numeric: true })\n  || a.name.localeCompare(b.name));\n\nif (!concepts.length) {\n  throw new Error('No concepts were found in any of the material. Either the ' +\n                  'documents hold no teaching content, or every extraction ' +\n                  'call came back empty.');\n}\n\nreturn [{ json: { concepts, stats: { candidates, merged, dropped,\n                                     concepts: concepts.length,\n                                     slices: items.length } } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        -120
+      ],
+      "id": "gb-merge-candidates",
+      "name": "Merge candidates"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── One text completion, against whichever provider is configured ──────────\n// The same six-way dispatch as content-admin/llm_client.py and the image\n// description in ingest-document.json — same endpoints, headers and auth,\n// text only. Copied rather than imported because n8n Code nodes cannot share\n// a module; kept identical so a provider that works for one feature works for\n// all of them.\nasync function complete(systemPrompt, userPrompt, maxTokens) {\n  const provider = ($env.LLM_PROVIDER || '').trim();\n  const apiKey   = $env.LLM_API_KEY || '';\n  const model    = $env.LLM_MODEL_STRONG || '';\n  const baseUrl  = $env.LLM_BASE_URL || '';\n  // No fallback: calling a different vendor than the configured one produces\n  // an auth error that points away from the real problem, an empty variable.\n  if (!provider) throw new Error('LLM_PROVIDER is empty in .env.');\n  if (!apiKey)   throw new Error('LLM_API_KEY is empty in .env.');\n  if (!model)    throw new Error('LLM_MODEL_STRONG is empty in .env.');\n\n  let url, headers, body, extractText, finishReason;\n\n  if (provider === 'anthropic') {\n    url = 'https://api.anthropic.com/v1/messages';\n    headers = { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' };\n    body = { model, max_tokens: maxTokens, system: systemPrompt,\n             messages: [{ role: 'user', content: userPrompt }] };\n    extractText  = (d) => (d.content || []).find(b => b.type === 'text')?.text || '';\n    finishReason = (d) => d.stop_reason || '';\n  } else if (provider === 'google') {\n    url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;\n    headers = { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' };\n    body = { systemInstruction: { parts: [{ text: systemPrompt }] },\n             contents: [{ role: 'user', parts: [{ text: userPrompt }] }],\n             generationConfig: { maxOutputTokens: maxTokens } };\n    extractText  = (d) => d?.candidates?.[0]?.content?.parts?.[0]?.text || '';\n    finishReason = (d) => d?.candidates?.[0]?.finishReason || '';\n  } else if (provider === 'cohere') {\n    url = 'https://api.cohere.com/v2/chat';\n    headers = { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };\n    body = { model, max_tokens: maxTokens, stream: false,\n             messages: [{ role: 'system', content: systemPrompt },\n                        { role: 'user', content: userPrompt }] };\n    extractText  = (d) => d?.message?.content?.[0]?.text || '';\n    finishReason = (d) => d?.finish_reason || '';\n  } else {\n    if (provider === 'openai') url = 'https://api.openai.com/v1/chat/completions';\n    else if (provider === 'mistral') url = 'https://api.mistral.ai/v1/chat/completions';\n    else if (provider === 'openrouter') url = 'https://openrouter.ai/api/v1/chat/completions';\n    else if (provider === 'custom') url = `${(baseUrl || '').replace(/\\/$/, '')}/chat/completions`;\n    else throw new Error(`Unknown LLM_PROVIDER: ${provider}`);\n    headers = { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };\n    body = { model, messages: [{ role: 'system', content: systemPrompt },\n                               { role: 'user', content: userPrompt }] };\n    // OpenAI rejects max_tokens outright on current models; the others still\n    // want it. Same split as llm_client.py.\n    if (provider === 'openai') body.max_completion_tokens = maxTokens;\n    else body.max_tokens = maxTokens;\n    extractText  = (d) => d?.choices?.[0]?.message?.content || '';\n    finishReason = (d) => d?.choices?.[0]?.finish_reason || '';\n  }\n\n  const raw = await this.helpers.request({ method: 'POST', url, headers,\n                                           body: JSON.stringify(body), json: false });\n  const data = JSON.parse(raw);\n  const text = (extractText(data) || '').trim();\n  if (!text) {\n    // An empty answer is a failure where it happens. Measured on the test\n    // installation: a reasoning model spent the whole budget thinking and\n    // returned an empty string with finish_reason \"length\", which the API\n    // calls a success — and the emptiness was then reported several layers\n    // away as something that had not happened.\n    const why = finishReason(data) || 'not stated';\n    throw new Error(`The model returned an empty answer (finish reason: ${why}). ` +\n      (/len|max_token/i.test(why)\n        ? `The budget of ${maxTokens} tokens was spent before any text was written.`\n        : ''));\n  }\n  return text;\n}\n\n// Models wrap JSON in a fence often enough that stripping it is leniency\n// about the wrapper, not about the format.\nfunction parseJson(text, what) {\n  let raw = text.trim();\n  const fence = raw.match(/^```(?:json)?\\s*([\\s\\S]*?)\\s*```$/);\n  if (fence) raw = fence[1];\n  try {\n    return JSON.parse(raw);\n  } catch (e) {\n    throw new Error(`${what}: the model did not return valid JSON (${e.message}). ` +\n                    `First 200 characters: ${raw.slice(0, 200)}`);\n  }\n}\n\n// -- One pass over the whole vocabulary: what has to come before what -------\n// The only step that needs a global view, and the reason the corpus never has\n// to fit in a prompt: this reads the *concept list*, not the material. Five\n// hundred concepts with a name, a chapter and a sentence each is about 60k\n// characters -- one call, and it costs the same for forty documents as for\n// four.\nconst plan     = $('Plan the run').first().json;\nconst incoming = $input.first().json;\nconst concepts = incoming.concepts;\n\nconst listing = concepts.map((c, i) => {\n  const where = [c.chapter, c.section_id].filter(Boolean).join(' ');\n  const from  = c.titles.slice(0, 3).join('; ');\n  return `${i + 1}. ${c.name}${where ? ` (${where})` : ''}\\n` +\n         `   ${c.description || '-'}\\n   in: ${from}`;\n}).join('\\n');\n\nconst systemPrompt =\n  'You lay out the order in which concepts of a university course have to be ' +\n  'learned. You answer with JSON and nothing else: no explanation, no ' +\n  'commentary, no code fence.';\n\nconst userPrompt =\n  `These are the concepts of the course \"${plan.courseName}\", in the order ` +\n  'they appear in its material, each with the works it comes from.\\n\\n' +\n  'Name the pairs where one concept has to be understood *before* another ' +\n  'can be. Only real dependencies: \"B cannot be grasped without A\". Not ' +\n  '\"they are related\", not \"they appear in the same chapter\", not \"A is ' +\n  'mentioned first\".\\n\\n' +\n  'For each pair give \"before\", \"after\" -- both exactly as spelled in the ' +\n  'list -- and \"sources\", the work or works that justify the dependency, ' +\n  'named exactly as they appear after \"in:\". Every pair must cite at least ' +\n  'one. If no material supports a dependency you suspect, leave it out: an ' +\n  'edge nobody can check is worse than a gap somebody can see.\\n\\n' +\n  'Prerequisites form no cycles. If two concepts seem to require each other, ' +\n  'pick the direction the material teaches and drop the other.\\n\\n' +\n  'Answer exactly:\\n' +\n  '{\"prerequisites\": [{\"before\": \"...\", \"after\": \"...\", \"sources\": [\"...\"]}]}\\n\\n' +\n  `--- Concepts ---\\n${listing}\\n--- end ---`;\n\nconst answer = await complete.call(this, systemPrompt, userPrompt, 16384);\nconst parsed = parseJson(answer, 'Proposing prerequisites');\n\n// Names back to their exact spelling, and titles back to file paths. The\n// model was asked about things it can read; the graph stores paths, and a\n// citation that does not resolve to a real document is refused on arrival --\n// so it is resolved here, where the mapping exists, rather than sent to be\n// rejected after every call has been paid for.\nconst byName  = new Map(concepts.map(c => [c.name.toLowerCase(), c]));\nconst byTitle = new Map();\nfor (const c of concepts) {\n  c.titles.forEach((t, i) => {\n    if (!byTitle.has(t.toLowerCase())) byTitle.set(t.toLowerCase(), c.sources[i] || c.sources[0]);\n  });\n}\n\nconst proposed = [];\nconst seen = new Set();\nlet unresolved = 0, uncited = 0;\n\nfor (const e of (parsed.prerequisites || [])) {\n  const a = byName.get(String(e && e.before ? e.before : '').trim().toLowerCase());\n  const b = byName.get(String(e && e.after ? e.after : '').trim().toLowerCase());\n  // An edge naming a concept that is not in the list writes nothing and\n  // reports success, which is how a map ends up looking complete and\n  // answering nothing.\n  if (!a || !b || a === b) { unresolved++; continue; }\n  const key = `${a.name} >> ${b.name}`;\n  if (seen.has(key)) continue;\n\n  const raw = Array.isArray(e && e.sources) ? e.sources : [e && e.sources];\n  const cited = [];\n  for (const s of raw) {\n    const file = byTitle.get(String(s == null ? '' : s).trim().toLowerCase());\n    if (file && !cited.includes(file)) cited.push(file);\n  }\n  // Every edge must cite material that exists. This does not make an edge\n  // correct; it removes the edges no document supports, which between two\n  // unrelated subjects is all of them.\n  if (!cited.length) { uncited++; continue; }\n\n  seen.add(key);\n  proposed.push({ before: a.name, after: b.name, sources: cited });\n}\n\n// Cycles. The model was asked not to make them and sometimes will anyway, and\n// the Content Admin refuses a whole proposal that contains one -- so a single\n// loop would waste the entire build. Break them here, on the edge that closes\n// the loop, and report how many were dropped rather than hiding it.\nconst built = new Map();\nconst wouldClose = (from, to) => {\n  const stack = [to];\n  const visited = new Set();\n  while (stack.length) {\n    const n = stack.pop();\n    if (n === from) return true;\n    if (visited.has(n)) continue;\n    visited.add(n);\n    for (const next of (built.get(n) || [])) stack.push(next);\n  }\n  return false;\n};\n\nconst kept = [];\nlet cyclic = 0;\nfor (const e of proposed) {\n  if (wouldClose(e.before, e.after)) { cyclic++; continue; }\n  if (!built.has(e.before)) built.set(e.before, []);\n  built.get(e.before).push(e.after);\n  kept.push(e);\n}\n\nconst proposal = {\n  concepts: concepts.map(c => {\n    const out = { name: c.name, sources: c.sources };\n    if (c.description) out.description = c.description;\n    if (c.chapter) out.chapter = c.chapter;\n    if (c.section_id) out.section_id = c.section_id;\n    return out;\n  }),\n  prerequisites: kept,\n};\n\nreturn [{ json: {\n  buildId: plan.buildId, adminUrl: plan.adminUrl, proposal,\n  stats: Object.assign({}, incoming.stats, {\n    edges: kept.length,\n    edges_unresolved: unresolved,\n    edges_uncited: uncited,\n    edges_cyclic: cyclic,\n    documents: new Set(concepts.reduce((a, c) => a.concat(c.sources), [])).size,\n  }),\n} }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        -120
+      ],
+      "id": "gb-propose-prerequisites",
+      "name": "Propose prerequisites"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://smartrag-content-admin:5000/api/graph-build",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Ingest-Token",
+              "value": "={{ $env.INGEST_STATUS_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ build_id: $json.buildId, state: 'proposed', proposal: $json.proposal, stats: $json.stats }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1080,
+        -120
+      ],
+      "id": "gb-report-proposed",
+      "name": "Report: proposed",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -460,
+        320
+      ],
+      "id": "gb-error-trigger",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// What failed, and which build to report it against.\n//\n// The error item is n8n's shape, not this workflow's, and the build id lives\n// in the webhook body that started the execution. Without it the Content\n// Admin has a row saying \"running\" that nothing will ever finish -- which is\n// the state this whole path exists to prevent.\nconst e = $input.first().json || {};\nconst body = e.execution?.data?.resultData?.runData?.['Build Webhook']?.[0]\n              ?.data?.main?.[0]?.[0]?.json?.body\n          || e.workflow?.body\n          || {};\nconst buildId = (body.build_id || '').trim();\nconst message = (e.execution?.error?.message)\n             || (e.error?.message)\n             || 'The build failed and n8n gave no message.';\nconst node = e.execution?.lastNodeExecuted || e.execution?.error?.node?.name || '';\n\nreturn [{ json: {\n  buildId,\n  reportable: Boolean(buildId),\n  error: node ? `${node}: ${message}` : message,\n} }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        320
+      ],
+      "id": "gb-read-the-failure",
+      "name": "Read the failure"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "has-build",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.reportable }}",
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -20,
+        320
+      ],
+      "id": "gb-has-build",
+      "name": "Is there a build to fail?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://smartrag-content-admin:5000/api/graph-build",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Ingest-Token",
+              "value": "={{ $env.INGEST_STATUS_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ build_id: $json.buildId, state: 'failed', error: $json.error }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        200,
+        240
+      ],
+      "id": "gb-report-failed",
+      "name": "Report: failed",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    }
+  ],
+  "connections": {
+    "Build Webhook": {
+      "main": [
+        [
+          {
+            "node": "Plan the run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan the run": {
+      "main": [
+        [
+          {
+            "node": "Read the course material",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read the course material": {
+      "main": [
+        [
+          {
+            "node": "Slice the material",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slice the material": {
+      "main": [
+        [
+          {
+            "node": "Report: running",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Report: running": {
+      "main": [
+        [
+          {
+            "node": "Loop over slices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop over slices": {
+      "main": [
+        [
+          {
+            "node": "Merge candidates",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract concepts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract concepts": {
+      "main": [
+        [
+          {
+            "node": "Loop over slices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge candidates": {
+      "main": [
+        [
+          {
+            "node": "Propose prerequisites",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Propose prerequisites": {
+      "main": [
+        [
+          {
+            "node": "Report: proposed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read the failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read the failure": {
+      "main": [
+        [
+          {
+            "node": "Is there a build to fail?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is there a build to fail?": {
+      "main": [
+        [
+          {
+            "node": "Report: failed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "smartrag-error-handler",
+    "executionTimeout": 10800,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "pinData": {},
+  "tags": [],
+  "versionId": "1",
+  "meta": {
+    "instanceId": "smartrag"
+  }
+}

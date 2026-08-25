@@ -13,6 +13,36 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Added
 
+- **The concept-map workflow.** The other half of the build: an n8n workflow
+  that reads the course's material, has the strong model draft the concepts
+  and their prerequisites, and posts the result back for review.
+
+  It is built around one property. Concepts are found *locally* — a concept is
+  in a document, and finding it needs that document and nothing else — so
+  extraction runs per slice of one document and the corpus never has to fit in
+  a prompt. Only the prerequisite pass needs a global view, and it reads the
+  *concept list*, which is capped at 500, not the material. That step
+  therefore costs the same for forty documents as for four, which is what
+  makes ten agents per course possible at all.
+
+  What it refuses is the interesting part. An edge naming a concept that is
+  not in the list is dropped, as is one citing no material, a self-loop, and
+  the edge that closes a cycle — each counted and reported rather than
+  silently swallowed, and the citations are resolved from the titles the model
+  can read to the file paths the graph stores. Near-synonyms are deliberately
+  *not* merged: a wrong merge destroys a distinction the course draws, and
+  neither a string distance nor a model is right often enough to do that
+  unattended. A course with no indexed material is refused rather than
+  answered from the model's general knowledge of the subject.
+
+  `tests/test_graph_workflow.sh` lifts the Code nodes out of the committed
+  JSON and runs them in plain Node against a stubbed Weaviate and a stubbed
+  model, so the slicing, merging, citation resolution and cycle breaking are
+  checked on the same code that will run — fifteen mutations of the workflow
+  turn it red. It also checks that every workflow file in the repository is
+  actually imported and, if it has a trigger, activated: a file nobody deploys
+  exists only for whoever reads the repository.
+
 - **The concept map can be built as a background job.** A button on the graph
   page starts a run over every document of the agents ticked on the agent
   list; it returns at once and the work happens in an n8n workflow, because

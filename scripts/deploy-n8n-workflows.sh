@@ -135,6 +135,7 @@ WORKFLOWS=(
     "$WORKFLOW_DIR/ingest-document.json"
     "$CORE_DIR/chathistory-sync.json"
     "$CORE_DIR/usermemory-summary.json"
+    "$CORE_DIR/graph-build.json"
     # The error handler first, so the workflows that name it as their error
     # workflow find it already there. n8n stores that as a plain id and does
     # not resolve it at import, so the order is a courtesy rather than a
@@ -150,6 +151,11 @@ ACTIVATE_IDS=(
     "smartrag-ingest-document"
     "smartrag-chathistory-sync"
     "smartrag-usermemory-summary"
+    # Webhook-triggered, like the ingest: the Content Admin calls it, and an
+    # inactive workflow answers a webhook with 404 — which reaches the
+    # operator as "the build could not be started" and sends them looking at
+    # the wrong thing.
+    "smartrag-graph-build"
     "smartrag-watchdog"
 )
 # The error handler is deliberately absent: n8n calls it when another workflow
