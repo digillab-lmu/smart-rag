@@ -11,6 +11,25 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ## Unreleased
 
+### Fixed
+
+- **A failed build sat at "running" for ever, and nothing could clear it.**
+  The first live run errored in n8n, and the Content Admin never heard: the
+  workflow's failure path hung off an Error Trigger, and n8n does not fire one
+  in a workflow whose `errorWorkflow` names a different workflow — it calls
+  that one instead. The reporting now hangs off each node's error output, the
+  way the ingest workflow already does it, and the dead Error Trigger is gone.
+  A test now requires every node on the main path to route its failure, and
+  refuses an Error Trigger in this workflow at all: dead code here reads as a
+  failure path that works.
+
+  The second half was worse, because it had no cause outside my own design: a
+  build that never reports back blocked its course permanently, since the
+  guard against two builds at once is a unique index on the active ones. The
+  page now offers **Give up on this build**, with the time it started beside
+  it, and records it as failed rather than deleting it. A result arriving
+  afterwards is refused rather than resurrecting it.
+
 ### Added
 
 - **The concept-map workflow.** The other half of the build: an n8n workflow

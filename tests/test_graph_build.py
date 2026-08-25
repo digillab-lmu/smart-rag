@@ -152,6 +152,52 @@ check("a course with no agent ticked is refused", not sent, sent)
 check("and told why", "no material" in page.lower() or "no agent" in page.lower(),
       page[-300:])
 
+# ─── A build that goes nowhere must not lock the course ─────────────────────
+# The first live attempt did exactly this: the run was recorded, nothing ever
+# reported back, and the one-active index meant the course could not be built
+# again — with nothing on the page to do about it.
+reset()
+client.post("/graph-guidance", data={"action": "build"})
+stuck = gb.active(CID)
+check("a build is active", stuck is not None, "")
+
+page = client.get("/graph-guidance").get_data(as_text=True)
+check("the page offers a way out of it",
+      'value="abandon_build"' in page,
+      "a guard against two builds becomes a course that can never be built "
+      "again as soon as one gets stuck")
+check("and says when it started",
+      "started" in page.lower() or "gestartet" in page.lower(),
+      "how long it has been going is what tells an operator it is stuck")
+
+page = client.post("/graph-guidance",
+                   data={"action": "abandon_build"}).get_data(as_text=True)
+check("giving up clears the active build", gb.active(CID) is None, "")
+check("it is recorded as failed rather than deleted",
+      gb.get(stuck["id"])["state"] == "failed",
+      "a row that vanishes leaves the next person wondering whether it ran")
+check("with a reason", "abandon" in (gb.get(stuck["id"])["error"] or "").lower(),
+      gb.get(stuck["id"])["error"])
+
+sent.clear()
+client.post("/graph-guidance", data={"action": "build"})
+check("and a new build can be started", len(sent) == 1, sent)
+
+# A workflow that was in fact still running must not be able to resurrect the
+# build it was abandoned from.
+old_id = gb.active(CID)["id"]
+client.post("/graph-guidance", data={"action": "abandon_build"})
+resp = client.post("/api/graph-build",
+                   json={"build_id": old_id, "state": "proposed",
+                         "proposal": GOOD}, headers=HEAD)
+check("a late result from an abandoned build is refused",
+      gb.get(old_id)["state"] == "failed", gb.get(old_id)["state"])
+
+page = client.post("/graph-guidance",
+                   data={"action": "abandon_build"}).get_data(as_text=True)
+check("giving up when nothing runs says so",
+      "nothing to give up" in page.lower(), page[-300:])
+
 # ─── Reporting back ─────────────────────────────────────────────────────────
 reset()
 client.post("/graph-guidance", data={"action": "build"})

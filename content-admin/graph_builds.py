@@ -162,6 +162,23 @@ def _advance(build_id: str, state: str, proposal: dict | None = None,
     return changed > 0
 
 
+def abandon(build_id: str, reason: str = "") -> bool:
+    """Give up on a build that is going nowhere.
+
+    Needed because the guard against two builds at once is a unique index on
+    the active ones: without a way out, a run that never reports back — a
+    workflow that was never triggered, an n8n restart mid-run, a callback that
+    could not reach us — blocks that course for good. The first live attempt
+    did exactly that, and there was nothing the operator could do about it.
+
+    Recorded as failed rather than deleted. "Somebody gave up on this at
+    14:20" is worth keeping; a row that vanishes leaves the next person
+    wondering whether it ever ran.
+    """
+    return _advance(build_id, "failed",
+                    error=(reason or "Abandoned by the operator; it was not "
+                                     "reporting back."), finished=True)
+
 def forget_course(course_id: str) -> int:
     """Builds go with their course. The cascade in the schema does this too;
     this exists for the caller that deletes a course's traces explicitly."""

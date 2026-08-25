@@ -31,7 +31,8 @@
         0
       ],
       "id": "gb-plan-the-run",
-      "name": "Plan the run"
+      "name": "Plan the run",
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -67,7 +68,8 @@
       "name": "Read the course material",
       "retryOnFail": true,
       "maxTries": 3,
-      "waitBetweenTries": 2000
+      "waitBetweenTries": 2000,
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -80,7 +82,8 @@
         0
       ],
       "id": "gb-slice-the-material",
-      "name": "Slice the material"
+      "name": "Slice the material",
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -116,7 +119,8 @@
       "name": "Report: running",
       "retryOnFail": true,
       "maxTries": 3,
-      "waitBetweenTries": 2000
+      "waitBetweenTries": 2000,
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -144,7 +148,8 @@
         120
       ],
       "id": "gb-extract-concepts",
-      "name": "Extract concepts"
+      "name": "Extract concepts",
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -157,7 +162,8 @@
         -120
       ],
       "id": "gb-merge-candidates",
-      "name": "Merge candidates"
+      "name": "Merge candidates",
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -170,7 +176,8 @@
         -120
       ],
       "id": "gb-propose-prerequisites",
-      "name": "Propose prerequisites"
+      "name": "Propose prerequisites",
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -209,60 +216,17 @@
       "waitBetweenTries": 2000
     },
     {
-      "parameters": {},
-      "type": "n8n-nodes-base.errorTrigger",
-      "typeVersion": 1,
-      "position": [
-        -460,
-        320
-      ],
-      "id": "gb-error-trigger",
-      "name": "Error Trigger"
-    },
-    {
       "parameters": {
-        "jsCode": "\n// What failed, and which build to report it against.\n//\n// The error item is n8n's shape, not this workflow's, and the build id lives\n// in the webhook body that started the execution. Without it the Content\n// Admin has a row saying \"running\" that nothing will ever finish -- which is\n// the state this whole path exists to prevent.\nconst e = $input.first().json || {};\nconst body = e.execution?.data?.resultData?.runData?.['Build Webhook']?.[0]\n              ?.data?.main?.[0]?.[0]?.json?.body\n          || e.workflow?.body\n          || {};\nconst buildId = (body.build_id || '').trim();\nconst message = (e.execution?.error?.message)\n             || (e.error?.message)\n             || 'The build failed and n8n gave no message.';\nconst node = e.execution?.lastNodeExecuted || e.execution?.error?.node?.name || '';\n\nreturn [{ json: {\n  buildId,\n  reportable: Boolean(buildId),\n  error: node ? `${node}: ${message}` : message,\n} }];\n"
+        "jsCode": "\n// What failed, and which build to report it against.\n//\n// Reached from the error output of every node that can fail, not from an\n// Error Trigger: n8n calls the workflow named in settings.errorWorkflow when\n// a run dies, and that is the shared handler, so an Error Trigger in here\n// would never fire. The first live run proved it -- the workflow errored, the\n// shared handler ran, and the build sat at \"queued\" for ever because nothing\n// told the Content Admin.\n//\n// The build id comes from the webhook rather than from the failing item: an\n// item on the error path carries whatever the node had, which for a failure\n// in the very first node is the raw request.\nlet buildId = '';\ntry {\n  buildId = ($('Build Webhook').first().json.body || {}).build_id || '';\n} catch (e) {\n  buildId = '';\n}\n\nconst item = $input.first().json || {};\nconst err = item.error;\nconst message = (err && (err.message || err.description))\n             || (typeof err === 'string' ? err : '')\n             || 'The build failed and n8n gave no message.';\n\nreturn [{ json: {\n  buildId: String(buildId).trim(),\n  error: String(message).slice(0, 3000),\n} }];\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -240,
+        860,
         320
       ],
       "id": "gb-read-the-failure",
       "name": "Read the failure"
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "has-build",
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              },
-              "leftValue": "={{ $json.reportable }}",
-              "rightValue": ""
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        -20,
-        320
-      ],
-      "id": "gb-has-build",
-      "name": "Is there a build to fail?"
     },
     {
       "parameters": {
@@ -291,14 +255,15 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
       "position": [
-        200,
-        240
+        1080,
+        320
       ],
       "id": "gb-report-failed",
       "name": "Report: failed",
       "retryOnFail": true,
       "maxTries": 3,
-      "waitBetweenTries": 2000
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
@@ -321,6 +286,13 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "Read the failure",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -329,6 +301,13 @@
         [
           {
             "node": "Slice the material",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Read the failure",
             "type": "main",
             "index": 0
           }
@@ -343,6 +322,13 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "Read the failure",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -351,6 +337,13 @@
         [
           {
             "node": "Loop over slices",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Read the failure",
             "type": "main",
             "index": 0
           }
@@ -383,6 +376,13 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "Read the failure",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -391,6 +391,13 @@
         [
           {
             "node": "Propose prerequisites",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Read the failure",
             "type": "main",
             "index": 0
           }
@@ -405,11 +412,7 @@
             "type": "main",
             "index": 0
           }
-        ]
-      ]
-    },
-    "Error Trigger": {
-      "main": [
+        ],
         [
           {
             "node": "Read the failure",
@@ -423,23 +426,11 @@
       "main": [
         [
           {
-            "node": "Is there a build to fail?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Is there a build to fail?": {
-      "main": [
-        [
-          {
             "node": "Report: failed",
             "type": "main",
             "index": 0
           }
-        ],
-        []
+        ]
       ]
     }
   },

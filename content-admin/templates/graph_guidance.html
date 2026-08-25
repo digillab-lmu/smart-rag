@@ -12,7 +12,16 @@
 <div class="warning">
   <p><strong>{{ t('graph_build_running') }}</strong></p>
   <p class="note">{{ t('graph_build_running_note') }}
-    {% if build.stats %}<br>{{ build.stats }}{% endif %}</p>
+    {% if build.stats %}<br>{{ build.stats }}{% endif %}
+    <br>{{ t('graph_build_started_at', build.started_at) }}</p>
+  {# A run that is going nowhere must not lock the course for ever. #}
+  <form method="post" style="margin:.4em 0">
+    <input type="hidden" name="action" value="abandon_build">
+    <button type="submit" class="secondary"
+            onclick='return confirm({{ t("graph_build_abandon_confirm")|tojson }});'>
+      {{ t('graph_build_abandon') }}
+    </button>
+  </form>
 </div>
 {% elif build and build.state == 'failed' %}
 <div class="error">

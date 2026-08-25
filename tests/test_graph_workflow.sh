@@ -56,6 +56,47 @@ if wf["connections"]["Extract concepts"]["main"][0][0]["node"] != "Loop over sli
           "ever be read")
     sys.exit(1)
 
+# Every node that can fail must route its failure to the reporting path.
+#
+# An Error Trigger inside a workflow whose settings.errorWorkflow names a
+# different workflow never fires -- n8n calls the named one instead. That was
+# the first live run: the workflow errored, the shared handler ran, and the
+# Content Admin sat at "queued" for ever because nothing told it. So the
+# failure path hangs off each node's error output, the way the ingest workflow
+# already does it, and this checks that none was forgotten.
+main_path = ["Plan the run", "Read the course material", "Slice the material",
+             "Report: running", "Extract concepts", "Merge candidates",
+             "Propose prerequisites"]
+by_name = {n["name"]: n for n in wf["nodes"]}
+for name in main_path:
+    node = by_name.get(name)
+    if node is None:
+        print("FAILURES:"); print(f"  - the workflow has no node {name!r}"); sys.exit(1)
+    if node.get("onError") != "continueErrorOutput":
+        print("FAILURES:")
+        print(f"  - {name} has no error output, so a failure there leaves the "
+              "build saying 'running' for ever")
+        sys.exit(1)
+    outs = wf["connections"].get(name, {}).get("main", [])
+    if len(outs) < 2 or not outs[1] or outs[1][0]["node"] != "Read the failure":
+        print("FAILURES:")
+        print(f"  - {name}'s error output does not reach 'Read the failure'")
+        sys.exit(1)
+
+if any(n["type"] == "n8n-nodes-base.errorTrigger" for n in wf["nodes"]):
+    print("FAILURES:")
+    print("  - there is an Error Trigger in a workflow whose errorWorkflow "
+          "points elsewhere; it cannot fire, and dead code here reads as a "
+          "failure path that works")
+    sys.exit(1)
+
+# The report of a failure must not be able to fail into the failure path.
+if by_name["Report: failed"].get("onError") != "continueRegularOutput":
+    print("FAILURES:")
+    print("  - Report: failed can route its own failure back into the error "
+          "path")
+    sys.exit(1)
+
 # A run over a large course is minutes to hours; n8n's default execution
 # timeout would cut it off with the money already spent.
 if int(wf["settings"].get("executionTimeout", 0)) < 3600:

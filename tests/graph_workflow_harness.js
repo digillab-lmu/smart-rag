@@ -289,18 +289,29 @@ check('empty optional fields are left out rather than sent as null',
 check('the build id travels to the callback', result.buildId === 'gb-1', result);
 
 // -- The failure path --------------------------------------------------------
-const failOut = await run('Read the failure', [{ json: {
-  execution: { error: { message: 'Weaviate refused' }, lastNodeExecuted: 'Read the course material',
-    data: { resultData: { runData: { 'Build Webhook': [
-      { data: { main: [[{ json: { body: { build_id: 'gb-1' } } }]] } }] } } } } } }],
-  {}, ENV);
-check('a failure finds the build to report against', failOut[0].json.buildId === 'gb-1',
+// Reached from a node's error output, so the item is whatever that node had
+// plus an "error". The build id comes from the webhook, because a failure in
+// the very first node leaves nothing else to read it from.
+const webhookItems = [{ json: { body: { build_id: 'gb-1', course_id: 'kurs-1' } } }];
+
+let failOut = await run('Read the failure',
+  [{ json: { error: { message: 'Weaviate refused the connection' } } }],
+  { 'Build Webhook': webhookItems }, ENV);
+check('a failure finds the build to report against',
+      failOut[0].json.buildId === 'gb-1', failOut[0].json);
+check('and carries the message', /Weaviate refused/.test(failOut[0].json.error),
+      failOut[0].json.error);
+
+failOut = await run('Read the failure', [{ json: { error: 'plain string' } }],
+                    { 'Build Webhook': webhookItems }, ENV);
+check('an error given as a bare string is handled too',
+      /plain string/.test(failOut[0].json.error), failOut[0].json);
+
+failOut = await run('Read the failure', [{ json: {} }],
+                    { 'Build Webhook': webhookItems }, ENV);
+check('a failure with no message still reports something',
+      failOut[0].json.error.length > 0 && failOut[0].json.buildId === 'gb-1',
       failOut[0].json);
-check('and names the node that failed',
-      /Read the course material/.test(failOut[0].json.error), failOut[0].json.error);
-const noBuild = await run('Read the failure', [{ json: { execution: { error: { message: 'x' } } } }], {}, ENV);
-check('a failure with no build id says so instead of guessing',
-      noBuild[0].json.reportable === false, noBuild[0].json);
 
 // -- Done --------------------------------------------------------------------
 if (failures.length) {

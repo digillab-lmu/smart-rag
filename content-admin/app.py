@@ -2021,6 +2021,16 @@ def graph_guidance():
                         error = _t("graph_build_start_failed", exc)
                     else:
                         success = _t("graph_build_started", len(scope))
+            elif action == "abandon_build":
+                # The way out of a run that is going nowhere. Without it the
+                # one-active index turns a stuck build into a course that can
+                # never be built again.
+                stuck = graph_builds.active(course_id)
+                if stuck is None:
+                    error = _t("graph_build_none_active")
+                else:
+                    graph_builds.abandon(stuck["id"])
+                    success = _t("graph_build_abandoned")
             elif action == "clean_stale":
                 # Removing what only vanished material supported. Same
                 # machinery as unticking an agent, reached from the other
