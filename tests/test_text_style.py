@@ -100,6 +100,14 @@ for lang, catalogue in CATALOGUES.items():
             continue
         low = text.lower()
 
+        # An escape that reached the screen. Twice now a rewrite has been
+        # applied through a JSON batch and escaped a second time on the way
+        # in, so the interface displayed \u201esub\u201c where it meant to
+        # show quotation marks. Only a screenshot caught the first one.
+        if re.search(r"\\u[0-9a-fA-F]{4}", text) or "\\n" in text.replace("\n", ""):
+            check(f"{lang}/{key}: no escape sequence shown as text", False,
+                  text[:110])
+
         if ANTHROPOMORPHIC[lang].search(text):
             check(f"{lang}/{key}: no process is given a will", False,
                   ANTHROPOMORPHIC[lang].search(text).group(0))
