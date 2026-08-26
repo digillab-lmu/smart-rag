@@ -129,6 +129,56 @@ check_translations >/dev/null 2>&1 || true
 # ask instead.
 if [[ "$MODE" == "phase1" ]]; then
     PREV_STATE="$(detect_bootstrap_state "$REPO_ROOT")"
+
+    # ─── Fresh install, or take over an existing one ─────────────────────────
+    # Asked only on a machine with nothing on it, which is exactly the machine
+    # a move lands on. Without this the operator configures a new installation
+    # first and then overwrites it, which works but generates a set of secrets
+    # that is discarded minutes later — and it is not obvious from the wizard
+    # that restoring was an option at all.
+    if [[ "$PREV_STATE" == "none" ]]; then
+        header "$(t start_title)"
+        start_choice="$(select_one_index start_choice \
+            "$(t start_fresh)" \
+            "$(t start_restore)")" || exit 0
+        if [[ "$start_choice" == "2" ]]; then
+            info "$(t start_restore_intro)"
+            echo
+            if archive="$(choose_backup_archive)" && [[ -n "$archive" ]]; then
+                echo
+                info "$(t start_restore_dryrun)"
+                echo
+                if bash "$REPO_ROOT/scripts/restore.sh" "$archive" --dry-run \
+                        --lang "$LANG_CHOICE"; then
+                    echo
+                    warn "$(t start_restore_replaces)"
+                    if confirm start_restore_confirm "n"; then
+                        rename=""
+                        if confirm start_restore_rename_ask "n"; then
+                            rename="$(prompt start_restore_rename_to)" || rename=""
+                        fi
+                        if [[ -n "$rename" ]]; then
+                            exec bash "$REPO_ROOT/scripts/restore.sh" "$archive" \
+                                 --rename "$rename" --lang "$LANG_CHOICE"
+                        else
+                            exec bash "$REPO_ROOT/scripts/restore.sh" "$archive" \
+                                 --lang "$LANG_CHOICE"
+                        fi
+                    fi
+                else
+                    echo
+                    err "$(t start_restore_refused)"
+                fi
+            fi
+            # Falling through to the fresh install is deliberate: somebody who
+            # came here for a restore and could not have one still needs a way
+            # forward, and the alternative is an installer that exits.
+            echo
+            info "$(t start_restore_fallthrough)"
+            echo
+        fi
+    fi
+
     if [[ "$PREV_STATE" != "none" ]]; then
         header "$(t prevrun_title)"
         case "$PREV_STATE" in

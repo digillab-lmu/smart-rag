@@ -834,6 +834,153 @@ action_config() {
     esac
 }
 
+# ─── Copy a backup to a removable medium ─────────────────────────────────────
+# Two archives, not one: the .sha256 beside the tar.gz is what makes a restore
+# able to tell a complete copy from a truncated one. Copied by hand it is the
+# file people forget, and restore.sh then only warns — so the transfer that
+# needs the check most is the one most likely to arrive without it.
+#
+# What this does not do is encrypt. The archive contains .env, and .env holds
+# every password of the installation in clear. On a stick that leaves the
+# building that is the whole deployment, which is why the warning below is a
+# confirmation and not a note.
+# ─── Restore, from here rather than from a remembered command line ───────────
+# This used to print the two commands and leave. That was a defensible answer
+# while a restore was a rare, deliberate act performed by whoever wrote the
+# backup — but the case it is actually needed for is a move onto a machine
+# where the archive arrived on a stick, and sending somebody to the command
+# line at that point is where the wrong archive name gets typed.
+#
+# The safety is not in making it awkward. It is in the dry run, which prints
+# what the archive is, what address it carries and what would be overwritten,
+# and in a confirmation that has to be typed rather than accepted.
+action_restore() {
+    clear
+    header "$(t admin_restore_title)"
+    info "$(t admin_restore_intro)"
+    echo
+
+    local archive
+    archive="$(choose_backup_archive)" || return 0
+    [[ -n "$archive" ]] || return 0
+
+    echo
+    info "$(t admin_restore_dryrun "$(basename "$archive")")"
+    echo
+    # Every refusal in restore.sh happens before anything is touched, so the
+    # dry run is the same set of checks without the writing.
+    bash "$REPO_ROOT/scripts/restore.sh" "$archive" --dry-run --lang "$LANG_CHOICE" || {
+        echo
+        err "$(t admin_restore_dryrun_failed)"
+        echo
+        read -rp "$(t admin_press_enter)" _ || true
+        return 0
+    }
+
+    echo
+    warn "$(t admin_restore_replaces)"
+    local typed
+    typed="$(prompt admin_restore_type_word)" || return 0
+    if [[ "$typed" != "$(t admin_restore_word)" ]]; then
+        info "$(t admin_restore_not_confirmed)"
+        echo
+        read -rp "$(t admin_press_enter)" _ || true
+        return 0
+    fi
+
+    local rename=""
+    if confirm admin_restore_rename_ask "n"; then
+        rename="$(prompt admin_restore_rename_to)" || rename=""
+    fi
+
+    echo
+    if [[ -n "$rename" ]]; then
+        bash "$REPO_ROOT/scripts/restore.sh" "$archive" --rename "$rename" --lang "$LANG_CHOICE" || true
+    else
+        bash "$REPO_ROOT/scripts/restore.sh" "$archive" --lang "$LANG_CHOICE" || true
+    fi
+    echo
+    read -rp "$(t admin_press_enter)" _ || true
+}
+
+action_backup_copy() {
+    local dest archives=() archive target
+    dest="$(dirname "${BASE_DATA_PATH:-/srv/smart-rag-data}")/backups"
+    mapfile -t archives < <(ls -1t "$dest"/smartrag-*.tar.gz 2>/dev/null | head -10)
+    if (( ${#archives[@]} == 0 )); then
+        warn "$(t admin_copy_none "$dest")"
+        return 0
+    fi
+
+    local labels=() a
+    for a in "${archives[@]}"; do
+        labels+=("$(basename "$a")  ($(( $(stat -c%s "$a" 2>/dev/null || echo 0) / 1048576 )) MB)")
+    done
+    local pick
+    pick="$(select_one_index admin_copy_which "${labels[@]}")" || return 0
+    archive="${archives[$((pick-1))]}"
+
+    if [[ ! -f "$archive.sha256" ]]; then
+        # Without it the copy cannot be checked at the far end, and a restore
+        # from it would proceed on trust.
+        warn "$(t admin_copy_no_sum "$(basename "$archive")")"
+        confirm admin_copy_no_sum_go "n" || return 0
+    fi
+
+    # Removable media, as the kernel reports them, plus a free-text path for
+    # a mounted share or anything this does not recognise. Guessing which
+    # disk is the stick is not something to do with a copy of every secret.
+    local mounts=() line name size mp
+    while read -r name size mp; do
+        [[ -z "$mp" || "$mp" == "/" ]] && continue
+        mounts+=("$mp  ($size, /dev/$name)")
+    done < <(lsblk -o NAME,RM,SIZE,MOUNTPOINT -nr 2>/dev/null |
+             awk '$2 == 1 && $4 != "" { print $1, $3, $4 }')
+
+    local options=("${mounts[@]}" "$(t admin_copy_other)")
+    local choice
+    choice="$(select_one_index admin_copy_where "${options[@]}")" || return 0
+    if (( choice == ${#options[@]} )); then
+        target="$(prompt admin_copy_path)" || return 0
+    else
+        target="${mounts[$((choice-1))]%%  (*}"
+    fi
+
+    [[ -d "$target" ]] || { err "$(t admin_copy_no_dir "$target")"; return 0; }
+    [[ -w "$target" ]] || { err "$(t admin_copy_not_writable "$target")"; return 0; }
+
+    echo
+    warn "$(t admin_copy_secrets_warning)"
+    confirm admin_copy_confirm "n" || return 0
+
+    info "$(t admin_copy_running "$(basename "$archive")" "$target")"
+    cp -- "$archive" "$target/" || { err "$(t admin_copy_failed)"; return 0; }
+    [[ -f "$archive.sha256" ]] && cp -- "$archive.sha256" "$target/"
+    # Written, not merely handed to the page cache. A stick pulled before this
+    # returns holds a file that looks complete and is not.
+    sync
+
+    # Read back from the medium rather than trusting the copy: this is what
+    # catches a full disk, a failing stick and a short write, and it is the
+    # only reason to do the copy here rather than by hand.
+    local expected actual
+    if [[ -f "$target/$(basename "$archive").sha256" ]]; then
+        expected="$(cat "$target/$(basename "$archive").sha256")"
+        actual="$(sha256sum "$target/$(basename "$archive")" | awk '{print $1}')"
+        if [[ "$expected" == "$actual" ]]; then
+            ok "$(t admin_copy_verified)"
+        else
+            err "$(t admin_copy_mismatch)"
+            return 0
+        fi
+    else
+        warn "$(t admin_copy_unverified)"
+    fi
+
+    ok "$(t admin_copy_done "$target")"
+    dim "$(t admin_copy_eject)"
+}
+
 action_backup() {
     clear
     header "$(t admin_backup_title)"
@@ -856,7 +1003,7 @@ action_backup() {
     fi
 
     local choice
-    choice="$(select_one_index admin_backup_what         "$(t admin_backup_do)"         "$(t admin_backup_restore)"         "$(t admin_backup_back)")" || return 0
+    choice="$(select_one_index admin_backup_what         "$(t admin_backup_do)"         "$(t admin_backup_copy)"         "$(t admin_backup_restore)"         "$(t admin_backup_back)")" || return 0
 
     case "$choice" in
         1)
@@ -867,15 +1014,10 @@ action_backup() {
             bash "$REPO_ROOT/scripts/backup.sh" --lang "$LANG_CHOICE" || true
             ;;
         2)
-            # Deliberately not a picker. A restore replaces an installation,
-            # and the archive is named on the command line so that choosing
-            # the wrong one takes a typo rather than an arrow key.
-            echo
-            warn "$(t admin_backup_restore_manual)"
-            echo "    sudo bash $REPO_ROOT/scripts/restore.sh ARCHIVE.tar.gz --dry-run"
-            echo "    sudo bash $REPO_ROOT/scripts/restore.sh ARCHIVE.tar.gz"
-            echo
-            dim "$(t admin_backup_restore_hint)"
+            action_backup_copy
+            ;;
+        3)
+            action_restore
             ;;
         *) return 0 ;;
     esac

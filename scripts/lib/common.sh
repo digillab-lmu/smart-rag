@@ -527,6 +527,58 @@ wrap_lines() {
     return 0
 }
 
+# ─── Finding a backup archive ────────────────────────────────────────────────
+# Used by the admin menu and by bootstrap, which need the same three sources:
+# the installation's own backup directory, a mounted removable medium, and a
+# path typed by hand. On a machine being restored *onto*, the first of those
+# does not exist yet and the second is the whole point.
+#
+# Prints the chosen path on stdout; everything the operator sees goes to
+# stderr, so the caller can use command substitution.
+#
+# removable_mountpoints — what the kernel reports as removable and mounted.
+# Not a guess at which disk is the stick: a wrong guess here would be a
+# restore reading from, or a copy writing to, the wrong disk.
+removable_mountpoints() {
+    lsblk -o NAME,RM,SIZE,MOUNTPOINT -nr 2>/dev/null |
+        awk '$2 == 1 && $4 != "" && $4 != "/" { print $4 "\t" $3 "\t/dev/" $1 }'
+}
+
+# choose_backup_archive [extra_search_dir]
+choose_backup_archive() {
+    local extra="${1:-}"
+    local -a found=() labels=()
+    local dir line mp size dev f
+
+    local -a dirs=()
+    [[ -n "$extra" ]] && dirs+=("$extra")
+    dirs+=("$(dirname "${BASE_DATA_PATH:-/srv/smart-rag-data}")/backups")
+    while IFS=$'\t' read -r mp size dev; do
+        [[ -n "$mp" ]] && dirs+=("$mp")
+    done < <(removable_mountpoints)
+
+    for dir in "${dirs[@]}"; do
+        [[ -d "$dir" ]] || continue
+        while IFS= read -r f; do
+            [[ -n "$f" ]] || continue
+            found+=("$f")
+            labels+=("$(basename "$f")  ($(( $(stat -c%s "$f" 2>/dev/null || echo 0) / 1048576 )) MB)  \u2014 $dir")
+        done < <(ls -1t "$dir"/smartrag-*.tar.gz 2>/dev/null | head -10)
+    done
+
+    labels+=("$(t archive_pick_other)")
+    local choice
+    choice="$(select_one_index archive_pick "${labels[@]}")" || return 1
+    if (( choice == ${#labels[@]} )); then
+        local typed
+        typed="$(prompt archive_pick_path)" || return 1
+        [[ -f "$typed" ]] || { err "$(t archive_pick_not_a_file "$typed")" >&2; return 1; }
+        printf '%s\n' "$typed"
+    else
+        printf '%s\n' "${found[$((choice-1))]}"
+    fi
+}
+
 select_one_index() {
     local key="$1"; shift
     local options=("$@")

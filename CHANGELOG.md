@@ -122,6 +122,28 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Added
 
+- **Backups can be carried and restored from the interface.** The admin menu
+  could make a backup; it can now also copy one to a removable medium and
+  restore one, and bootstrap offers a restore instead of a fresh install on a
+  machine with nothing on it.
+
+  The copy takes the `.sha256` file with the archive, flushes to the medium
+  and reads the copy back to compare it — a hand-made copy is the one most
+  likely to be truncated in transit and the one least likely to be checked,
+  because `restore.sh` only warns when the checksum file is absent. It also
+  states that the archive contains `.env`, and therefore every password of the
+  installation in clear.
+
+  The restore dry-runs first, which performs every refusal without writing,
+  and then requires a typed confirmation rather than a keypress. A different
+  address is offered as a rename. In bootstrap the question comes before any
+  configuration, so a move no longer generates a set of secrets that the
+  restore discards minutes later; a refused archive falls through to the
+  normal install rather than exiting.
+
+  Removable media are taken from the kernel's own report, never guessed, and
+  the root filesystem is never among them.
+
 - **Accounts can be edited.** A user name and an email address can now be
   changed in place, keeping the account's role, its course assignments and its
   password. Until now the only way to record a changed address was to delete
