@@ -13,26 +13,48 @@ persistent per-student memory, hybrid retrieval, and optional LMS integration.
 
 ---
 
-## What it gives you
+## Features
 
-- **Up to 10 specialized AI agents** (Flowise AgentFlows) with a unified
-  memory model — students keep their progress across agents and sessions.
-- **Hybrid retrieval** (Weaviate) with optional re-ranking (Cohere or custom).
-- **Concept prerequisite graph** (Neo4j) for adaptive scaffolding.
-- **Persistent user memory** (`UserMemory` + `ChatHistory` in Weaviate) refreshed
-  by scheduled n8n pipelines.
-- **LLM observability** (Langfuse + ClickHouse, optional).
-- **LMS integration** via LTI 1.3 (Moodle, ILIAS, Canvas — optional).
-- **Course scoping** — one installation can host several courses; every
-  retrieved object carries a `course_id` and every agent filters on it.
-  Courses are created in the Content Admin, not configured at install time.
-- **Data protection you can actually carry out** — a retention date per
-  course, and erasure of one person across every system that holds anything
-  about them. Both are pages, not scripts; both say what they cannot promise.
-- **Backup and restore** as one command each, with the restore refusing an
-  archive that would not work rather than discovering it half way through.
-- **One-command deployment** to Ubuntu LTS via an interactive wizard —
-  with a public domain, or with no domain at all via Tailscale.
+- **Up to 10 agents per course** (Flowise AgentFlows) with a shared memory
+  model, so a student's progress carries across agents and sessions.
+- **Hybrid retrieval** (Weaviate) with optional re-ranking (Cohere or a custom
+  endpoint).
+- **Concept prerequisite graph** (Neo4j). Agents use it to present topics in a
+  suitable order. It can be generated from the course material by the
+  configured strong model and is reviewed before it is written.
+- **Persistent user memory** (`UserMemory` and `ChatHistory` in Weaviate),
+  updated by scheduled n8n workflows.
+- **LLM observability** (Langfuse and ClickHouse), optional.
+- **LMS integration** via LTI 1.3 (Moodle, ILIAS, Canvas), optional.
+- **Multiple courses per installation.** Every retrieved object carries a
+  `course_id` and every agent filters on it. Courses are created in the
+  Content Admin, not at install time.
+- **Data protection functions**: a retention date per course, and deletion of
+  one learner's data across all four systems that hold it. Both are pages in
+  the Content Admin. Both state the limits of what they cover.
+- **Backup and restore**, one command each. The restore checks the archive and
+  the target before unpacking anything.
+- **Deployment to Ubuntu LTS** through an interactive wizard, either with a
+  public domain or without one via Tailscale.
+
+---
+
+## Screenshots
+
+<!-- The images are referenced by name; see docs/img/README.md for what each
+     one has to show. GitHub renders no JavaScript, so a thumbnail linking to
+     the full image is how "click to enlarge" is done here. -->
+
+<details>
+<summary>Content Admin, nine views (click an image to enlarge)</summary>
+
+| | | |
+|---|---|---|
+| [<img src="docs/img/dashboard.png" width="260">](docs/img/dashboard.png)<br>Agents | [<img src="docs/img/slot.png" width="260">](docs/img/slot.png)<br>One agent | [<img src="docs/img/upload.png" width="260">](docs/img/upload.png)<br>Add documents |
+| [<img src="docs/img/documents.png" width="260">](docs/img/documents.png)<br>Vector DB | [<img src="docs/img/graph.png" width="260">](docs/img/graph.png)<br>Knowledge graph | [<img src="docs/img/graph-review.png" width="260">](docs/img/graph-review.png)<br>Reviewing a proposal |
+| [<img src="docs/img/courses.png" width="260">](docs/img/courses.png)<br>Courses | [<img src="docs/img/learners.png" width="260">](docs/img/learners.png)<br>People | [<img src="docs/img/status.png" width="260">](docs/img/status.png)<br>System status |
+
+</details>
 
 ---
 
@@ -269,20 +291,24 @@ once deployed) is where course-specific content gets filled in:
 - **A retention date per course**, with the reason for it, and a record of
   having acted on an expiry. Three states, kept apart: no date means nobody
   has decided, which is not the same as not being due.
-- **People**: what is held about one learner across the four systems that each
-  know them under a different name, and erasure of all of it. The three
-  systems that hold nothing are listed as holding nothing — "we looked"
-  belongs in an erasure record. Without LTI the page says plainly that it
-  cannot be complete, because without it the learner id is a browser rather
-  than a person.
+- **People**: the data held about one learner across the four systems that
+  each identify them under a different field name, and deletion of all of it.
+  Systems holding nothing are listed with a count of zero rather than omitted,
+  so the record shows what was checked. Without LTI the page states that a
+  deletion covers only the entered id, because without LTI that id identifies
+  a browser rather than a person.
 - A "System status" page that checks, live, what still has to be set up
   (API keys, Flowise connection, agents, the n8n ingest webhook, the
   conversion and search services) by asking each service at that moment.
-- A guided (not automated) path to seed the Neo4j concept graph: an
-  explanation of the data model, a ready-to-copy prompt for an AI of your
-  choice, and a box to paste + run the resulting Cypher. A fully automated
-  version (the GUI proposes the graph itself, with a review step) is
-  planned for later.
+- **Knowledge graph**: two ways to fill the Neo4j concept graph. *Build the
+  map from the course material* starts an n8n workflow that reads the
+  documents of the participating agents and has the strong model draft
+  concepts and prerequisites; the draft is shown as a diagram, a table and an
+  editable list, and is written only on submit. The manual route remains: the
+  page explains the data model and provides a prompt to copy into any AI, and
+  the answer is pasted back as JSON. Every concept and prerequisite records
+  the documents it came from, so a build can be taken back out again and the
+  material of one agent can be removed from the map.
 
 First-time setup needs one manual step that can't be avoided: Flowise has no
 supported way to hand out an API key non-interactively (same limitation as

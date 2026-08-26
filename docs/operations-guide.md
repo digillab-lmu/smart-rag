@@ -61,12 +61,12 @@ browser. So `bootstrap.sh` stops at this point and asks you to do it now:
    Done — n8n owner account created? [Y/n]:
 ```
 
-Open the URL in another window, create the account, come back and press
-Enter — the wizard then runs the import itself and you're done. If you
-answer too early, it says so and offers another attempt.
+Open the URL in another window, create the account, return and press Enter.
+The wizard then performs the import. If the account does not exist yet, the
+check fails and the prompt is repeated.
 
-If you'd rather not do it right now, answer `n`. Nothing else is affected,
-but the install then ends with `Setup INCOMPLETE — 2 manual steps left`.
+To postpone the step, answer `n`. Nothing else is affected; the install ends
+with `Setup INCOMPLETE — 2 manual steps left`.
 
 To finish it later, use the admin menu — not a hand-typed command:
 
@@ -264,16 +264,34 @@ What you do there:
   ISBN, and suggest keywords. Processing runs asynchronously in n8n;
   a large scanned PDF can take tens of minutes, and you get an email when
   it's done. **This needs the n8n step above to be finished.**
-- **Knowledge Graph** — two ways to seed the Neo4j concept graph, both
-  ending at the same review box. *Propose from the material* reads the
-  course's indexed documents and has the strong model draft the concept list
-  and its prerequisite edges; the draft appears in the box for you to read and
-  edit, and is written only when you submit it. The manual path is unchanged
-  and needs no API key: the data model is explained on the page and the prompt
-  is there to copy into an AI of your choice, with the answer pasted back into
-  the same box. What the box accepts is JSON — concepts and prerequisites —
-  not Cypher; free-form Cypher from a browser field is no longer executed
-  against the database. `neo4j/seed.example.cypher` remains a worked example
-  of the resulting data model.
+- **Knowledge Graph** — two ways to fill the Neo4j concept graph, both ending
+  at the same review step. *Build the map from the course material* starts an
+  n8n workflow that reads the documents of the agents ticked on the agent
+  list, has the strong model extract concepts per document and then derive the
+  prerequisites over the resulting list. It runs in the background, takes
+  minutes to hours depending on the amount of material, and uses API calls.
+  The result appears as a diagram, a table grouped by document and an editable
+  list; nothing is written until it is submitted. The manual route needs no
+  API key: the page explains the data model and provides a prompt to copy into
+  any AI, and the answer is pasted back as JSON. The field does not accept
+  Cypher. `neo4j/seed.example.cypher` shows the resulting data model.
+
+  Every concept and prerequisite records the documents it was derived from.
+  Three operations follow from that: a build can be taken back out again, the
+  material of one agent can be removed from the map without affecting concepts
+  that other material also supports, and deleting a document offers to remove
+  its contribution.
+
+- **Courses** — created here. Creating a course also creates its chunk
+  collection, its object-storage bucket, the ingest key's grant on that
+  bucket, and its ten agent slots. Deletion is a separate page that counts
+  what the course consists of across six systems before asking for
+  confirmation. Each course has a retention date with a note and a record of
+  the expiry having been acted on.
+
+- **People** — the data held about one learner across the four systems that
+  identify them under different field names, and deletion of all of it.
+  Systems holding nothing are listed with a count of zero. Without LTI the
+  page states that a deletion covers the entered id only.
 
 The interface is available in English and German (switch top right).
