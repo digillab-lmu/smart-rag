@@ -22,8 +22,13 @@ anywhere.
 
 ## Requirements for the images
 
-- Width 1400 to 1600 pixels, PNG. They are displayed at 360 pixels in the
-  README and open at full size when clicked.
+- Width 1400 to 1800 pixels, PNG. A screenshot taken on a HiDPI display of a
+  window around 900 pixels wide lands in that range on its own. The images are
+  displayed at 260 pixels in the README and open at full size when clicked, so
+  the width matters for reading the enlarged view, not for the layout.
+- Expect 300 to 800 KB per file. These are binaries: replacing one adds
+  another object to the history rather than shrinking the old one, so replace
+  rather than accumulate.
 - Browser window without extensions or bookmarks bar.
 - **No real data.** A test course with invented documents and an invented
   learner id. Screenshots reach GitHub and stay there.
