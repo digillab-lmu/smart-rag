@@ -295,6 +295,21 @@ check("with the concepts tabled by the work they came from",
       "agent_1/a.md" in page and "<details" in page, "")
 check("and the JSON is still available for pasting",
       'name="proposal"' in page, "")
+# Two green buttons side by side, one taking the edited rows and the other
+# the text field, with nothing saying which was which — the operator asked
+# what the difference was. The pasting route is a fallback and has to look
+# like one.
+check("the pasting route is folded away while a draft is shown",
+      "Paste an answer from somewhere else" in page
+      and "<details >" not in page.split("Paste an answer")[0][-200:],
+      "it is for an answer produced elsewhere, not a second main route")
+check("and its button is not a second primary action",
+      'class="secondary">Write this pasted answer' in page
+      or 'class="secondary">Diese eingef' in page,
+      "two identical buttons is the shape that caused the question")
+check("while the editor's button stays the primary one",
+      '<button type="submit">Write what is ticked' in page
+      or '<button type="submit">Angehaktes' in page, "")
 check("the proposal can be edited as rows rather than as JSON",
       'name="c_name_0"' in page and 'value="apply_edited"' in page,
       "asking somebody to approve a graph by editing punctuation is asking "

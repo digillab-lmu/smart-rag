@@ -13,6 +13,22 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **Running text stopped two thirds of the way across the page.** The measure
+  was 78ch, then 92ch, and was reported a third time — because the number was
+  never the problem. Beside boxes, tables and inputs that use the whole
+  container, a paragraph that ends early reads as a layout fault rather than
+  as typography. The cap on running text is gone: the container is the
+  measure, the page cap keeps a line from crossing a whole wide monitor, and
+  prose gets more leading to pay for the longer line.
+
+- **Two identical green buttons, both of which wrote to the graph.** One took
+  the edited rows, the other the JSON field, and nothing said which was which
+  — the operator asked. The pasted-answer route is a fallback for an answer
+  produced elsewhere, so it now sits folded away under its own heading with a
+  secondary button, and opens by itself when there is no draft to edit.
+
+### Fixed
+
 - **The graph page reported concepts × edges as the number of
   prerequisites.** Both were counted in one Cypher statement whose edge match
   stood in no relation to the concept matched beside it, so every concept was

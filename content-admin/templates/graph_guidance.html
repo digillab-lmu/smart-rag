@@ -326,15 +326,24 @@
 </form>
 {% endif %}
 
-<p class="note">{{ t('graph_run_intro') }}</p>
-<form method="post">
-  <input type="hidden" name="action" value="apply">
-  <label for="proposal">{{ t('graph_proposal_label') }}</label>
-  <textarea id="proposal" name="proposal" rows="12"
-            placeholder='{"concepts": [...], "prerequisites": [...]}'>{{ proposal }}</textarea>
-  <p class="note">{{ t('graph_proposal_help') }}</p>
-  <button type="submit">{{ t('graph_submit') }}</button>
-</form>
+{# The JSON field is the fallback, not a second main route: it exists for an
+   answer produced somewhere else. Side by side with the editor's button it
+   was two identical green buttons whose difference nothing explained — the
+   operator asked what it was. Folded away when there is a proposal to edit,
+   open when there is not, because then it is the only way in. #}
+<details {% if not view %}open{% endif %} style="margin-top:1.2em">
+  <summary>{{ t('graph_paste_heading') }}</summary>
+  <p class="note">{{ t('graph_paste_when') }}</p>
+  <p class="note">{{ t('graph_run_intro') }}</p>
+  <form method="post">
+    <input type="hidden" name="action" value="apply">
+    <label for="proposal">{{ t('graph_proposal_label') }}</label>
+    <textarea id="proposal" name="proposal" rows="12"
+              placeholder='{"concepts": [...], "prerequisites": [...]}'>{{ proposal }}</textarea>
+    <p class="note">{{ t('graph_proposal_help') }}</p>
+    <button type="submit" class="secondary">{{ t('graph_submit') }}</button>
+  </form>
+</details>
 
 {% if concepts %}
 <h2>{{ t('graph_danger_heading') }}</h2>

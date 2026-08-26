@@ -551,11 +551,24 @@ if not _TPL.is_dir() and Path("/app/templates").is_dir():
     _TPL = Path("/app/templates")
 base_css = (_TPL / "base.html").read_text()
 
-assert_that("prose has a measure", "p, li, .note { max-width: 92ch; }" in base_css, "")
-assert_that("and an inline note is given a box to apply it to",
-      "span.note { display: inline-block; }" in base_css,
-      "max-width has no effect on an inline element, so these ran full width "
-      "beside paragraphs that did not")
+# No fixed measure on running text. The value was set at 78ch, widened to
+# 92ch for this complaint, and reported a third time — because the number was
+# never the problem. Beside boxes and tables that use the whole container, a
+# paragraph stopping two thirds of the way across reads as a layout fault, not
+# as typography. The container is the measure; the page cap keeps a line from
+# crossing a whole wide monitor.
+import re as _re3  # noqa: E402
+
+measured = _re3.search(r"\bp\s*,[^{]*\{[^}]*max-width:\s*\d+ch", base_css)
+assert_that("running text is not capped at a fixed measure", measured is None,
+            measured.group(0) if measured else "")
+assert_that("the page itself still has a cap",
+            "max-width: max(80%" in base_css,
+            "without it a line runs the full width of a large monitor")
+assert_that("and prose is given more leading to pay for the longer line",
+            _re3.search(r"\bp\s*,\s*li\s*,\s*\.note\s*\{[^}]*line-height",
+                        base_css) is not None,
+            "long lines are harder to track back to the start")
 
 # Nothing should be setting its own width in a way that reintroduces the
 # split. A style attribute with a hard width on a note is the shape to catch.

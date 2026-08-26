@@ -96,25 +96,19 @@
     .brand-header .brand-title { font-weight: 700; font-size: 1.15rem; line-height: 1.25; }
     .brand-header .brand-subtitle { font-size: 0.85rem; opacity: 0.7; font-weight: 400; }
 
-    /* Reading width for running text, independent of the page width. Applies
-       to paragraphs and list items, not to table cells — a cell that wraps
-       early makes a table taller for no gain. */
-    /* A measure for running text, not a column. 78ch was set when the page
-       itself was narrower; beside inputs and tables that now use the full
-       width it read as a cramped strip with empty space to its right. 92ch is
-       still inside what is comfortable to read and no longer looks like a
-       different layout from the fields underneath it. */
-    p, li, .note { max-width: 92ch; }
-    /* A note written as a <span> is an inline box, and max-width does nothing
-       to one — so half the explanations on a page wrapped at the measure and
-       the other half ran the full width of the container, which reads as two
-       different layouts on one page. Reported from the graph page and true on
-       eight others. inline-block gives the box a width to respect while
-       leaving it on the same line as whatever it follows. */
-    span.note { display: inline-block; }
-    /* Help that belongs to one field follows that field's width instead: it
-       is read in the same glance as the input, not as prose. */
-    label + .note, input + .note, textarea + .note, select + .note { max-width: none; }
+    /* No measure on running text. This started at 78ch, was widened to 92ch
+       for the same complaint, and was reported a third time — because the
+       problem was never the number. Beside boxes, tables and inputs that use
+       the full container, a paragraph that stops two thirds of the way across
+       does not read as typography, it reads as a layout fault. So text uses
+       the width it is given and the container is the measure; the page cap
+       above is what keeps a line from running the whole of a wide monitor.
+
+       The cost is real and is paid here: longer lines are harder to track
+       back to the start, so prose gets more leading than the interface
+       chrome does. */
+    p, li, .note { line-height: 1.62; }
+
     /* The variable name beside a field label: present for whoever needs it,
        quiet for whoever does not. */
     .field-var { font-weight: 400; font-size: .8em; opacity: .55;
