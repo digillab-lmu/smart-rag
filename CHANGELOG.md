@@ -9,7 +9,7 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ---
 
-## 2.0.0 — 2026-08-26
+## 2.0.0-rc.1 — 2026-08-26
 
 ### Known limitations
 

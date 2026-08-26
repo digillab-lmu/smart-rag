@@ -5,7 +5,7 @@ system in which several AI agents answer from a course's own material, cite
 what they used, and remember a student across sessions.
 
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
-[![Version 2.0.0](https://img.shields.io/badge/version-2.0.0-green)](CHANGELOG.md)
+[![Version 2.0.0-rc.1](https://img.shields.io/badge/version-2.0.0--rc.1-green)](CHANGELOG.md)
 [![Ubuntu 24.04 · 26.04 LTS](https://img.shields.io/badge/tested%20on-Ubuntu%2024.04%20%C2%B7%2026.04%20LTS-orange)](docs/requirements.md)
 
 [<img src="docs/img/dashboard.png" width="820" alt="The agent list of a course in the Content Admin">](docs/img/dashboard.png)
@@ -216,7 +216,8 @@ would do.
 
 ## Status and limits
 
-Version 2.0.0. Installed and run on Ubuntu 24.04 and 26.04 LTS; another
+Version 2.0.0-rc.1 — meant for server deployment, not yet declared final.
+Installed and run on Ubuntu 24.04 and 26.04 LTS; another
 even-year LTS is accepted after a warning. Backup and restore have been
 exercised machine to machine, with the restored installation measured against
 its source document by document.
