@@ -69,6 +69,14 @@ restore_body="$(awk '/^action_restore\(\) \{/,/^\}/' scripts/admin.sh)"
 grep -q -- "--dry-run" <<<"$restore_body"
 check "the menu dry-runs before restoring" $? \
       "every refusal in restore.sh happens before anything is touched, so the "
+# With the same flags as the real run. A dry run under a different set does
+# not predict the run it precedes: without --replace it stopped at "refusing
+# to restore over an existing installation" — the one case this entry exists
+# for — and reported the archive as refused.
+dry_flags="$(grep -A 2 -- "--dry-run" <<<"$restore_body" | tr '\n' ' ')"
+grep -q -- "--replace" <<<"$(grep -B 2 -- "--dry-run" <<<"$restore_body")$dry_flags"
+check "and dry-runs with the same flags as the real run" $? \
+      "a dry run that predicts a different run is worse than none"
 grep -q "admin_restore_type_word" <<<"$restore_body"
 check "and the confirmation has to be typed" $? \
       "an arrow key is not enough to replace an installation"

@@ -872,7 +872,12 @@ action_restore() {
     echo
     # Every refusal in restore.sh happens before anything is touched, so the
     # dry run is the same set of checks without the writing.
-    bash "$REPO_ROOT/scripts/restore.sh" "$archive" --dry-run --lang "$LANG_CHOICE" || {
+    # The same flags as the real run, --replace included. A dry run with a
+    # different set does not predict the run it precedes: without it the
+    # check stopped at "refusing to restore over an existing installation",
+    # which is the one thing this menu entry is for.
+    bash "$REPO_ROOT/scripts/restore.sh" "$archive" --replace --dry-run \
+         --lang "$LANG_CHOICE" || {
         echo
         err "$(t admin_restore_dryrun_failed)"
         echo
