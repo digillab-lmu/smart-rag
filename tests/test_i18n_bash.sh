@@ -92,6 +92,26 @@ done < <(grep -oE '^\s*\[(cfg|admin|next|repair)_[a-z0-9_]+\]' "$MSGS" \
 check "no message is left without a caller" ${#unused[@]} \
       "$(printf '%s ' "${unused[@]:0:6}")"
 
+# ─── And the inverse, which is the one that reaches the operator ─────────────
+# A message without a caller is dead weight. A caller without a message prints
+# "MISSING:the_key" on the screen, in the middle of a run — which is how
+# vfyb_garage_layout_ok was found: by an operator verifying a backup, not by
+# this file, because only one direction was ever checked.
+#
+# Literal keys only: t "$var" and computed names cannot be resolved here, and
+# reporting them would make the check unusable.
+missing=()
+while read -r key; do
+    [[ -n "$key" ]] || continue
+    grep -qE "^\s*\[$key\]=" "$MSGS" || missing+=("$key")
+# Anchored on the call form. A bare "\bt +word" also matches prose — "don't
+# archives" among them — and reported five words from comments as missing
+# keys.
+done < <(grep -rhoE '\$\(t +[a-z][a-z0-9_]+' "$REPO"/scripts/*.sh "$REPO"/scripts/lib/*.sh \
+         --exclude=messages.sh | sed -E 's/^\$\(t +//' | sort -u)
+check "every key a script asks for exists in the catalogue" ${#missing[@]} \
+      "$(printf '%s ' "${missing[@]:0:6}") — these print MISSING:<key> to the operator"
+
 # ─── No key assigned twice in the same catalogue ─────────────────────────────
 # bash keeps the last assignment silently, so a duplicate is not an error at
 # load time — it is a message that reads correctly in the file and wrong on

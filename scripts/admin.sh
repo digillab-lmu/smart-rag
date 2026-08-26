@@ -918,6 +918,32 @@ action_restore() {
 #     refused rather than unmounted for the operator;
 #   * the device node has to be typed out, not selected, because selecting is
 #     what makes the wrong row easy to take.
+# ─── Checking an archive ─────────────────────────────────────────────────────
+# The question this answers is "can this be restored", not "does this unpack" —
+# it opens the archive in throwaway containers and has each system read its own
+# data back. That was reachable only from the command line, which is the wrong
+# place for it: the moment it is most worth running is on the machine a medium
+# has just been carried to, and there the operator has a stick, not a
+# remembered path. The chooser offers removable media for that reason.
+action_verify_backup() {
+    clear
+    header "$(t admin_verify_title)"
+    info "$(t admin_verify_intro)"
+    echo
+
+    local archive
+    archive="$(choose_backup_archive)" || return 0
+    [[ -n "$archive" ]] || return 0
+
+    echo
+    info "$(t admin_verify_running "$(basename "$archive")")"
+    dim "$(t admin_verify_takes_a_while)"
+    echo
+    bash "$REPO_ROOT/scripts/verify-backup.sh" "$archive" --lang "$LANG_CHOICE" || true
+    echo
+    read -rp "$(t admin_press_enter)" _ || true
+}
+
 action_format_medium() {
     clear
     header "$(t admin_format_title)"
@@ -1125,7 +1151,7 @@ action_backup() {
     fi
 
     local choice
-    choice="$(select_one_index admin_backup_what         "$(t admin_backup_do)"         "$(t admin_backup_copy)"         "$(t admin_backup_format)"         "$(t admin_backup_restore)"         "$(t admin_backup_back)")" || return 0
+    choice="$(select_one_index admin_backup_what         "$(t admin_backup_do)"         "$(t admin_backup_verify)"         "$(t admin_backup_copy)"         "$(t admin_backup_format)"         "$(t admin_backup_restore)"         "$(t admin_backup_back)")" || return 0
 
     case "$choice" in
         1)
@@ -1136,12 +1162,15 @@ action_backup() {
             bash "$REPO_ROOT/scripts/backup.sh" --lang "$LANG_CHOICE" || true
             ;;
         2)
-            action_backup_copy
+            action_verify_backup
             ;;
         3)
-            action_format_medium
+            action_backup_copy
             ;;
         4)
+            action_format_medium
+            ;;
+        5)
             action_restore
             ;;
         *) return 0 ;;

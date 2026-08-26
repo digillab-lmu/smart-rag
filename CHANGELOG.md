@@ -33,6 +33,17 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **Three messages were called but never written, and printed
+  `MISSING:<key>` on screen.** Found by an operator verifying a backup, where
+  the Garage result read `✓ MISSING:vfyb_garage_layout_ok`. The catalogue
+  check ran in one direction only — it reported a message with no caller, and
+  said nothing about a caller with no message, which is the direction the
+  operator sees. It now checks both. The other two were
+  `vfyb_garage_no_expected` and `cfg_course_id_invalid`, the latter in the
+  installer's course-id validation.
+
+### Fixed
+
 - **Running text stopped two thirds of the way across the page.** The measure
   was 78ch, then 92ch, and was reported a third time — because the number was
   never the problem. Beside boxes, tables and inputs that use the whole
