@@ -335,8 +335,20 @@ ok "$(t restore_unpacked)"
 # ─── 8. What the operator has to check, because a restore that starts every
 #        container is not a restore that works ───────────────────────────────
 header "$(t restore_next_heading)"
-echo "$(t restore_next_start)"
-echo "$(t restore_next_verify)"
+
+# Numbered here rather than in the text. The rename step only appears after a
+# rename, so with the numbers written into the strings the list ran 1, 2, 4
+# on every restore that kept the address.
+_step=0
+step() { _step=$(( _step + 1 )); printf '  %d. %s\n' "$_step" "$1"; }
+
+step "$(t restore_next_start)"
+# Before the verification, because the verification starts with a login. The
+# accounts came out of the archive together with everything else, so the
+# credentials of this machine's own installation no longer apply — and its
+# credentials.txt is still sitting in the repository root describing them.
+step "$(t restore_next_credentials)"
+step "$(t restore_next_verify)"
 # Which one applies depends on the mode. In domain mode the certificates are
 # certbot's and carry the old name. In Tailscale mode `tailscale serve`
 # provisions the certificate for the name this machine joined the tailnet
@@ -344,9 +356,9 @@ echo "$(t restore_next_verify)"
 # entry, which runs certbot, would have found nothing to show.
 if [[ -n "$RENAME" ]]; then
     if [[ "$_mode" == "tailscale" ]]; then
-        echo "$(t restore_next_rename_ts)"
+        step "$(t restore_next_rename_ts)"
     else
-        echo "$(t restore_next_rename)"
+        step "$(t restore_next_rename)"
     fi
 fi
-echo "$(t restore_next_garage)"
+step "$(t restore_next_garage)"

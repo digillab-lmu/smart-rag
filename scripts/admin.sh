@@ -1215,47 +1215,128 @@ action_uninstall() {
 action_reset_content_admin() {
     clear
     header "$(t admin_reset_title)"
-    # The way back in when the GUI's own reset cannot help: no mail relay,
-    # a mailbox nobody can read any more, or a handover where the previous
-    # holder is gone. Clearing the two keys makes is_configured() false, so
-    # the GUI offers its first-run setup page again.
+    # The way back in when the GUI's own reset cannot help: no mail relay, a
+    # mailbox nobody can read any more, or a handover where the previous
+    # holder is gone.
     #
-    # Everything the account is *for* lives elsewhere — agent slots in
-    # slots.json, documents in Weaviate, the Flowise key in its own variable
-    # — so this loses nothing but the login itself. Saying that plainly
-    # matters: "reset the admin account" sounds far more destructive than it
-    # is, and an operator who fears data loss will look for a worse way.
+    # This used to clear CONTENT_ADMIN_USERNAME and CONTENT_ADMIN_PASSWORD_HASH
+    # in .env so that is_configured() turned false and the GUI offered its
+    # first-run page again. Accounts have since moved into Postgres:
+    # is_configured() asks accounts.any_account_exists(), and auth.py blanks
+    # those two variables itself once it has migrated them. So on every
+    # installation past that migration this entry read an empty variable,
+    # reported "no account configured", and returned — the one entry for a
+    # forgotten password did nothing, on exactly the installations that have
+    # one.
+    #
+    # It now sets a password on an account in the database. Nothing else about
+    # the account changes: not its name, not its role, not the courses it is
+    # assigned to.
     info "$(t admin_reset_explain)"
     echo
-    local user
-    user="$(grep -m1 '^CONTENT_ADMIN_USERNAME=' "$REPO_ROOT/.env" | cut -d= -f2- | tr -d '"')"
-    if [[ -n "$user" ]]; then
-        info "$(t admin_reset_current "$user")"
-    else
-        warn "$(t admin_reset_none)"
+
+    # Read through the application rather than with psql: the stored value is
+    # a werkzeug hash, and a hash written by anything else would be rejected
+    # at the next login without saying why.
+    info "$(t admin_reset_reading)"
+    local listing rc=0
+    listing="$(docker exec smartrag-content-admin python3 -c "
+import sys; sys.path.insert(0, '/app')
+import accounts
+for a in accounts.all_accounts():
+    print('\t'.join([str(a['id']), a['username'], a.get('email') or '-', a['role']]))
+" 2>&1)" || rc=$?
+
+    if (( rc != 0 )); then
+        err "$(t admin_reset_list_failed "$listing")"
+        info "$(t admin_reset_list_hint)"
         press_enter
-        return 0
+        return 1
     fi
-    echo
-    if ! confirm admin_reset_confirm "n"; then
-        info "$(t admin_reset_cancelled)"
+
+    local url
+    url="$(get_env_var "$REPO_ROOT/.env" CONTENT_ADMIN_PUBLIC_URL)"
+    [[ -z "$url" ]] && url="https://$(subdomain_host content "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")"
+
+    if [[ -z "${listing//[[:space:]]/}" ]]; then
+        info "$(t admin_reset_no_accounts "$url")"
         press_enter
         return 0
     fi
 
-    backup_file "$REPO_ROOT/.env"
-    set_env_var "$REPO_ROOT/.env" CONTENT_ADMIN_USERNAME          ""
-    set_env_var "$REPO_ROOT/.env" CONTENT_ADMIN_PASSWORD_HASH     ""
-    # A reset link issued before this would still be valid otherwise.
+    local -a ids=() names=()
+    local n=0 line id user mail role
+    while IFS=$'\t' read -r id user mail role; do
+        [[ -n "$id" ]] || continue
+        n=$(( n + 1 ))
+        ids+=("$id"); names+=("$user")
+        printf '  %2d) %-24s %-32s %s\n' "$n" "$user" "$mail" "$role"
+    done <<<"$listing"
+    echo
+
+    local pick
+    read -rp "  $(t admin_reset_pick)" pick || true
+    if [[ -z "$pick" ]]; then
+        info "$(t admin_reset_cancelled)"
+        press_enter
+        return 0
+    fi
+    if ! [[ "$pick" =~ ^[0-9]+$ ]] || (( pick < 1 || pick > n )); then
+        err "$(t admin_reset_pick_invalid "$pick")"
+        press_enter
+        return 1
+    fi
+
+    local target_id="${ids[pick-1]}" target_name="${names[pick-1]}"
+
+    # Read twice and never echoed. A password set from a typo locks the
+    # account this entry exists to unlock.
+    local pw1 pw2
+    read -rsp "  $(t admin_reset_pw1)" pw1; echo
+    read -rsp "  $(t admin_reset_pw2)" pw2; echo
+    if [[ "$pw1" != "$pw2" ]]; then
+        err "$(t admin_reset_pw_mismatch)"
+        press_enter
+        return 1
+    fi
+
+    # The password goes in on stdin, not as an argument: an argument is
+    # visible in ps and in the shell history of anyone on this machine.
+    local out set_rc=0
+    out="$(printf '%s' "$pw1" | docker exec -i smartrag-content-admin python3 -c "
+import sys; sys.path.insert(0, '/app')
+import accounts
+accounts.set_password(int(sys.argv[1]), sys.stdin.read())
+print('ok')
+" "$target_id" 2>&1)" || set_rc=$?
+    unset pw1 pw2
+
+    if (( set_rc != 0 )); then
+        err "$(t admin_reset_pw_failed "$out")"
+        press_enter
+        return 1
+    fi
+    ok "$(t admin_reset_pw_done "$target_name")"
+
+    # An installation that predates the migration still has the two variables
+    # filled. auth.py clears them the first time it runs, but an operator who
+    # comes here first should not be left with a second, stale account
+    # definition beside the one just changed.
+    if [[ -n "$(get_env_var "$REPO_ROOT/.env" CONTENT_ADMIN_USERNAME)" ]]; then
+        info "$(t admin_reset_legacy)"
+        backup_file "$REPO_ROOT/.env"
+        set_env_var "$REPO_ROOT/.env" CONTENT_ADMIN_USERNAME      ""
+        set_env_var "$REPO_ROOT/.env" CONTENT_ADMIN_PASSWORD_HASH ""
+    fi
+    # A reset link issued before this would still be valid otherwise;
+    # set_password clears the token on the account row as well.
     set_env_var "$REPO_ROOT/.env" CONTENT_ADMIN_RESET_TOKEN_HASH  ""
     set_env_var "$REPO_ROOT/.env" CONTENT_ADMIN_RESET_EXPIRES     ""
-    ok "$(t admin_reset_done)"
+
     echo
-    local url
-    url="$(grep -m1 '^CONTENT_ADMIN_PUBLIC_URL=' "$REPO_ROOT/.env" | cut -d= -f2- | tr -d '"')"
-    [[ -z "$url" ]] && url="https://$(subdomain_host content "$DOMAIN" "${SUBDOMAIN_PREFIX:-}")"
     info "$(t admin_reset_next "$url")"
-    # No container restart: the GUI reads .env on every request.
+    # No container restart: the GUI reads .env on every request, and the
+    # password lives in the database it queries per login.
     press_enter
 }
 

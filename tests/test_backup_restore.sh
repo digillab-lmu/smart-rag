@@ -339,6 +339,38 @@ grep -q "/var/tmp" <<<"$scratch"
 check "disk-backed temporary storage is preferred over /tmp" $? \
       "/tmp is often a tmpfs, and this is a whole installation"
 
+# ─── The closing steps ───────────────────────────────────────────────────────
+# Two things a restore leaves the operator to do that nothing else tells them.
+#
+# The accounts came out of the archive. On a machine set up as its own Smart
+# RAG first — which is now the documented way to prepare a target — its own
+# credentials.txt is still in the repository root, describing an installation
+# that has been moved aside. Reported from a real restore: the operator tried
+# that file, then looked for a password reset that does not apply.
+#
+# And the numbering is generated, because the rename step is conditional: with
+# the numbers written into the strings every restore that kept its address
+# printed 1, 2, 4.
+src="$(cat "$REPO/scripts/restore.sh")"
+grep -q "restore_next_credentials" <<<"$src"
+check "the closing steps say the accounts are the archive's" $? \
+      "the operator's own credentials.txt no longer opens this installation"
+
+grep -qE 'step\(\) \{ _step=' <<<"$src"
+check "the steps are numbered where they are printed" $? \
+      "a conditional step in a hard-numbered list leaves a gap"
+
+msgs="$(cat "$REPO/scripts/lib/messages.sh")"
+for key in restore_next_start restore_next_verify restore_next_garage \
+           restore_next_rename restore_next_rename_ts restore_next_credentials; do
+    if grep -qE "\[$key\]=\"  *[0-9]+\." <<<"$msgs"; then
+        check "$key carries no number of its own" 1 \
+              "the printer numbers these; two sources of numbering disagree"
+    else
+        check "$key carries no number of its own" 0
+    fi
+done
+
 if (( ${#FAILURES[@]} > 0 )); then
     echo "FAILURES:"; printf '  - %s\n' "${FAILURES[@]}"; exit 1
 fi
