@@ -39,6 +39,7 @@ Path(tmpdir, ".env").write_text(
     'COURSE_ID="medienerziehung"\nCOURSE_NAME="Einführung"\n'
     'WEAVIATE_COLLECTION_NAME="SmartRagChunks"\n'
     'LLM_PROVIDER="anthropic"\nLLM_API_KEY="sk-t"\n'
+    'LLM_MODEL_STRONG="claude-sonnet-5"\nLLM_MODEL_FAST="claude-haiku-4-5"\n'
     'EMBEDDING_PROVIDER="openai"\nEMBEDDING_API_KEY="sk-e"\n'
     'EMBEDDING_MODEL="text-embedding-3-small"\nWEAVIATE_API_KEY="wv"\n'
 )
@@ -176,6 +177,7 @@ for path in sorted(TEMPLATES.glob("*.json")):
         # with the installer's course question, because a collection and a
         # retrieval filter belong to a course and not to an installation.
         "LLM_PROVIDER": "anthropic", "EMBEDDING_PROVIDER": "openai",
+        "LLM_MODEL_STRONG": "claude-sonnet-5", "LLM_MODEL_FAST": "claude-haiku-4-5",
         "EMBEDDING_MODEL": "text-embedding-3-small",
     }, slot=4, course={"id": COURSE, "name": "Einführung",
                        "collection": "SmartRagChunks"})
@@ -202,6 +204,8 @@ for path in sorted(TEMPLATES.glob("*.json")):
 flow = at.load_template("agent-11-expert-feedback.json")
 at.auto_fill_from_env(flow, {"LLM_PROVIDER": "anthropic",
                              "EMBEDDING_PROVIDER": "openai",
+                             "LLM_MODEL_STRONG": "claude-sonnet-5",
+                             "LLM_MODEL_FAST": "claude-haiku-4-5",
                              "EMBEDDING_MODEL": "m"}, slot=1,
                       course={"id": "", "name": "x", "collection": "c"})
 for cfg in vector_stores(flow):

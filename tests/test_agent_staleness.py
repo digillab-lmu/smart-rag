@@ -82,6 +82,7 @@ import app as application  # noqa: E402
 env = {"COURSE_ID": course["id"], "COURSE_NAME": course["name"],
        "WEAVIATE_COLLECTION_NAME": course["collection"],
        "LLM_PROVIDER": "anthropic", "LLM_API_KEY": "sk-t",
+       "LLM_MODEL_STRONG": "claude-sonnet-5", "LLM_MODEL_FAST": "claude-haiku-4-5",
        "EMBEDDING_PROVIDER": "openai", "EMBEDDING_API_KEY": "sk-e",
        "EMBEDDING_MODEL": "text-embedding-3-small"}
 

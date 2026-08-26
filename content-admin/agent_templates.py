@@ -119,7 +119,11 @@ EMBEDDING_PROVIDER_MAP: dict[str, dict[str, str]] = {
 }
 
 class ProviderNotConfigured(ValueError):
-    """LLM_PROVIDER or EMBEDDING_PROVIDER is empty or names something unknown."""
+    """A variable the import needs is empty, or names something unknown.
+
+    LLM_PROVIDER and EMBEDDING_PROVIDER, and the three model names that go
+    with them.
+    """
 
 
 def _resolve_provider(env: dict, key: str, table: dict) -> tuple[str, dict]:
@@ -138,6 +142,26 @@ def _resolve_provider(env: dict, key: str, table: dict) -> tuple[str, dict]:
         known = ", ".join(sorted(table))
         raise ProviderNotConfigured(f"{key} is {provider!r}; known values: {known}.")
     return provider, table[provider]
+
+
+def _model_name(env: dict, key: str) -> str:
+    """The configured model, or a refusal — never an empty name.
+
+    env.get(key, fallback) returns "" for a key that is present but empty, so
+    the fallback written at the call site only ever covered a *missing* key.
+    A value emptied by hand, or left behind by a provider change, went through
+    as modelName: "" and Flowise failed with a message naming neither the
+    variable nor the agent.
+
+    Falling back to the literal in the template JSON is worse than refusing
+    for the same reason _resolve_provider gives: those literals are Anthropic
+    model names, and on an installation configured for another provider they
+    would be sent to a vendor that has never heard of them.
+    """
+    name = (env.get(key) or "").strip()
+    if not name:
+        raise ProviderNotConfigured(f"{key} is empty in .env.")
+    return name
 
 
 def resolve_llm_provider(env: dict) -> tuple[str, dict]:
@@ -754,7 +778,7 @@ def auto_fill_from_env(
         course_name = ""
         course_id = ""
         weaviate_collection = ""
-    embedding_model = env.get("EMBEDDING_MODEL", "")
+    embedding_model = _model_name(env, "EMBEDDING_MODEL")
     agent_number = str(slot) if slot is not None else ""
 
     def replace_context_fields(text: str) -> str:
@@ -780,7 +804,7 @@ def auto_fill_from_env(
             cfg = inputs.get("agentModelConfig")
             if isinstance(cfg, dict):
                 cfg["agentModel"] = llm_map["node"]
-                cfg["modelName"] = env.get("LLM_MODEL_STRONG", cfg.get("modelName", ""))
+                cfg["modelName"] = _model_name(env, "LLM_MODEL_STRONG")
                 if "extra_config_key" in llm_map:
                     cfg[llm_map["extra_config_key"]] = env.get(
                         llm_map["extra_config_env"], ""
@@ -790,7 +814,7 @@ def auto_fill_from_env(
             cfg = inputs.get("llmModelConfig")
             if isinstance(cfg, dict):
                 cfg["llmModel"] = llm_map["node"]
-                cfg["modelName"] = env.get("LLM_MODEL_FAST", cfg.get("modelName", ""))
+                cfg["modelName"] = _model_name(env, "LLM_MODEL_FAST")
                 if "extra_config_key" in llm_map:
                     cfg[llm_map["extra_config_key"]] = env.get(
                         llm_map["extra_config_env"], ""

@@ -108,7 +108,7 @@ known_embedding_dimensions() {
 default_llm_model_strong() {
     case "$1" in
         anthropic)  echo "claude-sonnet-5" ;;
-        openai)     echo "gpt-5.6-sol" ;;
+        openai)     echo "gpt-4.1" ;;
         google)     echo "gemini-2.5-pro" ;;
         mistral)    echo "mistral-large-latest" ;;
         cohere)     echo "command-r-plus" ;;
@@ -139,10 +139,26 @@ default_llm_model_fast() {
 # suffix, which the API rejects. The other providers' entries are not verified
 # from here; they are corrected when somebody has the provider's list in front
 # of them.
+#
+# The OpenAI strong entries are deliberately not the newest models. Every
+# active gpt-5.x model reasons, and /v1/chat/completions rejects a request
+# that carries function tools together with a reasoning effort — including
+# the effort the model applies by default when the caller sends none. The
+# agent archetypes all retrieve from the course material, which Flowise sends
+# as a function tool, so an agent on gpt-5.6 answers with a 400 and nothing
+# in the wizard can prevent it: the way out is reasoning_effort "none", which
+# the Flowise 3.1.3 ChatOpenAI node does not offer, or the /v1/responses
+# endpoint, which it does not use. gpt-4.1 and gpt-4o do not reason, take
+# function tools, and are in the API with no shutdown date. Measured against
+# a real install on 2026-08-26; revisit when Flowise routes tool calls to
+# /v1/responses (langchain-ai/langchain#35584).
+#
+# The fast entries stay on gpt-5.x on purpose: that node extracts a topic and
+# carries no tools, so the restriction does not reach it.
 llm_model_choices_strong() {
     case "$1" in
         anthropic)  echo "claude-sonnet-5|claude-opus-5" ;;
-        openai)     echo "gpt-5.6-sol|gpt-5.6-terra|gpt-5.6-luna" ;;
+        openai)     echo "gpt-4.1|gpt-4o" ;;
         google)     echo "gemini-2.5-pro|gemini-2.5-flash" ;;
         mistral)    echo "mistral-large-latest|mistral-medium-latest" ;;
         cohere)     echo "command-r-plus|command-r" ;;

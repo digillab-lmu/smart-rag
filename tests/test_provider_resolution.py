@@ -107,6 +107,31 @@ for lang in ("en", "de"):
     check(f"[{lang}] and says nothing was changed",
           "no agent" in msg.lower() or "kein agent" in msg.lower(), msg)
 
+# ─── The three model names get the same treatment as the provider ───────────
+# They did not. Each call site read env.get(KEY, <literal from the template
+# JSON>), which returns "" for a key that is present and empty — so the
+# fallback only ever covered a missing key, and an emptied one was imported as
+# modelName: "". The literals are Anthropic model names besides, so on an
+# installation configured for another provider the fallback would have sent a
+# name that vendor has never heard of.
+for key in ("LLM_MODEL_STRONG", "LLM_MODEL_FAST", "EMBEDDING_MODEL"):
+    for label, env in [("missing key", {}),
+                       ("empty value", {key: ""}),
+                       ("whitespace only", {key: "   "})]:
+        msg = refuses(lambda e, k=key: at._model_name(e, k), env)
+        check(f"{key}, {label}: refused", bool(msg), "it was accepted")
+        check(f"{key}, {label}: the message names the variable",
+              key in msg, msg)
+    check(f"{key}: a configured name is returned, trimmed",
+          at._model_name({key: "  some-model  "}, key) == "some-model", "")
+
+# And no call site may quietly reintroduce a default.
+src = (REPO / "content-admin" / "agent_templates.py").read_text()
+for key in ("LLM_MODEL_STRONG", "LLM_MODEL_FAST", "EMBEDDING_MODEL"):
+    check(f"{key} is not read with a default",
+          f'env.get("{key}"' not in src,
+          "an empty value would pass through as an empty model name")
+
 if failures:
     print("FAILURES:")
     for f in failures:

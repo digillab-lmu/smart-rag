@@ -240,6 +240,38 @@ for prov in anthropic openai google mistral cohere openrouter; do
     check "fetch_model_ids handles $prov" $? ""
 done
 
+# ─── The suggested strong model must be able to take a function tool ────────
+# Every agent archetype retrieves from the course material, and Flowise sends
+# that retrieval as a function tool. OpenAI's /v1/chat/completions refuses a
+# request that carries function tools together with a reasoning effort, and a
+# gpt-5.x model applies one by default even when the caller sends none — so
+# the wizard offering gpt-5.6-sol produced installations whose agents answered
+# with a 400 as soon as they touched the material. The Flowise 3.1.3 node
+# cannot send reasoning_effort "none" and does not use /v1/responses, so the
+# only lever left is which model is suggested.
+#
+# The fast list is not checked: that node extracts a topic, carries no tools,
+# and the restriction does not reach it.
+strong_openai="$(bash -c "source '$REPO/scripts/lib/config-wizard.sh' 2>/dev/null; llm_model_choices_strong openai" 2>/dev/null)"
+default_openai="$(bash -c "source '$REPO/scripts/lib/config-wizard.sh' 2>/dev/null; default_llm_model_strong openai" 2>/dev/null)"
+
+[[ -n "$strong_openai" ]]
+check "the OpenAI strong list is readable" $? "sourcing the wizard produced nothing"
+
+if grep -q "gpt-5" <<<"$strong_openai"; then
+    check "no reasoning model is suggested as the strong model" 1 \
+          "offered: $strong_openai — these 400 with function tools"
+else
+    check "no reasoning model is suggested as the strong model" 0
+fi
+
+[[ "$default_openai" != gpt-5* ]]
+check "and the default is not one either" $? "default: $default_openai"
+
+grep -q "gpt-4" <<<"$strong_openai"
+check "a tool-capable OpenAI model is still offered" $? \
+      "removing the reasoning models must not leave the list empty"
+
 if (( ${#FAILURES[@]} > 0 )); then
     echo "FAILURES:"; printf '  - %s\n' "${FAILURES[@]}"; exit 1
 fi
