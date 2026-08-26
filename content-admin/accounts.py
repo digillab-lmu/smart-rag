@@ -157,6 +157,44 @@ def create_account(username: str, password: str, role: str = ROLE_MAINTAINER,
     return row
 
 
+def update_account(user_id: int, username: str, email: str) -> dict:
+    """Change name and address together, or change neither.
+
+    Both are validated before either is written. Applied one after the other,
+    a rejected address would leave the rename already saved and the operator
+    looking at an error — a half-applied edit is worse than a refused one,
+    because nothing on the page says which half went through.
+    """
+    username = (username or "").strip()
+    email = (email or "").strip()
+    current = get(user_id)
+    if current is None:
+        raise AccountError("No such account.")
+    if not username:
+        raise AccountError("An account needs a user name.")
+    if email and ("@" not in email or email.startswith("@") or email.endswith("@")):
+        raise AccountError(f"{email!r} is not an email address.")
+    if username != current["username"]:
+        existing = get_by_username(username)
+        if existing and existing["id"] != user_id:
+            raise AccountError(f"There is already an account called {username!r}.")
+
+    with db.connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE users SET username = %s, email = %s WHERE id = %s "
+                "RETURNING " + _COLS,
+                (username, email or None, user_id))
+            row = _row(cur.fetchone())
+        conn.commit()
+    if username != current["username"]:
+        logger.info("Account %s renamed from %s to %s", user_id,
+                    current["username"], username)
+    if (email or None) != current["email"]:
+        logger.info("Email of account %s changed", user_id)
+    return row
+
+
 def set_password(user_id: int, password: str) -> None:
     _check_password(password)
     with db.connect() as conn:

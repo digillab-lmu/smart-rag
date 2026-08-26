@@ -122,6 +122,20 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Added
 
+- **Accounts can be edited.** A user name and an email address can now be
+  changed in place, keeping the account's role, its course assignments and its
+  password. Until now the only way to record a changed address was to delete
+  the account and create a new one, which loses the assignments — and the
+  address is where the password reset link is sent, so an account with a stale
+  one cannot recover its own password.
+
+  Both fields are validated and written in one transaction. A name already in
+  use, an address that is not one, or an empty name is refused with neither
+  field changed: a half-applied edit leaves the operator looking at an error
+  with no way to tell which half went through. Clearing an address stores
+  nothing rather than an empty string, and a rename does not sign the account
+  out, because the session holds the account id.
+
 - **The graph page explains itself.** Five short paragraphs, open by default:
   what the map is, how to fill it, how to check it, what to watch for, and
   what to do if it goes wrong. Everything on that page is new to whoever opens

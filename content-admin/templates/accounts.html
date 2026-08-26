@@ -15,8 +15,16 @@
   {% for a in accounts %}
   <tr>
     <td>
-      <strong>{{ a.username }}</strong>
-      {% if a.email %}<br><span class="note">{{ a.email }}</span>{% endif %}
+      <form method="post" style="margin:0">
+        <input type="hidden" name="action" value="edit">
+        <input type="hidden" name="user_id" value="{{ a.id }}">
+        <input type="text" name="username" value="{{ a.username }}" size="18"
+               aria-label="{{ t('accounts_field_user') }}" required>
+        <input type="email" name="email" value="{{ a.email or '' }}" size="24"
+               aria-label="{{ t('accounts_field_email') }}"
+               placeholder="{{ t('accounts_email_none') }}">
+        <button type="submit" class="secondary">{{ t('accounts_save') }}</button>
+      </form>
     </td>
     <td>
       {% if a.role == 'admin' %}{{ t('accounts_role_admin') }}

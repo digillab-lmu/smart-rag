@@ -493,6 +493,15 @@ def accounts_page():
             elif action == "role":
                 accounts.set_role(int(request.form.get("user_id", "0")),
                                   request.form.get("role", ""))
+            elif action == "edit":
+                # A changed name or address, without losing the account's
+                # role, courses and password. Both in one submit, because
+                # they are one edit as far as the operator is concerned.
+                after = accounts.update_account(
+                    int(request.form.get("user_id", "0")),
+                    request.form.get("username", ""),
+                    request.form.get("email", ""))
+                success = _t("accounts_edited", after["username"])
             elif action == "delete":
                 accounts.delete_account(int(request.form.get("user_id", "0")))
                 success = _t("accounts_deleted")
