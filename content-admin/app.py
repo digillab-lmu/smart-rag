@@ -1838,6 +1838,7 @@ def documents():
     slots = storage.all_slots(course_id)
     error = None
     success = None
+    warning = None
 
     # Independent of Weaviate on purpose: a document being processed has no
     # chunks yet, so if this were read from the index it would show nothing
@@ -1849,6 +1850,7 @@ def documents():
     if not course_id or not collection:
         return render_template(
             "documents.html", documents=[], slots=slots, truncated=False,
+            warning=warning,
             jobs=jobs, error=_t("docs_err_not_configured"), success=None, total=0)
 
     client = _weaviate_client()
@@ -1881,7 +1883,13 @@ def documents():
             else:
                 logger.info("Deleted %s chunk(s) of %r (course=%s, agent=%s)",
                             removed, title, course_id, agent_id)
-                success = _t("docs_deleted", removed, title)
+                if not removed:
+                    # Nothing matched. Reported as a success it reads as
+                    # "removed, 0 of them", which is how a stale page or a
+                    # title that no longer matches passes for a deletion.
+                    warning = _t("docs_deleted_none", title)
+                else:
+                    success = _t("docs_deleted", removed, title)
                 # The concept map is built from these documents, so deleting
                 # one changes it. Doing that silently leaves concepts citing a
                 # work the course no longer has — and the operator finds out
@@ -1932,6 +1940,7 @@ def documents():
 
     return render_template(
         "documents.html", documents=documents, slots=slots, truncated=truncated,
+        warning=warning,
         jobs=jobs, total=total, error=error, success=success,
         graph_weight=graph_weight)
 

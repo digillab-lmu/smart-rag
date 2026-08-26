@@ -17,6 +17,7 @@ anywhere.
 | `graph.png`          | Knowledge graph   | The diagram of a proposal, with the concept table below |
 | `graph-review.png`   | Knowledge graph   | The editable proposal: tick boxes, names, prerequisites |
 | `courses.png`        | Courses           | The course list with retention dates |
+| `users.png`          | Accounts          | The account list with the editable name and address fields, roles and course assignments |
 | `learners.png`       | People            | The lookup form and a result across the four systems |
 | `status.png`         | System status     | The live check with at least one item not yet green |
 

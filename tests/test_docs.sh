@@ -84,6 +84,19 @@ done <<<"$declared"
 (( ${#unused[@]} == 0 ))
 check "every declared screenshot is shown somewhere" $? "${unused[*]:-}"
 
+# An image nobody shows. Neither of the two checks above sees it: one walks
+# the references, the other the declarations, and a file that is in neither
+# falls between them. That happened — a screenshot was uploaded and stayed
+# invisible, which is the whole cost of taking it.
+orphans=()
+for img in docs/img/*.png; do
+    [[ -e "$img" ]] || continue
+    grep -rq "$(basename "$img")" "${DOCS[@]}" docs/img/README.md || orphans+=("$img")
+done
+(( ${#orphans[@]} == 0 ))
+check "every image in docs/img is shown somewhere" $? \
+      "${orphans[*]:-} — reference it, or delete it"
+
 # ─── Buttons the documentation tells the reader to press ────────────────────
 # A guide that names a control which no longer exists is the commonest way for
 # documentation to go quietly wrong, and it is checkable: the label has to be

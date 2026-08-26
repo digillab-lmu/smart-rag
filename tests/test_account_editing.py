@@ -75,6 +75,15 @@ check("including the address", 'value="alt@example.org"' in page, "")
 check("an account without an address shows an empty field, not a gap",
       'name="email"' in page and "no address" in page, "")
 
+# ─── A destructive action does not look like the recommended one ────────────
+# Delete was rendered in the accent colour, so it was the most prominent
+# control in its row while the harmless role change beside it was grey.
+check("delete is marked as destructive", 'class="danger"' in page,
+      "the accent colour reads as the action to take")
+check("and the role change is not",
+      page.count('class="danger"') < page.count('class="secondary"'),
+      "only the removals should carry it")
+
 # ─── Editing keeps what is not being edited ─────────────────────────────────
 client.post("/accounts", data={"action": "edit", "user_id": target["id"],
                                "username": "ed-renamed",

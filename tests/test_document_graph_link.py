@@ -104,6 +104,23 @@ check("the form carries the stable identifier",
       "provenance keys on source_file — a title can be edited, and two "
       "agents may upload the same filename")
 
+# ─── A deletion that found nothing is not a deletion ────────────────────────
+# Seen on a live installation: "0 Chunk(s) von \"Digitale Ethik\" aus dem Index
+# entfernt", in the green box. Read quickly that is a completed removal with a
+# count beside it, and the two situations it actually covers — the document
+# was already gone, or the list is stale and the title no longer matches —
+# both need the operator to look again.
+weaviate_client.WeaviateClient.delete_document = lambda self, c, cid, t, a: 0
+page = client.post("/documents", data={
+    "source_title": "Werk A", "source_file": "agent_1/a.md",
+    "agent_id": "1"}).get_data(as_text=True)
+check("removing nothing is not reported as a success",
+      "No chunks" in page or "keine Chunks" in page, page[-300:])
+check("and the page does not also claim a removal",
+      "Removed 0" not in page and "0 chunk(s) of" not in page, "")
+weaviate_client.WeaviateClient.delete_document = \
+    lambda self, c, cid, t, a: (deleted.append(t), 10)[1]
+
 # ─── Deleting, with the clean-up ────────────────────────────────────────────
 body = client.post("/documents", data={
     "source_title": "Werk A", "source_file": "agent_1/a.md",

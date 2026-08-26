@@ -15,15 +15,20 @@
   {% for a in accounts %}
   <tr>
     <td>
-      <form method="post" style="margin:0">
+      {# width:auto on each field: the stylesheet gives inputs width:100%, so
+         a size attribute has no effect and the three controls stacked, making
+         every row three lines tall. #}
+      <form method="post" style="margin:0;display:flex;gap:.4em;flex-wrap:wrap;align-items:center">
         <input type="hidden" name="action" value="edit">
         <input type="hidden" name="user_id" value="{{ a.id }}">
-        <input type="text" name="username" value="{{ a.username }}" size="18"
+        <input type="text" name="username" value="{{ a.username }}"
+               style="width:12em;margin-top:0"
                aria-label="{{ t('accounts_field_user') }}" required>
-        <input type="email" name="email" value="{{ a.email or '' }}" size="24"
+        <input type="email" name="email" value="{{ a.email or '' }}"
+               style="width:16em;margin-top:0"
                aria-label="{{ t('accounts_field_email') }}"
                placeholder="{{ t('accounts_email_none') }}">
-        <button type="submit" class="secondary">{{ t('accounts_save') }}</button>
+        <button type="submit" class="secondary" style="margin-top:0">{{ t('accounts_save') }}</button>
       </form>
     </td>
     <td>
@@ -75,7 +80,7 @@
             onsubmit="return confirm('{{ t('accounts_delete_confirm', a.username) }}')">
         <input type="hidden" name="action" value="delete">
         <input type="hidden" name="user_id" value="{{ a.id }}">
-        <button type="submit">{{ t('accounts_delete') }}</button>
+        <button type="submit" class="danger">{{ t('accounts_delete') }}</button>
       </form>
       {% else %}
       <span class="note">{{ t('accounts_you') }}</span>

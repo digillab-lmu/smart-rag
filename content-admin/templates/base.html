@@ -188,6 +188,11 @@
     button:hover { background: var(--accent-hover); }
     button.secondary { background: #6b7280; }
     button.secondary:hover { background: #565d68; }
+    /* Destructive actions. Delete was rendered in the accent colour, which
+       made it the most prominent control in its row while the harmless
+       action beside it was grey — the reverse of what the colours are for. */
+    button.danger { background: #fff; color: #a4262c; border: 1px solid #a4262c; }
+    button.danger:hover { background: #fdf2f2; }
     button.optimize-btn {
       background: transparent; color: var(--accent); border: 1px solid var(--accent);
       padding: 0.35rem 0.75rem; font-size: 0.85rem; margin-top: 0.5rem;

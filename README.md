@@ -46,13 +46,14 @@ persistent per-student memory, hybrid retrieval, and optional LMS integration.
      the full image is how "click to enlarge" is done here. -->
 
 <details>
-<summary>Content Admin, nine views (click an image to enlarge)</summary>
+<summary>Content Admin, ten views (click an image to enlarge)</summary>
 
 | | | |
 |---|---|---|
 | [<img src="docs/img/dashboard.png" width="260">](docs/img/dashboard.png)<br>Agents | [<img src="docs/img/slot.png" width="260">](docs/img/slot.png)<br>One agent | [<img src="docs/img/upload.png" width="260">](docs/img/upload.png)<br>Add documents |
 | [<img src="docs/img/documents.png" width="260">](docs/img/documents.png)<br>Vector DB | [<img src="docs/img/graph.png" width="260">](docs/img/graph.png)<br>Knowledge graph | [<img src="docs/img/graph-review.png" width="260">](docs/img/graph-review.png)<br>Reviewing a proposal |
-| [<img src="docs/img/courses.png" width="260">](docs/img/courses.png)<br>Courses | [<img src="docs/img/learners.png" width="260">](docs/img/learners.png)<br>People | [<img src="docs/img/status.png" width="260">](docs/img/status.png)<br>System status |
+| [<img src="docs/img/courses.png" width="260">](docs/img/courses.png)<br>Courses | [<img src="docs/img/users.png" width="260">](docs/img/users.png)<br>Accounts | [<img src="docs/img/learners.png" width="260">](docs/img/learners.png)<br>People |
+| [<img src="docs/img/status.png" width="260">](docs/img/status.png)<br>System status | | |
 
 </details>
 
