@@ -289,7 +289,7 @@ check("and the page says what it was drafted from",
 # has to show it as something a person can judge, or the review is a
 # formality.
 check("the proposal is also shown as something other than JSON",
-      "What this proposal says" in page or "Was dieser Vorschlag sagt" in page,
+      "Contents of the proposal" in page or "Inhalt des Vorschlags" in page,
       "a reviewer handed only a text field cannot check a graph")
 check("with the concepts tabled by the work they came from",
       "agent_1/a.md" in page and "<details" in page, "")

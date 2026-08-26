@@ -11,6 +11,26 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ## Unreleased
 
+### Changed
+
+- **Every interface text rewritten to the register of ordinary software
+  documentation.** The previous texts explained how decisions had been
+  reached, addressed the reader personally, and let processes act — *"eine
+  Löschung … kann nicht behaupten"*. None of that helps somebody operate the
+  system: they were not present when the software was designed and have no
+  reason to care how it was.
+
+  85 German strings and their English counterparts now state what a control
+  does and what follows from it, and nothing else. German is impersonal
+  throughout, as German software is. Design rationale has moved to where it
+  belongs — commit messages and `docs/`, which are written for people
+  choosing how to change the software.
+
+  `tests/test_text_style.py` holds the register mechanically across all 581
+  keys in both languages: no process given a will, no rationale on screen, no
+  filler, at most one aside per string, no rhetorical question, a length
+  limit measured without markup, and no second person in German.
+
 ### Fixed
 
 - **Running text stopped two thirds of the way across the page.** The measure

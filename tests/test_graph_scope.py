@@ -96,8 +96,13 @@ check("a new agent takes part by default",
 
 page = client.get("/").get_data(as_text=True)
 check("the agent list has the column", "In the map" in page, "")
+# Counted from the database, not hard-coded: the course fixture is shared and
+# other suites configure slots in it, so a literal number here fails for a
+# reason that has nothing to do with this page.
+configured = sum(1 for d in storage.all_slots(CID).values() if d)
 check("every configured agent has a checkbox",
-      page.count('name="in_graph"') == 3, page.count('name="in_graph"'))
+      page.count('name="in_graph"') == configured,
+      (page.count('name="in_graph"'), configured))
 check("with what that agent holds up beside it",
       "12" in page and "(5)" in page,
       "the number is what makes unticking a decision rather than a click")
@@ -105,7 +110,7 @@ check("with what that agent holds up beside it",
 # "Re-import every agent of this course" — which is why the first version of
 # this check stayed green with the explanation deleted.
 check("and the page says what the map covers",
-      "covers this whole course" in page,
+      "covers the whole course" in page,
       "somebody has to be told the map is course-wide before they can be "
       "expected to think about scope")
 

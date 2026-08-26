@@ -324,7 +324,7 @@ resp = client.post("/upload", data={
     "document": (io.BytesIO(b"%PDF-1.4 fake"), "chapter4.pdf"),
 }, content_type="multipart/form-data", follow_redirects=True)
 check("POST /upload happy path succeeds", resp, 200, [
-    "chapter4.pdf", "Chapter 4 Tutor", "email when it&#39;s searchable",
+    "chapter4.pdf", "Chapter 4 Tutor", "An email is sent",
 ])
 if captured_upload.get("agent_id") != 4:
     failures.append(f"upload passed wrong agent_id: {captured_upload.get('agent_id')!r} (want int 4)")
@@ -495,8 +495,8 @@ class _RejectingClient:
 _real_client_factory = flask_app_module._flowise_client
 flask_app_module._flowise_client = lambda: _RejectingClient()
 check("stored-but-rejected key is not shown as connected", client.get("/"), 200,
-      contains=["not accepting it right now"],
-      not_contains=["isn't connected yet"])
+      contains=["currently rejecting it"],
+      not_contains=["Flowise is not connected"])
 
 class _WorkingClient:
     def list_chatflows(self):
@@ -504,15 +504,15 @@ class _WorkingClient:
 
 flask_app_module._flowise_client = lambda: _WorkingClient()
 check("a working key shows no warning at all", client.get("/"), 200,
-      not_contains=["not accepting it right now", "isn't connected yet"])
+      not_contains=["currently rejecting it", "Flowise is not connected"])
 
 # No key at all is a different problem with a different fix, and must not be
 # reported as a broken connection.
 flask_app_module._flowise_client = lambda: None
 _env_file.set_env_var("FLOWISE_API_KEY", "")
 check("no key at all still says 'not connected yet'", client.get("/"), 200,
-      contains=["isn't connected yet"],
-      not_contains=["not accepting it right now"])
+      contains=["Flowise is not connected"],
+      not_contains=["currently rejecting it"])
 
 flask_app_module._flowise_client = _real_client_factory
 
