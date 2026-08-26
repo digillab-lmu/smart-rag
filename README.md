@@ -113,11 +113,18 @@ a TLS error that looks like a firewall problem and is not one.
 sudo mkdir -p /srv && sudo chown $USER /srv
 git clone https://github.com/digillab-lmu/smart-rag.git /srv/smart-rag
 cd /srv/smart-rag
+git checkout v2.0.0-rc.1                    # the current release
 
 sudo bash scripts/bootstrap.sh              # wizard: mode, domain, provider, models
 # domain mode only: point DNS at this server, then
 sudo bash scripts/bootstrap.sh --continue   # certificates, containers, schema, checks
 ```
+
+Check out the release, not `main`. `main` is where development happens and
+moves between releases; an installation should move when you decide it does.
+Later releases are applied the same way — `git fetch --tags` and check out the
+new one. Updating container images is separate and does not touch git:
+`sudo smartrag` → *Update*.
 
 The wizard is bilingual (English and German), can be stepped back through, and
 ends by verifying rather than instructing: three steps happen in a browser and

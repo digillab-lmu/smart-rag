@@ -135,6 +135,32 @@ if grep -rqn "runs as two n8n workflows" README.md; then
           "README says two, the directory holds $ingest_workflows"
 fi
 
+# ─── The README installs the release, not the development branch ────────────
+# A tester who follows the README should get the version that was released.
+# Cloning the default branch gives whatever was pushed last, which during a
+# working day includes states nobody would want on a server — so the README
+# checks out a tag. That tag then has to be the newest one, or the install
+# instructions quietly hand out an old release.
+readme_tag="$(grep -oE 'git checkout v[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+\.[0-9]+)?' "$REPO/README.md" | head -1 | awk '{print $3}')"
+newest_tag="$(git -C "$REPO" tag --sort=-v:refname 2>/dev/null | head -1)"
+
+[[ -n "$readme_tag" ]]
+check "the README names a release to check out" $? \
+      "without it a clone lands on main, which moves between releases"
+
+if [[ -n "$newest_tag" ]]; then
+    [[ "$readme_tag" == "$newest_tag" ]]
+    check "and it is the newest tag" $? \
+          "README says $readme_tag, newest tag is $newest_tag"
+
+    git -C "$REPO" rev-parse "$readme_tag" >/dev/null 2>&1
+    check "the tag the README names exists" $? "$readme_tag was not found"
+fi
+
+grep -q 'main. is where development happens' "$REPO/README.md"
+check "the README says what main is" $? \
+      "otherwise checking out a tag looks like an arbitrary extra step"
+
 if (( ${#FAILURES[@]} > 0 )); then
     echo "FAILURES:"; printf '  - %s\n' "${FAILURES[@]}"; exit 1
 fi
