@@ -862,6 +862,19 @@ http_answers() {
 # EXECUTED the next time something does `source .env`.
 #
 # Args: $1 = path to .env  $2 = KEY  $3 = new value (unescaped, as typed)
+# get_env_var FILE KEY — the value as written, quotes stripped, or empty.
+# The counterpart to set_env_var. Deliberately not a `source`: .env holds
+# secrets with characters bash would interpret, and reading a single value
+# should not execute a file.
+get_env_var() {
+    local env_file="$1" key="$2" line
+    [[ -f "$env_file" ]] || return 0
+    line="$(grep -m1 "^${key}=" "$env_file" 2>/dev/null)" || return 0
+    line="${line#*=}"
+    line="${line%\"}"; line="${line#\"}"
+    printf '%s\n' "$line"
+}
+
 set_env_var() {
     local env_file="$1" key="$2" val="$3"
     [[ -f "$env_file" ]] || die "set_env_var: $env_file not found"
@@ -927,6 +940,51 @@ set_env_var() {
 # only set to non-empty when the default unprefixed names collided with
 # something already on the host, e.g. an existing standalone n8n).
 # Args: $1=service label (e.g. "smart-rag", "n8n")  $2=base domain  $3=prefix (may be empty)
+# ─── Every value that carries the installation's address ─────────────────────
+# One place, because there are two consumers and they must not drift: the
+# installer writes these when generating .env, and a restore onto a machine
+# with a different address has to rewrite exactly the same set.
+#
+# It matters that this is a list rather than a substitution. The values are
+# resolved when .env is written — the file holds "https://n8n.example.org",
+# not "https://n8n.${DOMAIN}" — so changing DOMAIN alone changes nothing else,
+# and a rename that did only that produced an installation whose services
+# announced themselves at the address it had moved away from.
+#
+# The two modes derive addresses differently and are not interchangeable:
+# tailscale separates services by port on one MagicDNS name, domain mode by
+# subdomain. A move between the two is not a rename.
+#
+# address_vars MODE DOMAIN PREFIX TAILSCALE_HOST
+# Prints KEY=VALUE lines, one per line.
+address_vars() {
+    local mode="$1" domain="$2" prefix="$3" ts="$4"
+    if [[ "$mode" == "tailscale" ]]; then
+        [[ -n "$ts" ]] || return 1
+        printf '%s\n' \
+            "TAILSCALE_HOSTNAME=$ts" \
+            "FLOWISE_PUBLIC_URL=https://$ts" \
+            "CONTENT_ADMIN_PUBLIC_URL=https://$ts:8443" \
+            "N8N_WEBHOOK_URL=https://$ts:8444" \
+            "N8N_HOSTNAME=$ts" \
+            "NEXTAUTH_URL=https://$ts:8445" \
+            "GARAGE_S3_PUBLIC_URL=https://$ts:8447" \
+            "LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT=https://$ts:8447"
+    else
+        [[ -n "$domain" ]] || return 1
+        printf '%s\n' \
+            "DOMAIN=$domain" \
+            "N8N_WEBHOOK_URL=https://$(subdomain_host n8n "$domain" "$prefix")" \
+            "N8N_HOSTNAME=$(subdomain_host n8n "$domain" "$prefix")" \
+            "NEXTAUTH_URL=https://$(subdomain_host langfuse "$domain" "$prefix")" \
+            "LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT=https://$(subdomain_host s3 "$domain" "$prefix")" \
+            "GARAGE_S3_PUBLIC_URL=https://$(subdomain_host s3 "$domain" "$prefix")" \
+            "FLOWISE_PUBLIC_URL=https://$(subdomain_host smart-rag "$domain" "$prefix")" \
+            "CONTENT_ADMIN_PUBLIC_URL=https://$(subdomain_host content "$domain" "$prefix")" \
+            "SMTP_SENDER_EMAIL=noreply@$domain"
+    fi
+}
+
 subdomain_host() {
     local service="$1" domain="$2" prefix="$3"
     if [[ -n "$prefix" ]]; then

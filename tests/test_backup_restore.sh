@@ -277,6 +277,42 @@ check "…in German either" $(( $? == 0 ? 1 : 0 )) ""
 grep -qE '\[ref_admin_items\]=.*[Bb]ackup' <<<"$catalog"
 check "and mentions the backup command that exists" $? ""
 
+# ─── A rename has to reach every address, not just DOMAIN ───────────────────
+# The generated .env holds resolved hostnames — "https://n8n.old", never
+# "https://n8n.${DOMAIN}" — so the rename that set only DOMAIN produced an
+# installation whose n8n webhook, Langfuse callback, S3 endpoint and two
+# public URLs still named the machine it had moved off. Nothing fails at
+# restore time; it fails the first time somebody uploads a document.
+# shellcheck source=/dev/null
+source "$REPO/scripts/lib/common.sh"
+
+renamed="$(address_vars domain "new.example.org" "" "")"
+for key in DOMAIN N8N_WEBHOOK_URL N8N_HOSTNAME NEXTAUTH_URL \
+           GARAGE_S3_PUBLIC_URL FLOWISE_PUBLIC_URL \
+           CONTENT_ADMIN_PUBLIC_URL LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT \
+           SMTP_SENDER_EMAIL; do
+    grep -q "^$key=.*new\.example\.org" <<<"$renamed"
+    check "a rename reaches $key" $? \
+          "left pointing at the address the installation moved off"
+done
+
+! grep -qE "old|previous" <<<"$renamed"
+check "and nothing keeps the old address" $? "$renamed"
+
+# The restore has to use that derivation rather than a second copy of it.
+grep -q "address_vars" "$REPO/scripts/restore.sh"
+check "the restore renames through the shared derivation" $? \
+      "two copies of the arithmetic drift, and only one of them gets fixed"
+# Deriving them is not applying them. A mutation that computed the eight and
+# then wrote only DOMAIN passed a check that looked for the name alone.
+grep -qF 'set_env_var "$TARGET_ENV" "${_line%%=*}" "${_line#*=}"' "$REPO/scripts/restore.sh"
+check "and writes every derived value, not just the first" $? \
+      "the loop over the derivation is what actually renames the installation"
+rename_block="$(sed -n '/^if \[\[ -n "\$RENAME" \]\]; then$/,/^fi$/p' "$REPO/scripts/restore.sh" | tail -30)"
+grep -q "DEPLOYMENT_MODE" <<<"$rename_block"
+check "and takes the mode from the archive" $? \
+      "tailscale separates services by port and domain mode by subdomain; "
+
 if (( ${#FAILURES[@]} > 0 )); then
     echo "FAILURES:"; printf '  - %s\n' "${FAILURES[@]}"; exit 1
 fi

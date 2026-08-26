@@ -33,6 +33,24 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **Renaming an installation during a restore changed only `DOMAIN`.** Eight
+  values in `.env` carry the address, and the generated file holds them
+  resolved — `https://n8n.old-address`, never `https://n8n.${DOMAIN}` — so
+  setting `DOMAIN` alone left n8n's webhook, its hostname, Langfuse's auth
+  callback, the S3 endpoint and both public URLs pointing at the machine the
+  installation had just moved off. Nothing fails during the restore; it fails
+  the first time somebody uploads a document.
+
+  The derivation now lives in one place, `address_vars()`, used by the
+  installer when it writes `.env` and by the restore when it renames — two
+  copies of the same arithmetic is how a rename ends up rewriting some of the
+  eight. The mode comes from the archive: Tailscale separates services by port
+  on one MagicDNS name and domain mode by subdomain, so a move between the two
+  is not a rename and is refused rather than done half way. The rename prints
+  every value it wrote.
+
+### Fixed
+
 - **Three messages were called but never written, and printed
   `MISSING:<key>` on screen.** Found by an operator verifying a backup, where
   the Garage result read `✓ MISSING:vfyb_garage_layout_ok`. The catalogue

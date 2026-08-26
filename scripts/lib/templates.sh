@@ -41,30 +41,22 @@ write_env_file() {
     # MagicDNS name, so services are separated by port. The name is known by
     # now — the wizard joined the tailnet before writing this file, precisely
     # so these can be correct here rather than patched in later.
+    # Derived from one place, shared with the rename in restore.sh — see
+    # address_vars() in lib/common.sh. Two consumers writing the same eight
+    # values from two copies of the arithmetic is how a rename ends up
+    # rewriting some of them.
+    local _line _key _value
+    while IFS= read -r _line; do
+        _key="${_line%%=*}"; _value="${_line#*=}"
+        REPL[$_key]="$_value"
+    done < <(address_vars "${CFG_DEPLOYMENT_MODE:-domain}" "$CFG_DOMAIN" \
+                          "${CFG_SUBDOMAIN_PREFIX:-}" "${CFG_TAILSCALE_HOSTNAME:-}")
+    # In domain mode there is no tailnet name, and vice versa; the unused one
+    # is written empty rather than left over from a previous run.
     if [[ "${CFG_DEPLOYMENT_MODE:-domain}" == "tailscale" ]]; then
-        local ts="${CFG_TAILSCALE_HOSTNAME:-}"
-        REPL[TAILSCALE_HOSTNAME]="$ts"
-        REPL[FLOWISE_PUBLIC_URL]="https://$ts"
-        REPL[CONTENT_ADMIN_PUBLIC_URL]="https://$ts:8443"
-        REPL[N8N_WEBHOOK_URL]="https://$ts:8444"
-        REPL[N8N_HOSTNAME]="$ts"
-        REPL[NEXTAUTH_URL]="https://$ts:8445"
-        REPL[GARAGE_S3_PUBLIC_URL]="https://$ts:8447"
-        REPL[LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT]="https://$ts:8447"
+        REPL[SUBDOMAIN_PREFIX]="${CFG_SUBDOMAIN_PREFIX:-}"
     else
         REPL[TAILSCALE_HOSTNAME]=""
-        REPL[N8N_WEBHOOK_URL]="https://$(subdomain_host n8n "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
-        REPL[N8N_HOSTNAME]="$(subdomain_host n8n "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
-        REPL[NEXTAUTH_URL]="https://$(subdomain_host langfuse "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
-        REPL[LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT]="https://$(subdomain_host s3 "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
-        # These four were once built inline in docker-compose.yml as
-        # "https://s3.${DOMAIN}", which silently dropped the prefix and
-        # pointed services at hostnames with no DNS record, vhost or
-        # certificate. APP_URL was wrong even without a prefix — it named
-        # the bare domain, while Flowise lives on the smart-rag subdomain.
-        REPL[GARAGE_S3_PUBLIC_URL]="https://$(subdomain_host s3 "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
-        REPL[FLOWISE_PUBLIC_URL]="https://$(subdomain_host smart-rag "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
-        REPL[CONTENT_ADMIN_PUBLIC_URL]="https://$(subdomain_host content "$CFG_DOMAIN" "${CFG_SUBDOMAIN_PREFIX:-}")"
     fi
 
     # Compose profiles

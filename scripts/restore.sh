@@ -265,10 +265,32 @@ cp "$WORK/env" "$TARGET_ENV"
 chmod 600 "$TARGET_ENV"
 
 if [[ -n "$RENAME" ]]; then
-    set_env_var "$TARGET_ENV" DOMAIN "$RENAME"
+    # Every value that carries the address, not just DOMAIN. The generated
+    # .env holds resolved hostnames — "https://n8n.old-address", not
+    # "https://n8n.${DOMAIN}" — so setting DOMAIN alone left seven values
+    # pointing at the machine this installation had just moved off: n8n's
+    # webhook, Langfuse's auth callback, the S3 endpoint, Flowise's and the
+    # Content Admin's public URLs.
+    #
+    # The mode comes from the archive. Tailscale separates services by port
+    # on one MagicDNS name and domain mode by subdomain; moving between them
+    # is not a rename, and doing it silently would write addresses no
+    # certificate covers.
+    _mode="$(get_env_var "$TARGET_ENV" DEPLOYMENT_MODE)"
+    _prefix="$(get_env_var "$TARGET_ENV" SUBDOMAIN_PREFIX)"
+    if [[ "$_mode" == "tailscale" ]]; then
+        _vars="$(address_vars tailscale "" "" "$RENAME")" || die "$(t restore_rename_failed)"
+    else
+        _vars="$(address_vars domain "$RENAME" "$_prefix" "")" || die "$(t restore_rename_failed)"
+    fi
+    while IFS= read -r _line; do
+        [[ -n "$_line" ]] || continue
+        set_env_var "$TARGET_ENV" "${_line%%=*}" "${_line#*=}"
+    done <<<"$_vars"
     # BASE_DATA_PATH follows this host, not the archive's.
     set_env_var "$TARGET_ENV" BASE_DATA_PATH "$TARGET_BASE"
     ok "$(t restore_renamed "$RENAME")"
+    printf '%s\n' "$_vars" | sed 's/^/    /'
 fi
 set_env_var "$TARGET_ENV" BASE_DATA_PATH "$TARGET_BASE"
 
