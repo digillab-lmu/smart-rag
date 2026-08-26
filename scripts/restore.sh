@@ -337,5 +337,16 @@ ok "$(t restore_unpacked)"
 header "$(t restore_next_heading)"
 echo "$(t restore_next_start)"
 echo "$(t restore_next_verify)"
-[[ -n "$RENAME" ]] && echo "$(t restore_next_rename)"
+# Which one applies depends on the mode. In domain mode the certificates are
+# certbot's and carry the old name. In Tailscale mode `tailscale serve`
+# provisions the certificate for the name this machine joined the tailnet
+# under, so a rename onto that same name needs nothing — and the TLS menu
+# entry, which runs certbot, would have found nothing to show.
+if [[ -n "$RENAME" ]]; then
+    if [[ "$_mode" == "tailscale" ]]; then
+        echo "$(t restore_next_rename_ts)"
+    else
+        echo "$(t restore_next_rename)"
+    fi
+fi
 echo "$(t restore_next_garage)"
