@@ -903,6 +903,16 @@ action_restore() {
     # this installation is what this menu entry means; the typed confirmation
     # above is the gate, not a flag that would also silence unrelated warnings.
     bash "$REPO_ROOT/scripts/restore.sh" "$archive" --replace --lang "$LANG_CHOICE" || true
+
+    # This menu sourced .env into its own environment at startup, and the
+    # restore has just replaced that file. Without re-reading it, every later
+    # action in this session works from the secrets of the installation that
+    # was moved aside — and the values shown on screen are that one's too.
+    set -a
+    # shellcheck disable=SC1091
+    source "$REPO_ROOT/.env"
+    set +a
+
     echo
     read -rp "$(t admin_press_enter)" _ || true
 }
