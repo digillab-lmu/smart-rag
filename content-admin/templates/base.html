@@ -172,6 +172,13 @@
             border: 1px solid var(--warn, #b8860b); padding: .75rem;
             border-radius: 6px; margin-bottom: 1rem; }
     label { display: block; margin-top: 1rem; font-weight: 500; }
+    /* In a table cell a label is not a field caption. The rule above
+       gives it a block box and a rem of space above it, which drops the
+       control out of line with the rest of the row; where the label also
+       carries text, the block takes the cell's width and the text runs
+       out over the next column instead of widening it. Measured on the
+       agents table: the concept count rendered on top of the Edit link. */
+    td label { margin-top: 0; }
     input, textarea, select {
       width: 100%; box-sizing: border-box; padding: 0.5rem; margin-top: 0.25rem;
       font-family: inherit; font-size: 1rem; border-radius: 6px; border: 1px solid var(--border);

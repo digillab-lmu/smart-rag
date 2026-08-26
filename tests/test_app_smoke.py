@@ -581,6 +581,32 @@ for tpl in sorted(_TPL.glob("*.html")):
     else:
         assert_that(f"{tpl.name}: no note sets its own width", True)
 
+# ─── A label in a table cell is not a field caption ─────────────────────────
+# Reported on the agents table: the concept count rendered on top of the Edit
+# link in the next column. base.html styles every label as a form-field
+# caption — display:block, margin-top:1rem — and in a row that makes the box
+# take the cell's full width and sit a rem below the other cells. Combined
+# with white-space:nowrap the text then overflowed the cell rather than
+# widening the column, which is the same lesson as the note above: the
+# display type decides whether a width constraint means anything.
+assert_that("a label in a table cell drops the field-caption spacing",
+            _re3.search(r"\btd\s+label\s*\{[^}]*margin-top:\s*0", base_css)
+            is not None,
+            "the global rule puts it a rem below the rest of its row")
+
+for tpl in sorted(_TPL.glob("*.html")):
+    text = tpl.read_text()
+    for m in _re2.finditer(r'<label[^>]*style="([^"]*)"', text):
+        style = m.group(1)
+        if "nowrap" in style and "inline" not in style:
+            assert_that(f"{tpl.name}: no cell label holds its text in a block",
+                        False,
+                        "nowrap inside a full-width block overflows the cell "
+                        "instead of widening the column")
+            break
+    else:
+        assert_that(f"{tpl.name}: no cell label holds its text in a block", True)
+
 if failures:
     print("FAILURES:")
     for f in failures:

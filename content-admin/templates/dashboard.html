@@ -68,7 +68,7 @@
     <td>
       {% if s.get('archetype') %}
         {% set gw = graph_weight.get(num|string) %}
-        <label style="white-space:nowrap">
+        <label style="display:inline-flex;align-items:center;gap:.4em">
           <input type="checkbox" name="in_graph" value="{{ num }}"
                  {% if s.get('in_graph', True) %}checked{% endif %}>
           {% if gw %}<span title="{{ t('dash_graph_weight_title') }}">{{ gw.concepts }}{% if gw.only %} ({{ gw.only }}){% endif %}</span>{% endif %}
