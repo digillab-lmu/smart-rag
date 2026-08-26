@@ -1,390 +1,239 @@
 # SMART RAG
 
-**Shared Memory Agent-Based Retrieval for Teaching**
+**Shared Memory Agent-Based Retrieval for Teaching** — a self-hosted tutoring
+system in which several AI agents answer from a course's own material, cite
+what they used, and remember a student across sessions.
 
-An open-source, course-agnostic deployment of a multi-agent AI tutoring system.
-Built for university and professional-education contexts where a single subject
-benefits from several specialized AI agents — each covering one topic — with
-persistent per-student memory, hybrid retrieval, and optional LMS integration.
+[![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
+[![Version 2.0.0](https://img.shields.io/badge/version-2.0.0-green)](CHANGELOG.md)
+[![Ubuntu 24.04 · 26.04 LTS](https://img.shields.io/badge/tested%20on-Ubuntu%2024.04%20%C2%B7%2026.04%20LTS-orange)](docs/requirements.md)
 
-> Developed by **Benjamin Götzinger** at the [DigiLLab of LMU München](https://www.lmu.de/digillab/de/) —
-> [Chair of Empirical Education and Educational Psychology](https://www.psy.lmu.de/ffp/)
-> (Prof. Frank Fischer) — and generalized for community use.
+[<img src="docs/img/dashboard.png" width="820" alt="The agent list of a course in the Content Admin">](docs/img/dashboard.png)
+
+Built at the [DigiLLab of LMU München](https://www.lmu.de/digillab/de/) and
+generalized for use elsewhere. One installation serves several courses; each
+course brings its own documents, its own agents and its own concept map.
 
 ---
 
-## Features
+## What it does
 
-- **Up to 10 agents per course** (Flowise AgentFlows) with a shared memory
-  model, so a student's progress carries across agents and sessions.
-- **Hybrid retrieval** (Weaviate) with optional re-ranking (Cohere or a custom
-  endpoint).
-- **Concept prerequisite graph** (Neo4j). Agents use it to present topics in a
-  suitable order. It can be generated from the course material by the
-  configured strong model and is reviewed before it is written.
-- **Persistent user memory** (`UserMemory` and `ChatHistory` in Weaviate),
-  updated by scheduled n8n workflows.
-- **LLM observability** (Langfuse and ClickHouse), optional.
-- **LMS integration** via LTI 1.3 (Moodle, ILIAS, Canvas), optional.
-- **Multiple courses per installation.** Every retrieved object carries a
-  `course_id` and every agent filters on it. Courses are created in the
-  Content Admin, not at install time.
-- **Data protection functions**: a retention date per course, and deletion of
-  one learner's data across all four systems that hold it. Both are pages in
-  the Content Admin. Both state the limits of what they cover.
-- **Backup and restore**, one command each. The restore checks the archive and
-  the target before unpacking anything.
-- **Deployment to Ubuntu LTS** through an interactive wizard, either with a
-  public domain or without one via Tailscale.
+A teacher uploads the course material and configures up to ten agents for it.
+Students talk to those agents, in a browser or through the LMS.
+
+- **Answers come from the course material**, retrieved per course and per
+  agent, with the source recorded — not from whatever the model happens to
+  know.
+- **A student's progress carries across agents and sessions.** What was
+  discussed, what is understood and what is not is held per learner and read
+  back on the next visit.
+- **Topics are ordered by prerequisite.** A concept map in Neo4j records what
+  has to be understood before what; agents use it to decide what to take up
+  next.
+- **The material is the operator's own.** Documents are converted, chunked and
+  indexed on the installation itself; nothing leaves it except the calls to
+  the configured LLM provider.
+- **Several courses on one installation**, separated at every layer: every
+  indexed object carries its course, every agent filters on it, and every
+  account reaches only the courses it is assigned.
+- **Data protection is a page, not a promise**: a retention date per course
+  and deletion of one learner's data across all four systems that hold it,
+  each stating what it does and does not cover.
+
+Configurable per installation: the LLM provider (Anthropic, OpenAI, Google,
+Mistral, Cohere, OpenRouter, or any OpenAI-compatible endpoint), the embedding
+model, whether observability and LMS integration are deployed at all.
+
+---
+
+## The six agent types
+
+Each of the ten slots holds one agent, built from one of six archetypes. They
+describe a teaching role, not a subject — the material decides the subject.
+
+| Type | What it does | Course material |
+|---|---|---|
+| **Universal Assistant** | Answers across the whole course. A sensible default, and enough on its own for a small course. | yes |
+| **Topic Agent** | One chapter or topic, scoped to that chapter's material. Most slots are usually this. | yes |
+| **Persona Agent** | Plays a role — a struggling student, a stakeholder in a case study — for perspective-taking exercises, scoped to what that persona would plausibly know. | yes |
+| **Expert Feedback Agent** | Gives feedback on student work as a domain expert, drawing on the material of that domain. | yes |
+| **Knowledge Test Agent** | Poses practice tasks and adjusts difficulty from the answers. Usually one per course; it also references the other configured agents. | yes |
+| **Backup Assistant** | Plain chat, no retrieval. A safety-net slot, or for conversation that needs no grounding. | no |
+
+An agent is configured by filling in a form for its archetype and importing it
+into Flowise with one click. Everything the installation already knows — course
+name, embedding model, provider — is filled in; the form asks only for what is
+genuinely new.
 
 ---
 
 ## Screenshots
 
-<!-- The images are referenced by name; see docs/img/README.md for what each
-     one has to show. GitHub renders no JavaScript, so a thumbnail linking to
-     the full image is how "click to enlarge" is done here. -->
+| | | |
+|---|---|---|
+| [<img src="docs/img/slot.png" width="250">](docs/img/slot.png)<br>Configuring one agent | [<img src="docs/img/upload.png" width="250">](docs/img/upload.png)<br>Adding documents | [<img src="docs/img/graph-review.png" width="250">](docs/img/graph-review.png)<br>Reviewing a proposed concept map |
 
 <details>
-<summary>Content Admin, ten views (click an image to enlarge)</summary>
+<summary>Seven more (click an image to enlarge)</summary>
 
 | | | |
 |---|---|---|
-| [<img src="docs/img/dashboard.png" width="260">](docs/img/dashboard.png)<br>Agents | [<img src="docs/img/slot.png" width="260">](docs/img/slot.png)<br>One agent | [<img src="docs/img/upload.png" width="260">](docs/img/upload.png)<br>Add documents |
-| [<img src="docs/img/documents.png" width="260">](docs/img/documents.png)<br>Vector DB | [<img src="docs/img/graph.png" width="260">](docs/img/graph.png)<br>Knowledge graph | [<img src="docs/img/graph-review.png" width="260">](docs/img/graph-review.png)<br>Reviewing a proposal |
-| [<img src="docs/img/courses.png" width="260">](docs/img/courses.png)<br>Courses | [<img src="docs/img/users.png" width="260">](docs/img/users.png)<br>Accounts | [<img src="docs/img/learners.png" width="260">](docs/img/learners.png)<br>People |
-| [<img src="docs/img/status.png" width="260">](docs/img/status.png)<br>System status | | |
+| [<img src="docs/img/documents.png" width="250">](docs/img/documents.png)<br>What is in the index | [<img src="docs/img/graph.png" width="250">](docs/img/graph.png)<br>Knowledge graph | [<img src="docs/img/courses.png" width="250">](docs/img/courses.png)<br>Courses |
+| [<img src="docs/img/users.png" width="250">](docs/img/users.png)<br>Accounts | [<img src="docs/img/learners.png" width="250">](docs/img/learners.png)<br>People | [<img src="docs/img/status.png" width="250">](docs/img/status.png)<br>System status |
 
 </details>
 
 ---
 
-## Architecture
+## Install
+
+**Requirements**: Ubuntu 24.04 or 26.04 LTS, Docker, Docker Compose v2, and an
+LLM plus embedding API key. Hardware sizing and the full checklist:
+[`docs/requirements.md`](docs/requirements.md) — the wizard shows the same
+checklist before it asks anything.
+
+**Two deployment modes**, chosen as the first question:
+
+| | Domain mode | Tailscale mode |
+|---|---|---|
+| Needs | a public domain, DNS you control, ports 80/443 reachable | a [Tailscale](https://tailscale.com/) account — nothing else |
+| Certificates | Let's Encrypt via nginx and certbot | issued by Tailscale, no inbound port |
+| Chat reachable by | anyone, at your domain | anyone, via Tailscale Funnel |
+| Admin interfaces | public subdomains behind passwords | inside your tailnet only |
+| LTI / LMS | supported | not supported — an LMS needs stable institutional URLs |
+| Intended for | production | test and evaluation systems |
+
+Tailscale mode needs no DNS and no port forwarding, which makes it the short
+path to a working system on a spare machine behind a home router. Its one
+non-obvious requirement: the computer you administer from must also run
+Tailscale, signed into the same account — otherwise every admin URL fails with
+a TLS error that looks like a firewall problem and is not one.
+
+```bash
+sudo mkdir -p /srv && sudo chown $USER /srv
+git clone https://github.com/digillab-lmu/smart-rag.git /srv/smart-rag
+cd /srv/smart-rag
+
+sudo bash scripts/bootstrap.sh              # wizard: mode, domain, provider, models
+# domain mode only: point DNS at this server, then
+sudo bash scripts/bootstrap.sh --continue   # certificates, containers, schema, checks
+```
+
+The wizard is bilingual (English and German), can be stepped back through, and
+ends by verifying rather than instructing: three steps happen in a browser and
+cannot be scripted — the Flowise account and its API key, the n8n owner
+account, the Content Admin account — and it stays open, checks each against the
+running services, and reports readiness only once all of them passed. Stopping
+early says what is left unproven. What it does in detail:
+[`docs/operations-guide.md`](docs/operations-guide.md).
+
+Initial credentials are written to `credentials.txt`, except for Flowise and
+n8n, which insist on creating their own admin account in the browser. The URLs
+the installation actually answers on are printed at the end and stored in
+`.env`; if a port or subdomain is already taken on the host, the wizard
+resolves the conflict and the resolved values are the ones that count.
+
+---
+
+## How it fits together
 
 ```
 LMS (LTI 1.3, optional)
     │
     ▼
-LTI Middleware (Flask)
-    │  session token: user_id|name|agent_id|timestamp
+LTI middleware (Flask)
+    │  session token: user_id | name | agent_id | timestamp
     ▼
-Flowise — up to 10 AgentFlows (1 per topic)
-    ├──► Weaviate     — RAG over course materials
-    ├──► Neo4j        — concept prerequisites
-    ├──► Redis        — chat queue + LTI sessions
-    └──► LLM API      — Anthropic | OpenAI | Google | Mistral | Cohere |
-                        OpenRouter | any OpenAI-compatible endpoint
+Flowise — up to 10 agents per course
+    ├──► Weaviate   — course material, chat history, learner memory
+    ├──► Neo4j      — concept prerequisites
+    ├──► Redis      — chat queue, LTI sessions
+    └──► LLM API    — the configured provider
 
 n8n — background pipelines
-    ├──► ChatHistory sync     (Postgres → Weaviate, every 5 min)
-    └──► UserMemory summary   (Weaviate + LLM)
+    ├──► document ingest      (convert → clean → chunk → embed)
+    ├──► concept map build    (material → proposed concepts and prerequisites)
+    ├──► chat-history sync    (Postgres → Weaviate)
+    └──► learner-memory summary
 
-PostgreSQL — Flowise + n8n + Langfuse state
-Garage     — S3 object storage: uploaded documents + Langfuse blobs
+PostgreSQL — Flowise, n8n and Langfuse state
+Garage     — S3 storage: converted documents, Langfuse blobs
+Langfuse + ClickHouse — LLM observability, optional
 ```
 
-Document **ingestion** (upload → Docling conversion → cleanup → chunking →
-embedding → Weaviate) runs as two n8n workflows in this repo, driven from the
-Content Admin GUI's upload page — see [`n8n/workflows-ingest/`](n8n/workflows-ingest/).
+Two Flask applications sit beside this, deliberately apart: the **Content
+Admin** (course content — agents, documents, the concept map, courses,
+accounts, learner data) reaches only Flowise, Weaviate and Neo4j over the
+internal Docker network. Infrastructure and root operations live in a terminal
+menu on the host instead, so a compromised web interface cannot reach the
+machine.
 
-**Working on this system?** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-records the decisions that are load-bearing and counterintuitive — each with
-what breaks if it is changed back. [`docs/RUNBOOK.md`](docs/RUNBOOK.md) covers
-the failures that have actually occurred, by the message they produce.
+Working on the system? [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) records
+the decisions that are load-bearing and counterintuitive, each with what breaks
+if it is changed back.
 
 ---
 
-## Quick start
-
-**Requirements**: Ubuntu 24.04 or 26.04 LTS (the releases this is actually
-installed and run on — another even-year LTS is accepted after a warning),
-Docker, Docker Compose v2, and an LLM plus embedding API key. Full checklist, including hardware
-sizing: [`docs/requirements.md`](docs/requirements.md). The wizard shows this
-checklist interactively before it asks you anything.
-
-**Two deployment modes**, chosen as the wizard's first question:
-
-| | Domain mode | Tailscale mode |
-|---|---|---|
-| Needs | a public domain, DNS you control, ports 80/443 reachable | a [Tailscale](https://tailscale.com/) account — nothing else |
-| Certificates | Let's Encrypt via nginx + certbot | issued by Tailscale (DNS-01, no inbound port) |
-| Chat reachable by | anyone, at your domain | anyone, via Tailscale Funnel |
-| Admin interfaces | public subdomains behind passwords | inside your tailnet only |
-| LTI / LMS | supported | **not supported** — an LMS needs stable institutional URLs |
-| Intended for | production | test and evaluation systems |
-
-Tailscale mode needs no port forwarding and no DNS at all, which makes it the
-short path to a working system on a spare machine behind a home router. Its
-one non-obvious requirement: **the computer you administer from must also run
-Tailscale, signed into the same account** — otherwise every admin URL fails
-with a TLS error that looks like a firewall problem and isn't.
+## Running it
 
 ```bash
-# On the server — clone into /srv/smart-rag (recommended)
-sudo mkdir -p /srv && sudo chown $USER /srv
-git clone https://github.com/digillab-lmu/smart-rag.git /srv/smart-rag
-cd /srv/smart-rag
-
-# Phase 1 — interactive wizard (≈ 5 min)
-sudo bash scripts/bootstrap.sh
-#   → asks first: domain mode or Tailscale mode
-#   → answers: domain, LLM provider, embedding model, etc.
-#   → generates: .env, credentials.txt, nginx config, Weaviate schema
-
-# Domain mode only: set DNS A-record(s) for *.your-domain.example
-#   (one wildcard *.your-domain.example, OR individual records per subdomain)
-#   Tailscale mode: nothing to do — the wizard already joined the tailnet.
-
-# Phase 2 — deploy (≈ 10 min)
-sudo bash scripts/bootstrap.sh --continue
-#   → domain mode:    nginx + certbot, Let's Encrypt SAN certificate
-#     Tailscale mode: publishes each service on its own tailnet port
-#   → starts Docker stack and waits for health
-#   → deploys the Weaviate + Neo4j schema, generates LTI keys (if enabled)
-#   → walks you through the three browser steps and verifies each one
-```
-
-When `--continue` finishes, your stack is running — in **domain mode** at:
-- `https://smart-rag.your-domain.example` — Flowise (chat interface)
-- `https://content.your-domain.example` — Content Admin GUI
-- `https://n8n.your-domain.example` — n8n (automation)
-- `https://langfuse.your-domain.example` — Langfuse (if observability profile)
-- `https://lti.your-domain.example` — LTI middleware (if lti profile)
-
-In **Tailscale mode** everything sits on one MagicDNS name, separated by port,
-because a Tailscale certificate covers exactly one name and has no wildcards:
-`https://<machine>.<tailnet>.ts.net` for the chat (public), `:8443` Content
-Admin, `:8444` n8n, `:8445` Langfuse, `:8447` the S3 endpoint — all
-tailnet-only. There is no storage console: Garage has none.
-
-If another service already occupies a port or subdomain on the host, the
-wizard resolves the conflict itself and the real URLs end up in `.env`; the
-installer prints the ones this deployment actually answers on.
-
-Initial admin credentials are in `credentials.txt` (chmod 600) — **except
-Flowise and n8n**, which prompt you to create their own admin account on
-first visit instead (their `FLOWISE_USERNAME`/`PASSWORD` env vars are
-ignored by the version this project pins). The installer does not end there:
-it walks you through those accounts plus the Flowise API key, then verifies
-each one before declaring the system ready. Full first-login walkthrough for
-every service: [`docs/operations-guide.md`](docs/operations-guide.md).
-
-**Day-to-day admin** — `sudo bash scripts/admin.sh` (or, once installed,
-just `sudo smartrag`) opens a raspi-config-style menu for the operations
-you'll actually use after deployment: service status, tailing logs,
-pulling updates, restarting a service, SSL certificate status/renewal, a
-mail-relay test, a DNS check, a read-only secrets overview, and changing
-a handful of live, safe-to-edit settings (mail relay, reranker API key,
-LMS URL, admin email, timezone). It offers to install itself as the
-global `smartrag` command the first time you run it. Runs entirely on the
-host as root over SSH — no extra container, no new network exposure.
-(Content authoring — agent prompts, RAG documents, the knowledge graph —
-is intentionally not here; it lives in the [Content Admin
-GUI](#content-admin-gui).)
-
-**Day-2 Docker operations** (pulling updated images, viewing logs, restarting):
-use `scripts/compose.sh` instead of calling `docker compose` directly — it's
-a thin wrapper that always points at the right compose file and `.env`, no
-matter which directory you run it from (plain `docker compose` silently
-breaks if run from `docker/` without `--env-file`, see the header comment in
-[`docker/docker-compose.yml`](docker/docker-compose.yml) for why):
-
-```bash
-bash scripts/compose.sh pull && bash scripts/compose.sh up -d   # apply new image versions
-bash scripts/compose.sh logs -f smartrag-n8n                    # tail one service's logs
-bash scripts/compose.sh ps                                      # status
-```
-
-**Starting over / uninstalling**: `sudo bash scripts/uninstall.sh` removes SMART
-RAG's own footprint (containers, network, nginx configs) and leaves nginx,
-certbot, Docker, and Postfix themselves untouched (they may be shared with
-other services on this host). Data, secrets, and the SSL certificate are kept
-by default — add `--purge-data`, `--purge-secrets`, `--purge-certs` to also
-remove those (data deletion needs typing `DELETE` to confirm). Try `--dry-run`
-first to see exactly what it would do.
-
----
-
-## Installation wizard features
-
-- **Bilingual** — English or German (auto-detected from `$LANG`, override
-  with `--lang en|de`).
-- **Deployment mode as the first question** — public domain, or Tailscale for
-  a machine with no domain and no reachable ports. In Tailscale mode the
-  wizard joins the tailnet with you, waits for MagicDNS and HTTPS to be
-  enabled (naming which of the two is missing), and derives every URL in
-  `.env` from the resulting MagicDNS name.
-- **Ends by verifying, not by instructing** — three steps happen in a browser
-  and cannot be scripted: the Flowise account and its API key, the n8n owner
-  account, the Content Admin account. The installer stays open, checks each
-  against the running services, stores the Flowise key only after Flowise has
-  accepted it, and announces readiness only once everything passed. Stopping
-  early says exactly what is left unproven.
-- **Prerequisites checklist** — shown before any question is asked, so you
-  find out you're missing an API key or DNS control up front, not halfway
-  through. Declining exits cleanly with a pointer to
-  [`docs/requirements.md`](docs/requirements.md) instead of leaving a
-  half-configured `.env`.
-- **Back-navigation** — type `back` (or `zurück`) at any prompt to return to
-  the previous section and fix an earlier answer. Everything you already
-  entered is kept as the new default.
-- **Curated model shortlists with live validation** — after picking an LLM
-  provider, choose from a short list of current models, or type your own —
-  custom entries are checked against the provider's live `/models` API
-  (needs the API key, which is why it's now asked before model selection)
-  so a typo like `GPT-5.2` gets caught immediately instead of failing later
-  inside Flowise.
-- **Domain auto-detection with round-trip check** — pre-fills the
-  base-domain prompt from the server's reverse DNS, but only if that
-  domain's own DNS record actually points back to this server. Cloud
-  providers (IONOS, AWS, ...) set generic PTR records unrelated to your
-  actual domain — a naive reverse-DNS guess would suggest those; the
-  round-trip check filters them out. Always shown as an editable default,
-  never applied silently.
-- **Mail relay setup with existing-relay detection** — Flowise/n8n/Langfuse
-  all need SMTP for password-reset and invite emails. Before offering to
-  set anything up, the wizard checks whether Postfix/Exim/Sendmail/msmtp is
-  already installed or something's already listening on port 25, and lets
-  you keep it, reconfigure, or skip. Otherwise it can install and configure
-  a local Postfix relay for you (`scripts/install-postfix.sh`) — apps talk
-  to it unauthenticated over the internal Docker network, so your real mail
-  provider's password only ever lives in Postfix's config — followed by an
-  actual test email to confirm the relay works end to end, not just that it
-  installed.
-- **Coexistence-safe** — designed to deploy on a server that already runs
-  other web services. See [`docs/COEXISTENCE.md`](docs/COEXISTENCE.md) for
-  the explicit contract of what we touch and (mostly) don't touch.
-- **Auto-resolves port *and* subdomain conflicts** — if port 9000 or a
-  subdomain like `n8n.yourdomain.example` is already taken on the host
-  (e.g. a standalone n8n running separately), the wizard proposes a free
-  port alternative or a shared subdomain prefix (`smartrag-n8n.…`) and
-  writes the resolution into `.env`. No manual intervention needed.
-- **Pre-flight checks** — Ubuntu version, Docker, disk space, DNS resolution,
-  nginx server-name collisions, existing certificates, base data path.
-- **Safety snapshot** — before any destructive action, the script captures
-  `/etc/nginx`, current Docker state, and listening ports to
-  `/var/backups/smartrag-pre-bootstrap-<timestamp>/` for easy rollback.
-
----
-
-## Content Admin GUI
-
-The bootstrap deploys the *infrastructure* end to end, including the
-Weaviate/Neo4j schema and LTI keys (phases 8 and 11) — but Flowise and n8n
-start out empty. `content-admin/` (reachable at `https://content.your-domain.example`
-once deployed) is where course-specific content gets filled in:
-
-- Up to 10 agent slots, each backed by one of the 6 existing Flowise agent
-  archetypes (`flowise/agents/`) — fill in a plain form for that archetype's
-  content (concepts, persona, topic subtopics, …), import with one click.
-  Everything already known from the CLI wizard (course name, embedding
-  model, LLM provider, …) is filled in automatically — the form only asks
-  for what's genuinely new.
-- Uploading course documents for retrieval, with the bibliographic details
-  read out of the PDF or looked up from a DOI/ISBN, and suggested keywords.
-- A document list per agent with deletion, so a mistaken upload, a superseded
-  edition, or the leftovers of a slot reused for a different topic can be
-  removed from the index — chunks and all.
-- **Courses**: created here, which is what makes a course's chunk collection,
-  its object-storage bucket, the ingest key's grant on it, and its ten agent
-  slots. Deleting one is a page of its own that counts what it consists of
-  across six systems before it asks.
-- **A retention date per course**, with the reason for it, and a record of
-  having acted on an expiry. Three states, kept apart: no date means nobody
-  has decided, which is not the same as not being due.
-- **People**: the data held about one learner across the four systems that
-  each identify them under a different field name, and deletion of all of it.
-  Systems holding nothing are listed with a count of zero rather than omitted,
-  so the record shows what was checked. Without LTI the page states that a
-  deletion covers only the entered id, because without LTI that id identifies
-  a browser rather than a person.
-- A "System status" page that checks, live, what still has to be set up
-  (API keys, Flowise connection, agents, the n8n ingest webhook, the
-  conversion and search services) by asking each service at that moment.
-- **Knowledge graph**: two ways to fill the Neo4j concept graph. *Build the
-  map from the course material* starts an n8n workflow that reads the
-  documents of the participating agents and has the strong model draft
-  concepts and prerequisites; the draft is shown as a diagram, a table and an
-  editable list, and is written only on submit. The manual route remains: the
-  page explains the data model and provides a prompt to copy into any AI, and
-  the answer is pasted back as JSON. Every concept and prerequisite records
-  the documents it came from, so a build can be taken back out again and the
-  material of one agent can be removed from the map.
-
-First-time setup needs one manual step that can't be avoided: Flowise has no
-supported way to hand out an API key non-interactively (same limitation as
-n8n). So you create the Flowise admin account once and generate an API key
-under Settings → API Keys — the installer tells you what to call it and which
-permissions to tick, then takes the key, checks it against Flowise and stores
-it, so nobody has to paste it into the GUI. The GUI's own Flowise page
-remains available for replacing the key later.
-
-Deliberately a *separate* app from `scripts/admin.sh`: infrastructure/root
-operations stay in the TUI (SSH-only, no network exposure); the content GUI
-only ever talks to Flowise/Neo4j over the internal Docker network, so a
-compromised GUI can't escalate to host control.
-
-The n8n ingest workflows and their credentials are imported by
-`scripts/deploy-n8n-workflows.sh`, which the bootstrap runs for you —
-except on a first install, where n8n has no owner account yet and the
-import has to wait until you've created one in the browser. The bootstrap
-says so explicitly and prints the one command to run afterwards; see the
-[Operations Guide](docs/operations-guide.md#n8n-automation-httpsn8nyour-domainexample).
-
----
-
-## Configuration
-
-Everything lives in `.env`. The wizard writes a complete one, but here are the
-key knobs:
-
-| Variable | Purpose |
-|----------|---------|
-| `COMPOSE_PROFILES` | `core` always; add `observability` for Langfuse, `lti` for LTI |
-| *(no course keys)* | Courses are created in the Content Admin, not configured here — collection, bucket and slots are made with the course |
-| `LLM_PROVIDER` / `LLM_API_KEY` | LLM provider + key (Anthropic, OpenAI, …) |
-| `EMBEDDING_PROVIDER` / `EMBEDDING_MODEL` / `EMBEDDING_DIMENSIONS` | Embedding model (**don't change after first ingest!**) |
-| `FLOWISE_PORT`, `N8N_PORT`, … | Host port bindings (override if conflicts) |
-
-See [`.env.example`](.env.example) for the complete annotated list.
-
----
-
-## Backup and restore
-
-Everything that matters is `BASE_DATA_PATH` and `.env`, and they only work as
-a pair: Postgres, Neo4j and ClickHouse read their password once, when their
-data directory is created, and `N8N_ENCRYPTION_KEY` decrypts every credential
-n8n holds. One archive holds both.
-
-```bash
+sudo smartrag                        # the admin menu: status, logs, updates,
+                                     # certificates, backup, mail, settings
+bash scripts/compose.sh ps           # Docker operations, always with the right
+bash scripts/compose.sh logs -f n8n  # compose file and .env
 sudo bash scripts/backup.sh --keep 7
 ```
 
-The services stop for the duration — a copy taken while the databases are
-writing is not one that restores. Restoring starts with a dry run, which runs
-every check and touches nothing:
+**Backups** hold `BASE_DATA_PATH` and `.env` in one archive, because they only
+work as a pair: Postgres, Neo4j and ClickHouse read their password once, when
+their data directory is created, and `N8N_ENCRYPTION_KEY` decrypts every
+credential n8n holds. Restoring starts with a dry run that performs every check
+and writes nothing; moving to a machine with a different address is a rename,
+and the rename says what it does not reach. `scripts/verify-backup.sh` opens an
+archive against throwaway containers, because a backup nobody has restored is
+not a backup.
 
-```bash
-sudo bash scripts/restore.sh ARCHIVE.tar.gz --dry-run
-```
+**Uninstalling**: `sudo bash scripts/uninstall.sh` removes this system's own
+footprint and leaves nginx, certbot, Docker and Postfix in place; data, secrets
+and certificates are kept unless explicitly purged. `--dry-run` shows what it
+would do.
 
-It refuses, before unpacking anything, an archive from a different Postgres
-major version, one whose `.env` and data were not taken together, one that
-fails its checksum, and a target that already holds data. Moving to a machine
-with a different address is a rename, not a copy: `--rename` rewrites the
-domain and states what it does not reach.
+---
 
-A backup nobody has restored is not a backup, so there is a third command that
-opens one without a second machine and without touching the running system:
+## Documentation
 
-```bash
-sudo bash scripts/verify-backup.sh ARCHIVE.tar.gz
-```
+| Document | Answers |
+|---|---|
+| [`docs/requirements.md`](docs/requirements.md) | What a machine and an operator need before installing |
+| [`docs/operations-guide.md`](docs/operations-guide.md) | First login for every service, and what each page in the Content Admin is for |
+| [`docs/RUNBOOK.md`](docs/RUNBOOK.md) | Failures that have actually occurred, found by the message they produce |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Why the load-bearing decisions are what they are, and what breaks if reverted |
+| [`docs/COEXISTENCE.md`](docs/COEXISTENCE.md) | What is touched and not touched on a server that already runs other services |
+| [`CHANGELOG.md`](CHANGELOG.md) | What changed per version, and which changes need a step on an existing installation |
+| [`.env.example`](.env.example) | Every setting, annotated |
 
-It unpacks into a scratch directory and starts throwaway containers against
-that copy — Postgres with the archived password, Garage for its buckets,
-Weaviate for its collections — then removes them again.
+---
+
+## Status and limits
+
+Version 2.0.0. Installed and run on Ubuntu 24.04 and 26.04 LTS; another
+even-year LTS is accepted after a warning. Backup and restore have been
+exercised machine to machine, with the restored installation measured against
+its source document by document.
+
+Known limits, stated because finding them later is worse:
+
+- **Deleting one document leaves its converted markdown in the course bucket.**
+  The chunks and, if confirmed, the concepts are removed; the object is not.
+  The bucket is private and the file is listed nowhere in the interface, but
+  the text remains stored until the course is deleted. See
+  [`CHANGELOG.md`](CHANGELOG.md) for why it is not fixed yet and
+  [`docs/operations-guide.md`](docs/operations-guide.md) for removing it by
+  hand.
+- **The embedding model cannot be changed after the first ingest** without
+  re-indexing everything.
+- **LTI needs domain mode.** An LMS registration points at fixed institutional
+  URLs, which a tailnet does not provide.
 
 ---
 
@@ -393,62 +242,47 @@ Weaviate for its collections — then removes them again.
 ```
 smart-rag/
 ├── docker/                 # docker-compose.yml (profiles: core, observability, lti)
-├── nginx/                  # smartrag-suite.conf template
-├── weaviate/               # schema.json (with __COLLECTION_NAME__ placeholder)
+├── nginx/                  # site configuration template
+├── weaviate/               # schema.json, with the collection name as a placeholder
 ├── neo4j/                  # schema.cypher (constraints) + seed.example.cypher
-├── flowise/agents/         # 6 generic agent JSON templates
+├── flowise/agents/         # the six agent archetypes
 ├── n8n/
-│   ├── workflows/          # 3 core workflows (sync, summary, observability)
-│   └── workflows-ingest/   # Document ingest: convert, clean, chunk, embed
+│   ├── workflows/          # chat-history sync, learner-memory summary,
+│   │                       # concept-map build, error handler, watchdog
+│   └── workflows-ingest/   # document ingest: convert, clean, chunk, embed
 ├── lti-middleware/         # Flask app for LTI 1.3
-├── content-admin/          # Flask app for course-content authoring
-├── scripts/                # bootstrap.sh, admin.sh, backup.sh, restore.sh, verify-backup.sh, uninstall.sh, compose.sh, lib/, standalone phase scripts
-├── tests/                  # Regression suite — bash tests/run-tests.sh
-├── CHANGELOG.md            # What changed, and what an upgrade needs
-└── docs/                   # requirements, operations guide, architecture, runbook
+├── content-admin/          # Flask app for course content
+├── scripts/                # bootstrap, admin menu, backup/restore/verify,
+│                           # uninstall, compose wrapper, lib/
+├── tests/                  # regression suite — bash tests/run-tests.sh
+└── docs/
 ```
 
 ---
 
 ## License
 
-This entire repository (code and documentation) is licensed under the
-**[PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0)**.
-
-- **Free for any noncommercial use** — personal projects, research, and
-  use by charitable organizations, educational institutions, public
-  research organizations, and government institutions is explicitly
-  permitted regardless of funding source (this covers university/school
-  deployments like this project's own origin at LMU München).
-- **Commercial use requires a separate license from the licensor.**
-  Reach out if you want to use SMART RAG commercially.
-
-See [`LICENSE`](LICENSE) for the full legal text.
-
----
+[PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0)
+for the whole repository, code and documentation. Free for noncommercial use,
+which explicitly includes educational institutions, public research
+organizations and government bodies regardless of funding source. Commercial
+use needs a separate license — [`LICENSE`](LICENSE) has the full text.
 
 ## Contributing
 
-This is an early public release. Issues, pull requests, and discussion welcome.
-The most useful contributions right now:
-
-- **Real deployment testing** — run the bootstrap on a fresh server and report
-  what does or doesn't work.
-- **Documentation gaps** — anything unclear in this README or `docs/`.
-- **Translations** — German + English are first-class; other languages welcome
-  via `scripts/lib/messages.sh`.
-
----
+Issues, pull requests and discussion are welcome. Most useful right now:
+deployment reports from a fresh server, gaps in this README or in `docs/`, and
+translations — German and English are first-class, and further languages go
+into `scripts/lib/messages.sh`.
 
 ## Acknowledgements
 
-- Built on top of the excellent open-source work of the
-  [Flowise](https://flowiseai.com/), [n8n](https://n8n.io/),
-  [Weaviate](https://weaviate.io/), [Neo4j](https://neo4j.com/),
-  [Langfuse](https://langfuse.com/), and
-  [Garage](https://garagehq.deuxfleurs.fr/) teams.
-- Developed by [Benjamin Götzinger](https://www.psy.lmu.de/edu/persons/ag-fischer/goetzinger_benjamin/index.html)
-  at the [DigiLLab of LMU München](https://www.lmu.de/digillab/de/) —
-  [Chair of Empirical Education and Educational Psychology](https://www.psy.lmu.de/ffp/)
-  (Prof. Frank Fischer).
-- Pedagogical concept developed in collaboration with the DigiLLab team.
+Built on [Flowise](https://flowiseai.com/), [n8n](https://n8n.io/),
+[Weaviate](https://weaviate.io/), [Neo4j](https://neo4j.com/),
+[Langfuse](https://langfuse.com/), [Docling](https://github.com/docling-project)
+and [Garage](https://garagehq.deuxfleurs.fr/).
+
+Developed by [Benjamin Götzinger](https://www.psy.lmu.de/edu/persons/ag-fischer/goetzinger_benjamin/index.html)
+at the [DigiLLab of LMU München](https://www.lmu.de/digillab/de/),
+[Chair of Empirical Education and Educational Psychology](https://www.psy.lmu.de/ffp/)
+(Prof. Frank Fischer). Pedagogical concept developed with the DigiLLab team.

@@ -14,7 +14,7 @@ anywhere.
 | `slot.png`           | One agent         | Archetype, name, the filled content fields |
 | `upload.png`         | Add documents     | Form with slot, file, title, authors, year |
 | `documents.png`      | Vector DB         | Document list with chunk counts and the *In the map* column |
-| `graph.png`          | Knowledge graph   | The diagram of a proposal, with the concept table below |
+| `graph.png`          | Knowledge graph   | The page in its normal state: the concepts and prerequisites the course already has, with the build controls above |
 | `graph-review.png`   | Knowledge graph   | The editable proposal: tick boxes, names, prerequisites |
 | `courses.png`        | Courses           | The course list with retention dates |
 | `users.png`          | Accounts          | The account list with the editable name and address fields, roles and course assignments |
