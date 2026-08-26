@@ -159,6 +159,50 @@ for key, text in sorted(i18n.MSG_DE.items()):
     check(f"de/{key}: impersonal, not second person", m is None,
           m.group(0) if m else "")
 
+# ─── The installer speaks to the same reader ────────────────────────────────
+# scripts/lib/messages.sh is the other half of the interface: 845 keys that an
+# operator reads once, at the point of least context they will ever have. The
+# same rules apply, checked the same way.
+import subprocess  # noqa: E402
+
+dump = subprocess.run(
+    ["bash", "-c",
+     'source scripts/lib/messages.sh 2>/dev/null; '
+     'for k in "${!MSG_EN[@]}"; do printf "en\t%s\t%s\n" "$k" "${MSG_EN[$k]}"; done; '
+     'for k in "${!MSG_DE[@]}"; do printf "de\t%s\t%s\n" "$k" "${MSG_DE[$k]}"; done'],
+    cwd=REPO, capture_output=True, text=True)
+
+rows = [line.split("\t", 2) for line in dump.stdout.splitlines()
+        if line.count("\t") >= 2]
+check("the installer catalogue could be read", len(rows) > 500, len(rows))
+
+# The handover message is a letter to a colleague and the prompt is meant to
+# be pasted; neither is interface prose.
+SH_EXEMPT_PREFIX = ("handover_body", "handover_mail", "handover_subject")
+
+for lang, key, text in rows:
+    if key.startswith(SH_EXEMPT_PREFIX):
+        continue
+    if ANTHROPOMORPHIC[lang].search(text):
+        check(f"sh/{lang}/{key}: no process is given a will", False, text[:100])
+    for phrase in RATIONALE[lang] + FILLER[lang]:
+        if phrase in text.lower():
+            check(f"sh/{lang}/{key}: no rationale or filler", False, phrase)
+            break
+    if len(text) > 60 and text.count("—") > 1:
+        check(f"sh/{lang}/{key}: at most one aside per string", False, text[:110])
+    head, mark, rest = text.partition("?")
+    tail = rest if mark and len(head) < 120 else text
+    if "?" in tail and not tail.rstrip().endswith("?"):
+        check(f"sh/{lang}/{key}: no rhetorical question mid-sentence", False,
+              text[:110])
+    if len(text) > 340:
+        check(f"sh/{lang}/{key}: shorter than 340 characters", False,
+              f"{len(text)} characters")
+    if lang == "de" and DU.search(text):
+        check(f"sh/de/{key}: impersonal, not second person", False,
+              DU.search(text).group(0))
+
 if failures:
     print("FAILURES:")
     for f in failures[:60]:

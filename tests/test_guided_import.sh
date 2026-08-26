@@ -62,7 +62,10 @@ check "guided import ends successfully" $(( RC == 0 ? 0 : 1 )) "rc=$RC / $OUT"
 check "the import is retried after confirmation" $? "$(grep -c DEPLOY-RUN <<<"$OUT") run(s)"
 grep -q "n8n.example.com" <<<"$OUT"
 check "the n8n URL is named" $? "$OUT"
-grep -qi "will wait" <<<"$OUT"
+# The promise that matters is that the run does not abort while the
+# operator is in a browser. Matched on either phrasing rather than one
+# literal, so a reworded message fails only if it stops promising it.
+grep -qiE "(will wait|wizard waits|waits and)" <<<"$OUT"
 check "it says it will wait" $? "$OUT"
 
 # ─── Declining is a choice, not a failure ────────────────────────────────────

@@ -145,7 +145,7 @@ check "[de] does not claim completion" $(( $? == 0 ? 1 : 0 )) "$(tail -5 <<<"$ou
 # installs half-finished.
 out="$(run_bootstrap 10-then-0 en "y\n"; echo "RC=$BOOT_RC")"
 
-grep -qi "will wait" <<<"$out"
+grep -qiE "(will wait|wizard waits|waits and)" <<<"$out"
 check "wizard offers to wait for the owner setup" $? "$(tail -8 <<<"$out")"
 
 grep -q "n8n.example.com" <<<"$out"
