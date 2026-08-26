@@ -104,6 +104,12 @@ check "a Tailscale archive on a machine with no name says so" $? \
 # over an existing installation.
 grep -qF 'if (( ! FORCE && ! REPLACE )); then' "$REPO/scripts/restore.sh"
 check "an occupied target has its own permission" $? ""
+# And the refusal names it. It advised --force, which is the flag that also
+# silences the torn-archive warning — the operator following that advice
+# would have suppressed something unrelated.
+grep -q -- "--replace" <<<"$(grep -m1 'restore_target_occupied_refuse.*=' "$REPO/scripts/lib/messages.sh")"
+check "and the refusal advises that permission, not --force" $? \
+      "advice that names the blunter flag teaches the blunter habit"
 grep -qF 'if (( ! FORCE )) && ! confirm restore_torn_continue' "$REPO/scripts/restore.sh"
 check "and the torn-archive warning still needs --force" $? \
       "--replace must not silence a warning about the archive itself"
