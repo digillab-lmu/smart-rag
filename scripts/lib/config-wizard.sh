@@ -107,7 +107,7 @@ known_embedding_dimensions() {
 # Suggest default model names per provider
 default_llm_model_strong() {
     case "$1" in
-        anthropic)  echo "claude-sonnet-4-5" ;;
+        anthropic)  echo "claude-sonnet-5" ;;
         openai)     echo "gpt-5.6-sol" ;;
         google)     echo "gemini-2.5-pro" ;;
         mistral)    echo "mistral-large-latest" ;;
@@ -130,12 +130,18 @@ default_llm_model_fast() {
     esac
 }
 # Curated model choices per provider ("|"-separated). Empty = no curated list
-# (falls straight through to free-text entry). Update periodically — this is
-# a convenience shortlist, not an exhaustive/live-fetched catalog (see
-# cfg_model_custom for manual override, always available).
+# (falls straight through to free-text entry). A convenience shortlist and a
+# fallback for when the provider's own list cannot be fetched — not a
+# catalogue. It goes stale by definition, which is why the wizard shows the
+# live list when it can reach the provider.
+#
+# The Anthropic entries are the current ids as of 2026-08-26 and carry no date
+# suffix, which the API rejects. The other providers' entries are not verified
+# from here; they are corrected when somebody has the provider's list in front
+# of them.
 llm_model_choices_strong() {
     case "$1" in
-        anthropic)  echo "claude-sonnet-4-5|claude-opus-4-8" ;;
+        anthropic)  echo "claude-sonnet-5|claude-opus-5" ;;
         openai)     echo "gpt-5.6-sol|gpt-5.6-terra|gpt-5.6-luna" ;;
         google)     echo "gemini-2.5-pro|gemini-2.5-flash" ;;
         mistral)    echo "mistral-large-latest|mistral-medium-latest" ;;
