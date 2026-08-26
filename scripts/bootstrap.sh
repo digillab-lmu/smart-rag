@@ -395,6 +395,13 @@ _print_next_steps() {
 # the very end, so it is the last thing on screen rather than buried above
 # the verification dialogue.
 _print_reference() {
+    # Make the command exist before naming it. This block prints
+    # "sudo smartrag", and until now that command was created by admin.sh on
+    # its first run — so a freshly installed machine was told to use something
+    # it did not have, and the operator had to find scripts/admin.sh to get it.
+    if ! install_smartrag_command "$REPO_ROOT/scripts/admin.sh"; then
+        warn "$(t ref_admin_link_failed)"
+    fi
     echo
     printf "${BOLD}%s${RESET}\n\n" "$(t ref_title)"
     printf "  ${BOLD}%s${RESET}\n"   "$(t ref_credentials_title)"

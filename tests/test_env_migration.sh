@@ -122,8 +122,26 @@ done
 sed -n '/Self-install as a global command/,/^fi$/p' "$REPO/scripts/admin.sh" | grep -q 'confirm '
 check "the symlink is created without a prompt" $(( $? == 0 ? 1 : 0 )) \
       "a confirm() reappeared in the self-install block"
-sed -n '/Self-install as a global command/,/^fi$/p' "$REPO/scripts/admin.sh" | grep -q 'ln -sf'
+# The linking itself moved into install_smartrag_command() in lib/common.sh
+# when bootstrap needed it too, so the check follows the function rather than
+# the block it used to live in.
+sed -n '/^install_smartrag_command()/,/^}/p' "$REPO/scripts/lib/common.sh" | grep -q 'ln -sf'
 check "the symlink is actually created" $? ""
+sed -n '/Self-install as a global command/,/^fi$/p' "$REPO/scripts/admin.sh" |
+    grep -q 'install_smartrag_command'
+check "and the menu uses that one implementation" $? ""
+
+# The reason it had to move. admin.sh is the one script an operator can only
+# reach *without* the command it creates, so an installation that had never
+# opened the menu was told to run something it did not have — reported from a
+# fresh machine.
+grep -q "install_smartrag_command" "$REPO/scripts/bootstrap.sh"
+check "the installer creates the command too" $? \
+      "every closing text says sudo smartrag; it has to exist by then"
+sed -n '/^_print_reference()/,/^}/p' "$REPO/scripts/bootstrap.sh" |
+    grep -q 'install_smartrag_command'
+check "and does it before the text that names it" $? \
+      "printing the instruction first and creating the command later is the "
 # It must not clobber an existing file at that path.
 sed -n '/Self-install as a global command/,/^fi$/p' "$REPO/scripts/admin.sh" | grep -q '! -e /usr/local/bin/smartrag'
 check "an existing /usr/local/bin/smartrag is left alone" $? ""

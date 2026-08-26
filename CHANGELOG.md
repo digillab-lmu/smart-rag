@@ -33,6 +33,16 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **`sudo smartrag` did not exist after an installation.** The closing text of
+  the installer names it, and so does every page of the documentation, but the
+  command was created by `admin.sh` on its first run — the one script an
+  operator can only reach without it. A freshly installed machine printed
+  instructions for a command it did not have. The installer now creates the
+  link before printing the text that names it, and says what to run instead if
+  the link cannot be made.
+
+### Fixed
+
 - **The restore asked for an address that could not exist yet.** On a fresh
   machine in Tailscale mode, the MagicDNS name is created when the machine
   joins a tailnet — nobody chooses it, and before the join there is nothing to

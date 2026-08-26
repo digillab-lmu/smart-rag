@@ -1054,6 +1054,24 @@ local_address() {
     printf '%s\n' "$value"
 }
 
+# install_smartrag_command TARGET — make `sudo smartrag` exist.
+#
+# Created wherever it is first noticed to be missing, because every closing
+# text and every page of documentation says `sudo smartrag`. It used to be
+# created by admin.sh alone — the one script you can only reach by not using
+# that command — so a freshly installed machine printed instructions for a
+# command it did not have.
+#
+# Prints nothing; the caller reports. Returns non-zero when the link could not
+# be made, which is worth saying and not worth stopping for: every script
+# still runs when invoked by path.
+install_smartrag_command() {
+    local target="$1"
+    [[ -n "$target" && -f "$target" ]] || return 1
+    [[ -e /usr/local/bin/smartrag ]] && return 0
+    ln -sf "$target" /usr/local/bin/smartrag 2>/dev/null
+}
+
 subdomain_host() {
     local service="$1" domain="$2" prefix="$3"
     if [[ -n "$prefix" ]]; then

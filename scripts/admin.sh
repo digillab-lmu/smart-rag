@@ -80,7 +80,10 @@ set +a
 # cost of it being missed is real: the docs and the installer's closing steps
 # all say `sudo smartrag`, and that command then does not exist.
 if [[ ! -e /usr/local/bin/smartrag ]]; then
-    if ln -sf "$SELF" /usr/local/bin/smartrag 2>/dev/null; then
+    # Shared with bootstrap, which now makes the link at the end of an
+    # install — this file used to be the only place that did, and it is the
+    # one place reachable only without the command it creates.
+    if install_smartrag_command "$SELF"; then
         ok "$(t admin_install_done)"
     else
         # A read-only /usr/local/bin or a missing directory: worth saying,
