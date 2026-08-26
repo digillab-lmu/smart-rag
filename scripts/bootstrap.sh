@@ -153,17 +153,12 @@ if [[ "$MODE" == "phase1" ]]; then
                     echo
                     warn "$(t start_restore_replaces)"
                     if confirm start_restore_confirm "n"; then
-                        rename=""
-                        if confirm start_restore_rename_ask "n"; then
-                            rename="$(prompt start_restore_rename_to)" || rename=""
-                        fi
-                        if [[ -n "$rename" ]]; then
-                            exec bash "$REPO_ROOT/scripts/restore.sh" "$archive" \
-                                 --rename "$rename" --lang "$LANG_CHOICE"
-                        else
-                            exec bash "$REPO_ROOT/scripts/restore.sh" "$archive" \
-                                 --lang "$LANG_CHOICE"
-                        fi
+                        # The address is settled by restore.sh, which can look
+                        # it up. Asking here would ask it on the one machine
+                        # that cannot answer: a fresh one, before it has
+                        # joined a tailnet.
+                        exec bash "$REPO_ROOT/scripts/restore.sh" "$archive" \
+                             --lang "$LANG_CHOICE"
                     fi
                 else
                     echo

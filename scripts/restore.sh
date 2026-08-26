@@ -55,6 +55,7 @@ source "$LIB_DIR/messages.sh"
 ARCHIVE=""
 RENAME=""
 FORCE=0
+REPLACE=0
 DRY_RUN=0
 while (( $# > 0 )); do
     case "$1" in
@@ -63,6 +64,11 @@ while (( $# > 0 )); do
         --rename) shift; RENAME="${1:-}" ;;
         --rename=*) RENAME="${1#*=}" ;;
         --force) FORCE=1 ;;
+        # Separate from --force on purpose: replacing this machine's
+        # installation is the normal case when a move is done by installing
+        # first and restoring afterwards, and it must not also silence the
+        # warning about an archive taken while the databases were writing.
+        --replace) REPLACE=1 ;;
         --dry-run) DRY_RUN=1 ;;
         -*) die "Unknown argument: $1" ;;
         *) ARCHIVE="$1" ;;
@@ -186,6 +192,29 @@ ok "$(t restore_postgres_ok)"
 # and changing it prints what the change reaches and what it does not.
 TARGET_ENV="$REPO_ROOT/.env"
 NEW_DOMAIN="$A_DOMAIN"
+
+# ─── What address will this machine answer at? ───────────────────────────────
+# Looked up, not asked. In Tailscale mode the MagicDNS name is created when a
+# machine joins the tailnet — nobody picks it — so a fresh machine cannot
+# answer the question at all, and asking it there produced a prompt with no
+# possible answer. Where this machine already has an address, that is the
+# answer; the operator confirms rather than types.
+if [[ -z "$RENAME" ]]; then
+    _local="$(local_address "$TARGET_ENV")"
+    _archive_addr="${A_TAILSCALE:-$A_DOMAIN}"
+    if [[ -n "$_local" && "$_local" != "$_archive_addr" ]]; then
+        info "$(t restore_address_found "$_local" "$_archive_addr")"
+        if confirm restore_address_adopt "y"; then
+            RENAME="$_local"
+        fi
+    elif [[ -z "$_local" && -n "$A_TAILSCALE" ]]; then
+        # The archive is from a Tailscale installation and this machine has no
+        # name yet. Keeping the archive's address would leave an installation
+        # announcing itself as a machine in another building.
+        warn "$(t restore_address_unknown_tailscale "$A_TAILSCALE")"
+    fi
+fi
+
 if [[ -n "$RENAME" ]]; then
     NEW_DOMAIN="$RENAME"
     header "$(t restore_rename_heading "$A_DOMAIN" "$RENAME")"
@@ -212,7 +241,7 @@ OCCUPIED=0
 [[ -d "$TARGET_BASE" ]] && [[ -n "$(ls -A "$TARGET_BASE" 2>/dev/null)" ]] && OCCUPIED=1
 if (( OCCUPIED )); then
     warn "$(t restore_target_occupied "$TARGET_BASE")"
-    if (( ! FORCE )); then
+    if (( ! FORCE && ! REPLACE )); then
         die "$(t restore_target_occupied_refuse)"
     fi
 fi

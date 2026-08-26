@@ -72,9 +72,33 @@ check "the menu dry-runs before restoring" $? \
 grep -q "admin_restore_type_word" <<<"$restore_body"
 check "and the confirmation has to be typed" $? \
       "an arrow key is not enough to replace an installation"
-grep -q "admin_restore_rename_ask" <<<"$restore_body"
-check "a different address is offered as a rename" $? \
-      "a machine with another address needs a rename, not a copy"
+# The menu no longer asks for the address, and that is the point. It was
+# asked in three places, one of which was a fresh machine during a restore —
+# where in Tailscale mode the answer cannot exist yet, because the MagicDNS
+# name is created when the machine joins a tailnet. It is now looked up once,
+# in restore.sh, which has the archive and the machine in front of it.
+! grep -q "rename_to" <<<"$restore_body"
+check "the menu does not ask for an address" $? \
+      "asking in three places means three chances to ask where it cannot be answered"
+grep -q -- "--replace" <<<"$restore_body"
+check "and replacing this installation is permitted explicitly" $? \
+      "restoring over the current installation is what this entry means; --force "
+grep -q "local_address" "$REPO/scripts/restore.sh"
+check "the restore looks up what this machine answers at" $? ""
+grep -q "restore_address_adopt" "$REPO/scripts/restore.sh"
+check "and offers it instead of asking for one" $? ""
+grep -q "restore_address_unknown_tailscale" "$REPO/scripts/restore.sh"
+check "a Tailscale archive on a machine with no name says so" $? \
+      "otherwise the installation announces itself as a machine in another building"
+
+# --replace must not be --force: they guard different things, and folding them
+# together would silence the torn-archive warning every time somebody restores
+# over an existing installation.
+grep -qF 'if (( ! FORCE && ! REPLACE )); then' "$REPO/scripts/restore.sh"
+check "an occupied target has its own permission" $? ""
+grep -qF 'if (( ! FORCE )) && ! confirm restore_torn_continue' "$REPO/scripts/restore.sh"
+check "and the torn-archive warning still needs --force" $? \
+      "--replace must not silence a warning about the archive itself"
 
 # ─── Bootstrap offers it where a move lands ─────────────────────────────────
 # The option itself, in the choice — not merely the word somewhere in the

@@ -176,7 +176,7 @@ What's in there:
 | DNS check | Re-verify every subdomain still resolves to this server |
 | Secrets | Overview of which secrets are set — **values are never shown**, only set/not-set |
 | Change configuration | Mail service, reranker API key, LMS URL, admin email, timezone — see below |
-| Backup | Make one (the services stop for the duration), copy one to a removable medium, or restore one. The copy takes the checksum file with it and reads the result back off the medium. The restore dry-runs first and needs a typed confirmation |
+| Backup | Make one (the services stop for the duration), check one, copy one to a removable medium, prepare a medium, or restore one. **Moving to another machine:** set the new machine up normally first, then restore from this menu — the address is then already known and is not asked for.  The copy takes the checksum file with it and reads the result back off the medium. The restore dry-runs first and needs a typed confirmation |
 | Uninstall | Runs `scripts/uninstall.sh` |
 
 ### What "Change configuration" covers, and why some things aren't there

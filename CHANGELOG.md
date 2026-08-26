@@ -33,6 +33,30 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **The restore asked for an address that could not exist yet.** On a fresh
+  machine in Tailscale mode, the MagicDNS name is created when the machine
+  joins a tailnet — nobody chooses it, and before the join there is nothing to
+  type. The restore in bootstrap asked for it anyway, at a point before any
+  tailnet had been joined.
+
+  The address is now looked up rather than asked for: from an `.env` already
+  written on this machine, or from a running Tailscale. Where one is found,
+  the restore offers it and the operator confirms. Where the archive is from a
+  Tailscale installation and this machine has no name yet, it says so and
+  points at the way that works — set the machine up normally first, then
+  restore from the admin menu.
+
+  The question had been in three places, which is three chances to ask it
+  somewhere it cannot be answered. It is in one now.
+
+  Restoring over an existing installation has its own permission, `--replace`,
+  rather than `--force`: the two guard different things, and folding them
+  together would have silenced the warning about an archive taken while the
+  databases were writing every time somebody restored onto a machine that had
+  been set up first.
+
+### Fixed
+
 - **Renaming an installation during a restore changed only `DOMAIN`.** Eight
   values in `.env` carry the address, and the generated file holds them
   resolved — `https://n8n.old-address`, never `https://n8n.${DOMAIN}` — so

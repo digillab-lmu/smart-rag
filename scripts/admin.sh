@@ -888,17 +888,13 @@ action_restore() {
         return 0
     fi
 
-    local rename=""
-    if confirm admin_restore_rename_ask "n"; then
-        rename="$(prompt admin_restore_rename_to)" || rename=""
-    fi
-
     echo
-    if [[ -n "$rename" ]]; then
-        bash "$REPO_ROOT/scripts/restore.sh" "$archive" --rename "$rename" --lang "$LANG_CHOICE" || true
-    else
-        bash "$REPO_ROOT/scripts/restore.sh" "$archive" --lang "$LANG_CHOICE" || true
-    fi
+    # No address question here. restore.sh reads what this machine answers at
+    # and offers it — asking in three places meant three chances to ask it
+    # somewhere the answer could not be known. --replace because replacing
+    # this installation is what this menu entry means; the typed confirmation
+    # above is the gate, not a flag that would also silence unrelated warnings.
+    bash "$REPO_ROOT/scripts/restore.sh" "$archive" --replace --lang "$LANG_CHOICE" || true
     echo
     read -rp "$(t admin_press_enter)" _ || true
 }

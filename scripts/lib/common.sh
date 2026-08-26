@@ -1033,6 +1033,27 @@ address_vars() {
     fi
 }
 
+# local_address — the address this machine answers at, or empty.
+#
+# Two sources, in order: an .env already written here, and a running Tailscale.
+# The point is that this is a fact to be looked up, not a question to ask. In
+# Tailscale mode the MagicDNS name is created when the machine joins the
+# tailnet; nobody chooses it, and on a machine that has not joined yet it does
+# not exist — which is why asking for it during a restore on a fresh machine
+# was a question with no answer.
+local_address() {
+    local env_file="${1:-}"
+    local value=""
+    if [[ -n "$env_file" && -f "$env_file" ]]; then
+        value="$(get_env_var "$env_file" TAILSCALE_HOSTNAME)"
+        [[ -z "$value" ]] && value="$(get_env_var "$env_file" DOMAIN)"
+    fi
+    if [[ -z "$value" ]] && command -v tailscale >/dev/null 2>&1; then
+        value="$(tailscale_magicdns_name 2>/dev/null || true)"
+    fi
+    printf '%s\n' "$value"
+}
+
 subdomain_host() {
     local service="$1" domain="$2" prefix="$3"
     if [[ -n "$prefix" ]]; then
