@@ -96,9 +96,18 @@ check "a refused archive leaves a way forward" $? \
 
 # ─── The chooser looks where an archive can be ──────────────────────────────
 chooser="$(awk '/^choose_backup_archive\(\) \{/,/^\}/' scripts/lib/common.sh)"
-grep -q "removable_mountpoints" <<<"$chooser"
-check "the chooser offers removable media" $? \
-      "on the machine being restored onto, that is where the archive is"
+# Mounted *and* unmounted. On the machine a restore lands on there is no
+# backup directory and nothing has mounted the stick, so a chooser that looks
+# only at mounted media offers nothing but a path to type — which is what it
+# did on the first real restore.
+grep -q "removable_partitions" <<<"$chooser"
+check "the chooser sees media whether or not they are mounted" $? \
+      "on the machine being restored onto, nothing has mounted the stick"
+grep -q "mount_removable" <<<"$chooser"
+check "and mounts one that is chosen to be searched" $? ""
+grep -q "archive_pick_none_on_medium" <<<"$chooser"
+check "a medium with no archive on it says so" $? \
+      "rather than returning an empty selection"
 grep -q "archive_pick_other" <<<"$chooser"
 check "and a path that can be typed" $? ""
 grep -q 'RM,SIZE,MOUNTPOINT' <<<"$COMMON"

@@ -587,38 +587,86 @@ mount_removable() {
 }
 
 # choose_backup_archive [extra_search_dir]
+#
+# Searches, in order: a directory the caller names, this installation's backup
+# directory, and every mounted removable medium. A removable medium that is
+# *not* mounted is offered as something to search — because on the machine a
+# restore lands on, nothing has mounted the stick and there is no backup
+# directory either, so the list was otherwise empty and the operator was left
+# typing a path. Reported from a real restore.
 choose_backup_archive() {
     local extra="${1:-}"
-    local -a found=() labels=()
-    local dir line mp size dev f
+    local -a found=() labels=() dirs=()
+    local dir f mp size dev fstype label
 
-    local -a dirs=()
     [[ -n "$extra" ]] && dirs+=("$extra")
     dirs+=("$(dirname "${BASE_DATA_PATH:-/srv/smart-rag-data}")/backups")
-    while IFS=$'\t' read -r mp size dev; do
-        [[ -n "$mp" ]] && dirs+=("$mp")
-    done < <(removable_mountpoints)
+
+    # Mounted media are searched directly; unmounted ones become an entry.
+    local -a to_mount=() to_mount_labels=()
+    while IFS=$'\t' read -r dev size fstype label mp; do
+        [[ -n "$dev" ]] || continue
+        if [[ -n "$mp" ]]; then
+            dirs+=("$mp")
+        else
+            to_mount+=("$dev")
+            to_mount_labels+=("$(t archive_pick_search "$label" "$size" "$fstype" "$dev")")
+        fi
+    done < <(removable_partitions)
 
     for dir in "${dirs[@]}"; do
         [[ -d "$dir" ]] || continue
         while IFS= read -r f; do
             [[ -n "$f" ]] || continue
             found+=("$f")
-            labels+=("$(basename "$f")  ($(( $(stat -c%s "$f" 2>/dev/null || echo 0) / 1048576 )) MB)  \u2014 $dir")
+            labels+=("$(basename "$f")  ($(( $(stat -c%s "$f" 2>/dev/null || echo 0) / 1048576 )) MB)  in $dir")
         done < <(ls -1t "$dir"/smartrag-*.tar.gz 2>/dev/null | head -10)
     done
 
-    labels+=("$(t archive_pick_other)")
+    local -a options=("${labels[@]}" "${to_mount_labels[@]}" "$(t archive_pick_other)")
     local choice
-    choice="$(select_one_index archive_pick "${labels[@]}")" || return 1
-    if (( choice == ${#labels[@]} )); then
-        local typed
-        typed="$(prompt archive_pick_path)" || return 1
-        [[ -f "$typed" ]] || { err "$(t archive_pick_not_a_file "$typed")" >&2; return 1; }
-        printf '%s\n' "$typed"
-    else
+    choice="$(select_one_index archive_pick "${options[@]}")" || return 1
+
+    if (( choice <= ${#found[@]} )); then
         printf '%s\n' "${found[$((choice-1))]}"
+        return 0
     fi
+
+    local rest=$(( choice - ${#found[@]} ))
+    if (( rest <= ${#to_mount[@]} )); then
+        # Mount it and look. Left mounted: the restore reads from it for the
+        # whole run, and unmounting under a running restore is worse than
+        # leaving a medium mounted.
+        local device="${to_mount[$((rest-1))]}" point
+        info "$(t archive_pick_mounting "$device")" >&2
+        point="$(mount_removable "$device")" || {
+            err "$(t archive_pick_mount_failed "$device")" >&2
+            return 1
+        }
+        local -a on_medium=() on_labels=()
+        while IFS= read -r f; do
+            [[ -n "$f" ]] || continue
+            on_medium+=("$f")
+            on_labels+=("$(basename "$f")  ($(( $(stat -c%s "$f" 2>/dev/null || echo 0) / 1048576 )) MB)")
+        done < <(ls -1t "$point"/smartrag-*.tar.gz 2>/dev/null | head -10)
+        if (( ${#on_medium[@]} == 0 )); then
+            err "$(t archive_pick_none_on_medium "$point")" >&2
+            return 1
+        fi
+        if (( ${#on_medium[@]} == 1 )); then
+            printf '%s\n' "${on_medium[0]}"
+            return 0
+        fi
+        local pick
+        pick="$(select_one_index archive_pick "${on_labels[@]}")" || return 1
+        printf '%s\n' "${on_medium[$((pick-1))]}"
+        return 0
+    fi
+
+    local typed
+    typed="$(prompt archive_pick_path)" || return 1
+    [[ -f "$typed" ]] || { err "$(t archive_pick_not_a_file "$typed")" >&2; return 1; }
+    printf '%s\n' "$typed"
 }
 
 select_one_index() {
