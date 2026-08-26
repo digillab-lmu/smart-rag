@@ -122,6 +122,27 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Added
 
+- **A removable medium can be chosen, mounted and prepared from the menu.**
+  On a server nothing mounts a stick automatically, so listing only mounted
+  media found none and left the operator typing a path — the interface giving
+  up exactly where it should help. Removable partitions are now listed whether
+  or not they are mounted, the chosen one is mounted, and it is unmounted again
+  afterwards if the menu was what mounted it.
+
+  There is also **Prepare a removable medium**, which writes one ext4
+  partition. The reason is not tidiness: a factory-new medium is FAT32, which
+  cannot hold a file larger than 4 GB, and a backup of a course with real
+  material passes that — the copy then fails partway, which is noticed when
+  the backup is needed. ext4 also keeps ownership and permissions for a
+  restore onto another Linux machine.
+
+  It erases a disk, so the guards are the feature. Only devices the kernel
+  reports as removable are listed, which is why the system disk cannot appear
+  at all; a device with anything mounted from it is refused rather than
+  unmounted on the operator's behalf; the current contents are printed before
+  anything happens; and the device node has to be typed out, because selecting
+  is what makes taking the wrong row easy.
+
 - **Backups can be carried and restored from the interface.** The admin menu
   could make a backup; it can now also copy one to a removable medium and
   restore one, and bootstrap offers a restore instead of a fresh install on a

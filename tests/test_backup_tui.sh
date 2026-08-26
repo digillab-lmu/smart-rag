@@ -107,6 +107,55 @@ check "removable media are taken from the kernel, not guessed" $? \
 grep -q '\$4 != "/"' <<<"$COMMON"
 check "and the root filesystem is never offered as one" $? ""
 
+# ─── The target is chosen, not typed ────────────────────────────────────────
+# On a server nothing mounts a stick automatically, so the first version found
+# no removable media and left the operator typing a path — the interface
+# giving up exactly where it should help.
+grep -q "removable_partitions" <<<"$copy_body"
+check "the copy lists media whether or not they are mounted" $? \
+      "a server has no desktop to mount one, so an unmounted medium is the "
+grep -q "mount_removable" <<<"$copy_body"
+check "and mounts the one that is chosen" $? ""
+# The condition, not the variable: a mutation that unmounts unconditionally
+# leaves the name in the body and passed a check that only looked for it.
+grep -qF 'if [[ -n "${MOUNTED_HERE:-}" ]]; then' <<<"$copy_body"
+check "unmounting afterwards applies only to what it mounted itself" $? \
+      "a medium the operator had already mounted may be in use for something else"
+grep -q "admin_copy_other" <<<"$copy_body"
+check "a path can still be typed" $? "for a network share or anything unrecognised"
+
+partitions="$(awk '/^removable_partitions\(\) \{/,/^\}/' scripts/lib/common.sh)"
+grep -q "RM" <<<"$partitions"
+check "removable is taken from the kernel flag" $? ""
+
+# ─── Formatting: the guards are the feature ─────────────────────────────────
+fmt="$(awk '/^action_format_medium\(\) \{/,/^\}/' scripts/admin.sh)"
+grep -q "removable_disks" <<<"$fmt"
+check "only removable disks can be formatted" $? \
+      "the system disk is not removable and therefore cannot be listed"
+disks="$(awk '/^removable_disks\(\) \{/,/^\}/' scripts/lib/common.sh)"
+grep -q '\$2 == 1' <<<"$disks"
+check "and that is decided by the kernel flag, not by a name" $? \
+      "a name filter is defeated by a different disk layout"
+# Again the condition rather than the message: disabling the test leaves the
+# error string in place, and the first version of this check passed on it.
+grep -qF 'lsblk -nr -o MOUNTPOINT "$device" 2>/dev/null | grep -q .' <<<"$fmt"
+check "a device with something mounted from it is refused" $? \
+      "unmounting on the operator's behalf decides that whatever uses the disk does not matter"
+grep -q "admin_format_mounted" <<<"$fmt"
+check "and told so" $? ""
+grep -q "admin_format_type_device" <<<"$fmt"
+check "the device node has to be typed out" $? \
+      "selecting is what makes taking the wrong row easy"
+grep -q 'lsblk -o NAME,SIZE,FSTYPE,LABEL,MOUNTPOINT' <<<"$fmt"
+check "what is on the disk is shown before it is erased" $? \
+      "that is how somebody recognises the wrong disk in time"
+grep -q "mkfs.ext4" <<<"$fmt"
+check "the medium is formatted ext4" $? \
+      "FAT32 cannot hold a file over 4 GB, which a real backup passes"
+grep -q "admin_backup_format" <<<"$ADMIN"
+check "and the entry is in the backup menu" $? ""
+
 if (( ${#FAILURES[@]} > 0 )); then
     echo "FAILURES:"; printf '  - %s\n' "${FAILURES[@]}"; exit 1
 fi

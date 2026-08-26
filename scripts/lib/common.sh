@@ -544,6 +544,48 @@ removable_mountpoints() {
         awk '$2 == 1 && $4 != "" && $4 != "/" { print $4 "\t" $3 "\t/dev/" $1 }'
 }
 
+# removable_partitions — removable partitions whether or not they are mounted.
+#
+# A server has no desktop to mount a stick for it, so on the machine this
+# feature exists for, a plugged-in medium is almost always unmounted and
+# removable_mountpoints finds nothing. Offering only a path to type at that
+# point is the interface giving up exactly where it should help.
+#
+# Prints: device \t size \t fstype \t label \t mountpoint (mountpoint empty
+# when not mounted).
+removable_partitions() {
+    local disk part
+    while read -r disk; do
+        [[ -n "$disk" ]] || continue
+        lsblk -nr -o NAME,SIZE,FSTYPE,LABEL,MOUNTPOINT "/dev/$disk" 2>/dev/null |
+            awk -v d="$disk" 'NR > 1 && $1 != d {
+                mp = ""; lbl = ""
+                if (NF >= 5) { mp = $NF; lbl = $4 }
+                else if (NF == 4) { lbl = $4 }
+                print "/dev/" $1 "\t" $2 "\t" ($3 == "" ? "-" : $3) "\t" (lbl == "" ? "-" : lbl) "\t" mp
+            }'
+    done < <(lsblk -dn -o NAME,RM 2>/dev/null | awk '$2 == 1 { print $1 }')
+}
+
+# removable_disks — whole removable devices, for formatting.
+# Whole disks only, and only RM=1. The system disk is not removable, so it
+# cannot appear here; that is the guard, not a name filter.
+removable_disks() {
+    lsblk -dn -o NAME,RM,SIZE,MODEL 2>/dev/null |
+        awk '$2 == 1 { name = $1; size = $3; $1=$2=$3=""; sub(/^ +/, "");
+                       print "/dev/" name "\t" size "\t" ($0 == "" ? "-" : $0) }'
+}
+
+# mount_removable — mount a partition somewhere predictable, or report why not.
+# Prints the mountpoint on stdout.
+mount_removable() {
+    local device="$1"
+    local mp="/mnt/smartrag-medium"
+    mkdir -p "$mp" || return 1
+    mount "$device" "$mp" 2>&1 >/dev/null || return 1
+    printf '%s\n' "$mp"
+}
+
 # choose_backup_archive [extra_search_dir]
 choose_backup_archive() {
     local extra="${1:-}"

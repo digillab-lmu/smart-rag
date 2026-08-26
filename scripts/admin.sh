@@ -903,8 +903,101 @@ action_restore() {
     read -rp "$(t admin_press_enter)" _ || true
 }
 
+# ─── Preparing a medium ──────────────────────────────────────────────────────
+# A new stick is normally FAT32, and FAT32 cannot hold a file larger than 4 GB.
+# The archive here is 284 MB, but a course with real material passes that, and
+# the copy then fails partway — which is the kind of failure that is only
+# noticed when the backup is needed. ext4 also keeps ownership and permissions,
+# which matters for a restore onto another Linux machine.
+#
+# This erases a disk, so the guards are the feature:
+#   * only devices the kernel reports as removable (RM=1). The system disk is
+#     not removable and therefore cannot appear in the list at all — that is
+#     the guard, not a name filter that a different disk layout would defeat;
+#   * nothing mounted is offered, and anything mounted from the device is
+#     refused rather than unmounted for the operator;
+#   * the device node has to be typed out, not selected, because selecting is
+#     what makes the wrong row easy to take.
+action_format_medium() {
+    clear
+    header "$(t admin_format_title)"
+    info "$(t admin_format_intro)"
+    echo
+
+    local -a devices=() labels=()
+    local dev size model
+    while IFS=$'\t' read -r dev size model; do
+        [[ -n "$dev" ]] || continue
+        devices+=("$dev")
+        labels+=("$dev  $size  $model")
+    done < <(removable_disks)
+
+    if (( ${#devices[@]} == 0 )); then
+        warn "$(t admin_format_none)"
+        echo
+        read -rp "$(t admin_press_enter)" _ || true
+        return 0
+    fi
+
+    local choice
+    choice="$(select_one_index admin_format_which "${labels[@]}")" || return 0
+    local device="${devices[$((choice-1))]}"
+
+    # What is on it now, so the operator can recognise the wrong disk before
+    # rather than after.
+    echo
+    info "$(t admin_format_contents "$device")"
+    lsblk -o NAME,SIZE,FSTYPE,LABEL,MOUNTPOINT "$device" 2>/dev/null | sed 's/^/    /'
+    echo
+
+    # Anything mounted from this device stops it. Unmounting on the operator's
+    # behalf here would be this tool deciding that whatever is using the disk
+    # does not matter.
+    if lsblk -nr -o MOUNTPOINT "$device" 2>/dev/null | grep -q .; then
+        err "$(t admin_format_mounted "$device")"
+        echo
+        read -rp "$(t admin_press_enter)" _ || true
+        return 0
+    fi
+
+    warn "$(t admin_format_erases "$device")"
+    local typed
+    typed="$(prompt admin_format_type_device)" || return 0
+    if [[ "$typed" != "$device" ]]; then
+        info "$(t admin_format_not_confirmed)"
+        echo
+        read -rp "$(t admin_press_enter)" _ || true
+        return 0
+    fi
+
+    info "$(t admin_format_running "$device")"
+    if ! wipefs -a "$device" >/dev/null 2>&1; then
+        err "$(t admin_format_failed)"; echo
+        read -rp "$(t admin_press_enter)" _ || true; return 0
+    fi
+    # One partition spanning the disk, GPT, ext4. Nothing here needs a layout
+    # more interesting than that, and a simpler one is easier to recognise.
+    if ! parted -s "$device" mklabel gpt mkpart primary ext4 1MiB 100% >/dev/null 2>&1; then
+        err "$(t admin_format_failed)"; echo
+        read -rp "$(t admin_press_enter)" _ || true; return 0
+    fi
+    sync; sleep 1
+    local part
+    part="$(lsblk -nr -o NAME "$device" | sed -n '2p')"
+    part="/dev/${part}"
+    if ! mkfs.ext4 -q -L SMARTRAG "$part" >/dev/null 2>&1; then
+        err "$(t admin_format_failed)"; echo
+        read -rp "$(t admin_press_enter)" _ || true; return 0
+    fi
+    sync
+    ok "$(t admin_format_done "$part")"
+    echo
+    read -rp "$(t admin_press_enter)" _ || true
+}
+
 action_backup_copy() {
     local dest archives=() archive target
+    local MOUNTED_HERE=""
     dest="$(dirname "${BASE_DATA_PATH:-/srv/smart-rag-data}")/backups"
     mapfile -t archives < <(ls -1t "$dest"/smartrag-*.tar.gz 2>/dev/null | head -10)
     if (( ${#archives[@]} == 0 )); then
@@ -927,24 +1020,42 @@ action_backup_copy() {
         confirm admin_copy_no_sum_go "n" || return 0
     fi
 
-    # Removable media, as the kernel reports them, plus a free-text path for
-    # a mounted share or anything this does not recognise. Guessing which
-    # disk is the stick is not something to do with a copy of every secret.
-    local mounts=() line name size mp
-    while read -r name size mp; do
-        [[ -z "$mp" || "$mp" == "/" ]] && continue
-        mounts+=("$mp  ($size, /dev/$name)")
-    done < <(lsblk -o NAME,RM,SIZE,MOUNTPOINT -nr 2>/dev/null |
-             awk '$2 == 1 && $4 != "" { print $1, $3, $4 }')
+    # Every removable partition, mounted or not. A server has no desktop to
+    # mount a stick for it, so on the machine this exists for the medium is
+    # almost always unmounted — and offering only a path to type is the
+    # interface giving up exactly where it should help.
+    local -a targets=() labels=()
+    local dev size fstype label mp
+    while IFS=$'\t' read -r dev size fstype label mp; do
+        [[ -n "$dev" ]] || continue
+        if [[ -n "$mp" ]]; then
+            targets+=("mounted:$mp")
+            labels+=("$(t admin_copy_target_mounted "$label" "$size" "$fstype" "$mp")")
+        else
+            targets+=("mount:$dev")
+            labels+=("$(t admin_copy_target_unmounted "$label" "$size" "$fstype" "$dev")")
+        fi
+    done < <(removable_partitions)
 
-    local options=("${mounts[@]}" "$(t admin_copy_other)")
+    targets+=("other"); labels+=("$(t admin_copy_other)")
     local choice
-    choice="$(select_one_index admin_copy_where "${options[@]}")" || return 0
-    if (( choice == ${#options[@]} )); then
-        target="$(prompt admin_copy_path)" || return 0
-    else
-        target="${mounts[$((choice-1))]%%  (*}"
-    fi
+    choice="$(select_one_index admin_copy_where "${labels[@]}")" || return 0
+    local picked="${targets[$((choice-1))]}"
+
+    case "$picked" in
+        mounted:*) target="${picked#mounted:}" ;;
+        mount:*)
+            local device="${picked#mount:}"
+            info "$(t admin_copy_mounting "$device")"
+            target="$(mount_removable "$device")" || {
+                err "$(t admin_copy_mount_failed "$device")"
+                return 0
+            }
+            MOUNTED_HERE="$target"
+            ok "$(t admin_copy_mounted "$target")"
+            ;;
+        *) target="$(prompt admin_copy_path)" || return 0 ;;
+    esac
 
     [[ -d "$target" ]] || { err "$(t admin_copy_no_dir "$target")"; return 0; }
     [[ -w "$target" ]] || { err "$(t admin_copy_not_writable "$target")"; return 0; }
@@ -978,7 +1089,18 @@ action_backup_copy() {
     fi
 
     ok "$(t admin_copy_done "$target")"
-    dim "$(t admin_copy_eject)"
+    # Unmounted again only if this mounted it. A medium the operator had
+    # already mounted may be in use for something else.
+    if [[ -n "${MOUNTED_HERE:-}" ]]; then
+        if umount "$MOUNTED_HERE" 2>/dev/null; then
+            ok "$(t admin_copy_unmounted)"
+        else
+            warn "$(t admin_copy_unmount_failed "$MOUNTED_HERE")"
+        fi
+        MOUNTED_HERE=""
+    else
+        dim "$(t admin_copy_eject)"
+    fi
 }
 
 action_backup() {
@@ -1003,7 +1125,7 @@ action_backup() {
     fi
 
     local choice
-    choice="$(select_one_index admin_backup_what         "$(t admin_backup_do)"         "$(t admin_backup_copy)"         "$(t admin_backup_restore)"         "$(t admin_backup_back)")" || return 0
+    choice="$(select_one_index admin_backup_what         "$(t admin_backup_do)"         "$(t admin_backup_copy)"         "$(t admin_backup_format)"         "$(t admin_backup_restore)"         "$(t admin_backup_back)")" || return 0
 
     case "$choice" in
         1)
@@ -1017,6 +1139,9 @@ action_backup() {
             action_backup_copy
             ;;
         3)
+            action_format_medium
+            ;;
+        4)
             action_restore
             ;;
         *) return 0 ;;
