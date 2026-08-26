@@ -282,6 +282,21 @@ What you do there:
   that other material also supports, and deleting a document offers to remove
   its contribution.
 
+  Deleting a document removes its chunks, and its concepts if that is
+  confirmed. The converted markdown stays in the course bucket. It is not
+  reachable from the interface and the bucket is private, but the text is
+  still stored, and it is removed only when the course is deleted. Where a
+  document has to be gone rather than merely unindexed, remove the object as
+  well. The keys are `agent_<n>/<name>.md`, and this lists them:
+
+  ```
+  docker exec smartrag-content-admin python -c "
+  import env_file, s3_client
+  for k in s3_client.S3Client().list_keys('<bucket>'):
+      print(k)
+  "
+  ```
+
 - **Courses** — created here. Creating a course also creates its chunk
   collection, its object-storage bucket, the ingest key's grant on that
   bucket, and its ten agent slots. Deletion is a separate page that counts

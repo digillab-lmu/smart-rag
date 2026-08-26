@@ -9,7 +9,107 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ---
 
-## Unreleased
+## 2.0.0 — 2026-08-26
+
+### Known limitations
+
+- **Deleting a single document leaves its converted markdown in the course
+  bucket.** The chunks go from Weaviate and, if asked, the concepts from the
+  graph; Garage is not touched. The bucket is private and the file is not
+  listed anywhere in the interface, so this is not an exposure — but a
+  document removed *because* it should not be there is not actually gone, and
+  an invisible leftover is one nobody will clean by hand. It is cleared when
+  the course is deleted, which empties the bucket.
+
+  Not fixed here because it cannot be done correctly yet: the object key is
+  `agent_<n>/<slug>.md`, derived from the uploaded file name, while the
+  chunks record `source_file`, the raw name with its original extension. The
+  chunk schema has `bucket` but no key, so nothing stores what to delete.
+  Re-deriving the slug in a second language would put the same rule in two
+  places, and the last time a key was computed too simply every document in a
+  course overwrote the previous one. The key will be recorded at ingest
+  instead.
+
+  Found by comparing a restored installation against its source: four objects
+  in a bucket holding three documents.
+
+### Fixed
+
+- **The containers were started from the .env a restore had replaced.**
+  Compose resolves `${VAR}` in the compose file from the ambient environment
+  first and only then from `--env-file`. The admin menu sources .env into its
+  own environment at startup, so a restore run from that menu replaced the
+  file correctly — verified afterwards value by value against the archive —
+  and the next menu action then started the containers from the secrets of
+  the installation that had just been moved aside. Mixed within one
+  container: n8n received `POSTGRES_PASSWORD` through `env_file`, which
+  Compose reads from disk, and `DATABASE_PASSWORD` through
+  `${POSTGRES_PASSWORD}`, which it interpolated from the environment. n8n
+  refused to start with "Mismatching encryption keys", which names the
+  archive; the archive was intact. `scripts/compose.sh` now clears the keys
+  .env defines before handing over, and the menu re-reads .env after a
+  restore.
+
+- **The model suggested for OpenAI could not run an agent.** Every archetype
+  retrieves from the course material, which Flowise sends as a function tool,
+  and `/v1/chat/completions` refuses function tools together with a reasoning
+  effort — which a gpt-5.x model applies by default even when none is sent.
+  The installer suggested `gpt-5.6-sol`. Flowise 3.1.3 cannot send
+  `reasoning_effort: none` (its options are low/medium/high/xhigh) and does
+  not use `/v1/responses`, so the only lever is the model: `gpt-4.1` and
+  `gpt-4o`, neither of which reasons and neither of which has a shutdown
+  date. The fast entries stay on gpt-5.x — that node extracts a topic and
+  carries no tools.
+
+- **The token cap did not survive a provider swap.** The templates are
+  written against chatAnthropic, so the cap is written as
+  `maxTokensToSample`. Flowise reads inputs by name and ignores the rest, so
+  after a swap to any other provider the cap sat in the config unread and the
+  node's own key was unset. It applies to the topic-extraction node, which
+  runs on every question, writes its answer into the agent's state and
+  appends it to the conversation — forty tokens is what keeps a concept name
+  from becoming a paragraph in both. The cap is now written under the name
+  the target node reads: `maxTokens`, `maxOutputTokens`, or dropped for
+  Cohere, whose node has no such input.
+
+- **A model name emptied in .env was imported as an empty model name.**
+  `env.get(KEY, <literal>)` returns `""` for a key that is present and empty,
+  so the fallback only ever covered a missing key. The literals are Anthropic
+  model names besides, so on an installation configured for another provider
+  the fallback would have sent a name that vendor has never heard of.
+  `LLM_MODEL_STRONG`, `LLM_MODEL_FAST` and `EMBEDDING_MODEL` now refuse the
+  way an empty `LLM_PROVIDER` already did.
+
+- **The forgotten-password entry had stopped doing anything.** It cleared
+  `CONTENT_ADMIN_USERNAME` and `CONTENT_ADMIN_PASSWORD_HASH` so the setup page
+  would reappear. Accounts have since moved into Postgres, and `auth.py`
+  blanks those two variables itself once it has migrated them — so on every
+  installation past that migration the entry read an empty variable, reported
+  that no account was configured, and returned. The only way back in was the
+  mail reset, which is the one path this entry exists to work around. It now
+  lists the accounts and sets a password on the one chosen: asked for twice,
+  never echoed, passed on stdin rather than as an argument, and written
+  through the application so the stored hash is one the login can verify.
+
+- **A restore did not say that the accounts come with the archive.** On a
+  machine prepared as its own installation first — the documented way — its
+  `credentials.txt` is still in the repository root, describing an
+  installation that has been moved aside. The closing steps now say so,
+  before the step that starts with a login. They are also numbered where they
+  are printed: the rename step is conditional, so every restore that kept its
+  address had printed 1, 2, 4.
+
+- **The advice after a rename named certbot on a Tailscale machine.** That
+  menu entry runs certbot and regenerates the nginx configuration, neither of
+  which exists in Tailscale mode, where `tailscale serve` provisions the
+  certificate for the name the machine joined the tailnet under. A machine
+  restored onto its own address needs nothing there at all.
+
+- **The concept count rendered on top of the Edit link.** Every label is
+  styled as a form-field caption — `display: block; margin-top: 1rem` — which
+  in a table row gives the cell a full-width box a rem below the rest and, with
+  `white-space: nowrap`, pushes its text out over the next column instead of
+  widening its own.
 
 ### Changed
 
@@ -650,7 +750,6 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
   second step. The watchdog no longer expects the workflow, so nothing will
   report it missing in the meantime.
 
-## Unreleased
 
 ### Added
 
@@ -667,9 +766,7 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
   written out against stdlib and checked against AWS's published get-vanilla
   vector. Garage's admin API cannot empty a bucket and refuses to delete one
   that is not empty, so without this a deleted course would leave its
-  documents behind for the next course of the same name to adopt. It also
-  closes an older hole: removing a single document in the GUI used to leave
-  its archived markdown in the bucket for ever.
+  documents behind for the next course of the same name to adopt.
 
 ### Fixed
 

@@ -48,31 +48,40 @@ TEMPLATES_DIR = Path(
 LLM_PROVIDER_MAP: dict[str, dict[str, str]] = {
     "anthropic": {
         "node": "chatAnthropic",
+        "token_limit_key": "maxTokensToSample",
         "credential_name": "anthropicApi",
         "credential_key": "anthropicApiKey",
     },
     "openai": {
         "node": "chatOpenAI",
+        "token_limit_key": "maxTokens",
         "credential_name": "openAIApi",
         "credential_key": "openAIApiKey",
     },
     "google": {
         "node": "chatGoogleGenerativeAI",
+        "token_limit_key": "maxOutputTokens",
         "credential_name": "googleGenerativeAI",
         "credential_key": "googleGenerativeAPIKey",
     },
     "mistral": {
         "node": "chatMistralAI",
+        "token_limit_key": "maxOutputTokens",
         "credential_name": "mistralAIApi",
         "credential_key": "mistralAIAPIKey",
     },
     "cohere": {
         "node": "chatCohere",
+        # Flowise's ChatCohere node has no token-limit input, so there is
+        # nothing to map the template's cap onto. Read from the running
+        # container, version 3.1.3.
+
         "credential_name": "cohereApi",
         "credential_key": "cohereApiKey",
     },
     "openrouter": {
         "node": "chatOpenRouter",
+        "token_limit_key": "maxTokens",
         "credential_name": "openRouterApi",
         "credential_key": "openRouterApiKey",
     },
@@ -81,6 +90,7 @@ LLM_PROVIDER_MAP: dict[str, dict[str, str]] = {
     # already exposes for exactly this purpose.
     "custom": {
         "node": "chatOpenAI",
+        "token_limit_key": "maxTokens",
         "credential_name": "openAIApi",
         "credential_key": "openAIApiKey",
         "extra_config_key": "basepath",
@@ -162,6 +172,40 @@ def _model_name(env: dict, key: str) -> str:
     if not name:
         raise ProviderNotConfigured(f"{key} is empty in .env.")
     return name
+
+
+# The templates are authored against chatAnthropic, so a token cap in them is
+# written under Anthropic's name for it.
+_TEMPLATE_TOKEN_KEY = "maxTokensToSample"
+
+
+def _map_token_limit(cfg: dict, llm_map: dict) -> None:
+    """Move the template's token cap to the name the target node reads it by.
+
+    Flowise reads a node's inputs by name and ignores keys it does not know.
+    Swapping chatAnthropic for chatOpenAI therefore left maxTokensToSample in
+    the config, where nothing reads it, and maxTokens unset — so the cap
+    silently did not apply. It is not decoration: the topic-extraction node
+    runs on every question a learner asks, writes its answer into the agent's
+    state and appends it to the conversation, and the cap of 40 tokens is what
+    keeps "Medienkompetenz" from becoming a paragraph. The instruction in the
+    prompt asks for the same thing; the cap is what enforces it.
+
+    Flowise's ChatCohere node has no token-limit input at all, so for that
+    provider the cap cannot be expressed and the stale key is dropped rather
+    than left to look effective.
+    """
+    if _TEMPLATE_TOKEN_KEY not in cfg:
+        return
+    value = cfg[_TEMPLATE_TOKEN_KEY]
+    target = llm_map.get("token_limit_key", "")
+    if target == _TEMPLATE_TOKEN_KEY:
+        return
+    del cfg[_TEMPLATE_TOKEN_KEY]
+    # An empty cap is the template saying "no limit here"; writing it under
+    # the new name would say the same thing in more words.
+    if target and str(value).strip():
+        cfg[target] = value
 
 
 def resolve_llm_provider(env: dict) -> tuple[str, dict]:
@@ -805,6 +849,7 @@ def auto_fill_from_env(
             if isinstance(cfg, dict):
                 cfg["agentModel"] = llm_map["node"]
                 cfg["modelName"] = _model_name(env, "LLM_MODEL_STRONG")
+                _map_token_limit(cfg, llm_map)
                 if "extra_config_key" in llm_map:
                     cfg[llm_map["extra_config_key"]] = env.get(
                         llm_map["extra_config_env"], ""
@@ -815,6 +860,7 @@ def auto_fill_from_env(
             if isinstance(cfg, dict):
                 cfg["llmModel"] = llm_map["node"]
                 cfg["modelName"] = _model_name(env, "LLM_MODEL_FAST")
+                _map_token_limit(cfg, llm_map)
                 if "extra_config_key" in llm_map:
                     cfg[llm_map["extra_config_key"]] = env.get(
                         llm_map["extra_config_env"], ""

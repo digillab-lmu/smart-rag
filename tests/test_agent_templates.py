@@ -115,6 +115,61 @@ expected_missing = {
 if set(missing2) != expected_missing:
     failures.append(f"missing-placeholder detection off: got {sorted(missing2)}, expected {sorted(expected_missing)}")
 
+# ─── The token cap survives the provider swap ────────────────────────────────
+# Flowise reads a node's inputs by name and ignores what it does not know, so
+# swapping chatAnthropic for chatOpenAI left the template's maxTokensToSample
+# sitting in the config where nothing reads it, and maxTokens unset. The cap
+# then silently did not apply — on the topic-extraction node, which runs on
+# every question a learner asks, writes its answer into the agent's state and
+# appends it to the conversation. Forty tokens is what keeps a concept name
+# from becoming a paragraph in both places.
+#
+# The input names are the ones Flowise 3.1.3 declares, read from the running
+# container rather than recalled.
+_cap_env = {"LLM_API_KEY": "k", "EMBEDDING_PROVIDER": "openai",
+            "EMBEDDING_API_KEY": "k", "EMBEDDING_MODEL": "m",
+            "LLM_MODEL_STRONG": "s", "LLM_MODEL_FAST": "f"}
+_expected_cap = {
+    "anthropic":  ("chatAnthropic",           "maxTokensToSample"),
+    "openai":     ("chatOpenAI",              "maxTokens"),
+    "google":     ("chatGoogleGenerativeAI",  "maxOutputTokens"),
+    "mistral":    ("chatMistralAI",           "maxOutputTokens"),
+    "openrouter": ("chatOpenRouter",          "maxTokens"),
+    # ChatCohere declares no token-limit input; the cap cannot be expressed.
+    "cohere":     ("chatCohere",              None),
+}
+for _prov, (_node, _key) in _expected_cap.items():
+    _flow = load_template("agent-10-persona.json")
+    auto_fill_from_env(_flow, dict(_cap_env, LLM_PROVIDER=_prov), slot=1,
+                          course={"id": "c", "name": "n", "collection": "Col"})
+    _cfgs = [n["data"]["inputs"]["llmModelConfig"] for n in _flow["nodes"]
+             if isinstance(n.get("data", {}).get("inputs", {}).get("llmModelConfig"), dict)]
+    if not _cfgs:
+        failures.append(f"{_prov}: no llmModelConfig in the template")
+        continue
+    _cfg = _cfgs[0]
+    # Both model nodes go through the swap. The agent's own cap is empty in
+    # the templates, so nothing is written under the new name — but the
+    # Anthropic key must not stay behind there either, and a check that looks
+    # only at the fast node does not notice when that call is dropped.
+    _agent_cfgs = [n["data"]["inputs"]["agentModelConfig"] for n in _flow["nodes"]
+                   if isinstance(n.get("data", {}).get("inputs", {}).get("agentModelConfig"), dict)]
+    for _ac in _agent_cfgs:
+        if _key != "maxTokensToSample" and "maxTokensToSample" in _ac:
+            failures.append(f"{_prov}: the agent node kept the Anthropic cap key")
+
+    if _key is None:
+        if "maxTokensToSample" in _cfg:
+            failures.append(f"{_prov}: the Anthropic cap key was left behind, "
+                            "where it looks effective and is not")
+    else:
+        if _cfg.get(_key) != "40":
+            failures.append(f"{_prov}: cap not under {_key} — got "
+                            f"{ {k: v for k, v in _cfg.items() if 'ax' in k} }")
+        if _key != "maxTokensToSample" and "maxTokensToSample" in _cfg:
+            failures.append(f"{_prov}: the Anthropic cap key was left beside "
+                            f"{_key}; two caps, one of them dead")
+
 if failures:
     print("FAILURES:")
     for f in failures:
