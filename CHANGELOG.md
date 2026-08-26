@@ -33,6 +33,21 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ### Fixed
 
+- **Checking a backup unpacked it onto the medium it came from.** With the
+  archive on a USB stick, `verify-backup.sh` unpacked beside it — onto vfat,
+  which stores no ownership, so tar reported `Cannot change ownership to uid
+  70` for every Postgres file. A data directory whose owners are gone is one
+  Postgres will not start on, so the check could not have succeeded. The
+  medium is usually too small for an unpacked installation as well.
+
+  Both scripts now choose a scratch directory that is local, has room, and can
+  store ownership; a filesystem that cannot is skipped rather than discovered
+  mid-unpack. `restore.sh` had the mirror image of the same mistake — a bare
+  `mktemp -d` lands in `/tmp`, which is often a tmpfs sized for temporary
+  files rather than for a whole installation.
+
+### Fixed
+
 - **`sudo smartrag` did not exist after an installation.** The closing text of
   the installer names it, and so does every page of the documentation, but the
   command was created by `admin.sh` on its first run — the one script an

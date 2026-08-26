@@ -102,10 +102,20 @@ trap cleanup EXIT
 
 header "$(t vfyb_title)"
 
-# ─── Unpack, somewhere with room ─────────────────────────────────────────────
-# Beside the archive rather than in /tmp: /tmp is often a tmpfs sized for
-# temporary files, and this is the whole installation.
-SCRATCH="$(mktemp -d "$(dirname "$ARCHIVE")/.verify-XXXXXX")"
+# ─── Unpack, somewhere with room and with owners ─────────────────────────────
+# Not beside the archive. That was the rule until an archive arrived on a USB
+# stick: vfat stores no ownership, so tar reported "Cannot change ownership to
+# uid 70" for every Postgres file, and a data directory whose owners are gone
+# is one Postgres will not start on. The stick is usually too small for an
+# unpacked installation as well.
+#
+# Four times the compressed size, as an estimate — the manifest carries the
+# real figure but is inside the archive, and refusing early beats failing at
+# ninety percent.
+_NEED_KB=$(( ( $(stat -c%s "$ARCHIVE" 2>/dev/null || echo 0) / 1024 ) * 4 ))
+_SCRATCH_BASE="$(pick_scratch_dir "$_NEED_KB")" \
+    || die "$(t vfyb_no_scratch "$(( _NEED_KB / 1024 ))")"
+SCRATCH="$(mktemp -d "$_SCRATCH_BASE/.verify-XXXXXX")"
 chmod 700 "$SCRATCH"
 info "$(t vfyb_unpacking "$SCRATCH")"
 tar -C "$SCRATCH" -xzf "$ARCHIVE" || die "$(t vfyb_unpack_failed)"

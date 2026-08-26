@@ -84,7 +84,14 @@ export LANG_CHOICE
 header "$(t restore_title)"
 (( DRY_RUN )) && warn "$(t restore_dry_run)"
 
-WORK="$(mktemp -d)"
+# Not a bare mktemp: that lands in /tmp, which is often a tmpfs sized for
+# temporary files rather than for a whole installation — the same class of
+# mistake as unpacking onto the medium the archive arrived on, seen from the
+# other side.
+_NEED_KB=$(( ( $(stat -c%s "$ARCHIVE" 2>/dev/null || echo 0) / 1024 ) * 4 ))
+_WORK_BASE="$(pick_scratch_dir "$_NEED_KB")" \
+    || die "$(t restore_no_scratch "$(( _NEED_KB / 1024 ))")"
+WORK="$(mktemp -d "$_WORK_BASE/.restore-XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 
 # ─── 1. The archive is what it says it is ────────────────────────────────────

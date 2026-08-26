@@ -313,6 +313,32 @@ grep -q "DEPLOYMENT_MODE" <<<"$rename_block"
 check "and takes the mode from the archive" $? \
       "tailscale separates services by port and domain mode by subdomain; "
 
+# ─── Where an archive is unpacked ───────────────────────────────────────────
+# verify-backup unpacked beside the archive, which is right until the archive
+# is on a USB stick: vfat stores no ownership, so tar reported "Cannot change
+# ownership to uid 70" for every Postgres file, and a data directory without
+# its owners is one Postgres will not start on. Reported from a real check on
+# a second machine. restore.sh had the mirror image — a bare mktemp -d lands
+# in /tmp, which is often a tmpfs sized for temporary files.
+! grep -q 'mktemp -d "$(dirname "$ARCHIVE")' "$REPO/scripts/verify-backup.sh"
+check "the check does not unpack beside the archive" $? \
+      "on a removable medium that is the wrong filesystem and usually too small"
+grep -q "pick_scratch_dir" "$REPO/scripts/verify-backup.sh"
+check "it chooses a directory that can hold owners" $? ""
+grep -q "pick_scratch_dir" "$REPO/scripts/restore.sh"
+check "and so does the restore" $? "a bare mktemp -d can land on a tmpfs"
+
+scratch="$(awk '/^pick_scratch_dir\(\) \{/,/^\}/' "$REPO/scripts/lib/common.sh")"
+grep -q "msdos|vfat|exfat" <<<"$scratch"
+check "filesystems without ownership are refused" $? \
+      "this is the failure that was reported, and it is checkable in advance"
+grep -q "free_kb >= need_kb" <<<"$scratch"
+check "and one without room is skipped" $? \
+      "failing at ninety percent of an unpack wastes the time it took to get there"
+grep -q "/var/tmp" <<<"$scratch"
+check "disk-backed temporary storage is preferred over /tmp" $? \
+      "/tmp is often a tmpfs, and this is a whole installation"
+
 if (( ${#FAILURES[@]} > 0 )); then
     echo "FAILURES:"; printf '  - %s\n' "${FAILURES[@]}"; exit 1
 fi

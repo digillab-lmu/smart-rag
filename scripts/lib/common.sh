@@ -1072,6 +1072,40 @@ install_smartrag_command() {
     ln -sf "$target" /usr/local/bin/smartrag 2>/dev/null
 }
 
+# pick_scratch_dir NEED_KB [preferred] — somewhere to unpack an installation.
+#
+# Three requirements, and the first two were each learned from a failure:
+#
+#   * **It must be able to store ownership.** Unpacking beside the archive
+#     seemed right until the archive was on a USB stick: vfat has no owners,
+#     so tar reported "Cannot change ownership to uid 70" for every Postgres
+#     file, and a data directory without its owner is one Postgres refuses.
+#   * **It must have room.** /tmp is often a tmpfs sized for temporary files,
+#     and this is a whole installation.
+#   * **Local, not removable** — a stick is slow and usually small.
+#
+# Prints the directory. Returns non-zero when nothing qualifies, so the caller
+# can say what is needed rather than fail halfway through an unpack.
+pick_scratch_dir() {
+    local need_kb="${1:-0}" preferred="${2:-}" dir fstype free_kb
+    local -a candidates=()
+    [[ -n "$preferred" ]] && candidates+=("$preferred")
+    candidates+=("$(dirname "${BASE_DATA_PATH:-/srv/smart-rag-data}")" /var/tmp /tmp)
+    for dir in "${candidates[@]}"; do
+        [[ -d "$dir" && -w "$dir" ]] || continue
+        fstype="$(stat -f -c %T "$dir" 2>/dev/null || echo unknown)"
+        case "$fstype" in
+            msdos|vfat|exfat|fuseblk|ntfs) continue ;;
+        esac
+        free_kb="$(df -Pk "$dir" 2>/dev/null | awk 'NR==2{print $4}')"
+        [[ -n "$free_kb" ]] || continue
+        (( free_kb >= need_kb )) || continue
+        printf '%s\n' "$dir"
+        return 0
+    done
+    return 1
+}
+
 subdomain_host() {
     local service="$1" domain="$2" prefix="$3"
     if [[ -n "$prefix" ]]; then
