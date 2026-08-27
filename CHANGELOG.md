@@ -7,9 +7,17 @@ minor version moves when something an operator would notice changes, and
 entries marked **Upgrade required** need an explicit step on an existing
 installation — `sudo smartrag` → *Upgrade* applies most of them.
 
+**Versions were renumbered on 2026-08-26**, before this software had been
+published or installed by anyone but its author. The four releases below were
+tagged 0.9.0, 1.0.0, 2.0.0-beta.1 and 2.0.0-rc.1; they are now 0.1.0, 0.2.0,
+0.3.0-beta.1 and 0.3.0-rc.1. Dates and contents are unchanged. A 2.x claimed a
+stability this has not earned, and 0.x states the truth: interfaces and stored
+formats may still change between releases. A tag from before that day therefore
+carries the old number in its own files.
+
 ---
 
-## 2.0.0-rc.1 — 2026-08-26
+## 0.3.0-rc.1 — 2026-08-26
 
 ### Known limitations
 
@@ -783,19 +791,19 @@ installation — `sudo smartrag` → *Upgrade* applies most of them.
 
 ---
 
-## 2.0.0-beta.1 — 2026-08-13
+## 0.3.0-beta.1 — 2026-08-13
 
 **A pre-release, deliberately.** One installation can now hold several
 courses, and that has been proven on a live server rather than argued:
 documents, agents, chat history, learning records, the concept graph and the
 accounts that reach them are all separated per course, and each separation was
 demonstrated by measuring one course while acting on another. What is not
-done is what keeps this from being 2.0.0 — deleting a course, erasing one
+done is what keeps this from being 0.3.0 — deleting a course, erasing one
 person's data, backup and restore, and the decision about where the concept
-graph should live. `1.0.0` remains the release to install if you want the
+graph should live. `0.2.0` remains the release to install if you want the
 single-course system that has been running.
 
-**There is no upgrade path from 1.x.** A 1.x installation's data carries no
+**There is no upgrade path from 0.2.0.** Its data carries no
 course, and nothing tags it retroactively any more (see *Removed*). A 2.x
 installation starts fresh and creates its courses in the Content Admin.
 
@@ -1254,7 +1262,7 @@ installation starts fresh and creates its courses in the Content Admin.
   image-description node skips with a stated reason instead of calling
   Anthropic with an OpenAI key.
 
-- The two n8n variable names 1.0.0 listed as unverified are settled.
+- The two n8n variable names 0.2.0 listed as unverified are settled.
   `WEBHOOK_URL` is deprecated by n8n itself — its config documents
   `N8N_WEBHOOK_URL` as "Successor to the deprecated `WEBHOOK_URL`" — so the
   current name is used. `N8N_DEFAULT_HTTP_TIMEOUT` is read nowhere: absent
@@ -1272,7 +1280,7 @@ installation starts fresh and creates its courses in the Content Admin.
   course and false the moment it had three — it announced "existing data now
   belongs to course testkurs2" on a machine with two other courses. It only
   ever filled blanks, so it never did damage, but the case it was written for
-  cannot arise where there is no in-place upgrade from 1.x. Removed with its
+  cannot arise where there is no in-place upgrade from 0.2.0. Removed with its
   menu entry, its messages and every reference to it.
 
 ### Known limitations
@@ -1294,11 +1302,12 @@ installation starts fresh and creates its courses in the Content Admin.
 
 ---
 
-## 1.0.0 — 2026-08-10
+## 0.2.0 — 2026-08-10
 
-The reason 0.9.0 was not 1.0 is gone: the ingest pipeline has now run end to
-end on a live server. A PDF was uploaded through the Content Admin, converted
-by Docling, cleaned, chunked into 23 pieces, embedded, written to Weaviate —
+The reason 0.1.0 was not more than a first tag is gone: the ingest pipeline
+has now run end to end on a live server. A PDF was uploaded through the
+Content Admin, converted by Docling, cleaned, chunked into 23 pieces,
+embedded, written to Weaviate —
 and an agent answered a question from it that is only answerable from that
 document, citing the source.
 
@@ -1391,7 +1400,7 @@ And the rest:
 - `start-services.sh` recreates containers when `.env` is newer than they are.
 - The `smartrag` command installs itself without asking.
 
-### Upgrading from 0.9.0
+### Upgrading from 0.1.0
 
 ```bash
 cd /srv/smart-rag && git pull
@@ -1422,11 +1431,11 @@ application, recreate the container once; from this release on, it applies.
   this is recorded in `docs/ARCHITECTURE.md` (6a, 6b).
 - The knowledge graph is seeded through a guided path, not automatically.
 - ~~`WEBHOOK_URL` and `N8N_DEFAULT_HTTP_TIMEOUT` are passed to n8n under names
-  that could not be confirmed.~~ Resolved after 1.0.0 — see the entry above.
+  that could not be confirmed.~~ Resolved after 0.2.0 — see the entry above.
 
 ---
 
-## 0.9.0 — 2026-08-05
+## 0.1.0 — 2026-08-05
 
 First tagged release. Everything before this was an untagged `main`.
 
