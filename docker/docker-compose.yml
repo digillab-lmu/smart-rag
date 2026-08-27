@@ -886,22 +886,13 @@ services:
       LTI_SESSION_SECRET: "${LTI_SESSION_SECRET}"
       LTI_COOKIE_NAME: "smartrag_lti_session"
       TZ: "${TZ}"
-      # Flowise chatflow UUIDs — set in .env after deploying agents in Flowise
-      # Find UUIDs in Flowise UI under each agent's "API" tab
-      CHATFLOW_AGENT01: "${CHATFLOW_AGENT01}"
-      CHATFLOW_AGENT02: "${CHATFLOW_AGENT02}"
-      CHATFLOW_AGENT03: "${CHATFLOW_AGENT03}"
-      CHATFLOW_AGENT04: "${CHATFLOW_AGENT04}"
-      CHATFLOW_AGENT05: "${CHATFLOW_AGENT05}"
-      CHATFLOW_AGENT06: "${CHATFLOW_AGENT06}"
-      CHATFLOW_AGENT07: "${CHATFLOW_AGENT07}"
-      CHATFLOW_AGENT08: "${CHATFLOW_AGENT08}"
-      CHATFLOW_AGENT09: "${CHATFLOW_AGENT09}"
-      CHATFLOW_AGENT10: "${CHATFLOW_AGENT10}"
-      CHATFLOW_AGENT11: "${CHATFLOW_AGENT11}"
-      CHATFLOW_AGENT12: "${CHATFLOW_AGENT12}"
-      CHATFLOW_AGENT13: "${CHATFLOW_AGENT13}"
-      CHATFLOW_AGENT14: "${CHATFLOW_AGENT14}"
+      # No chatflow ids here any more. They are read from agent_slots when a
+      # launch arrives, so a re-imported agent needs no recreation of this
+      # container — POSTGRES_USER and POSTGRES_PASSWORD arrive through
+      # env_file above.
+    depends_on:
+      smartrag-postgres:
+        condition: service_healthy
     ports:
       - "127.0.0.1:${LTI_PORT:-10088}:10088"
     volumes:

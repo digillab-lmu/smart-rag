@@ -4,3 +4,7 @@ flask-cors==5.0.1
 PyLTI1p3==2.0.0
 redis==7.1.1
 gunicorn==25.1.0
+# Read-only lookup of agent_slots.chatflow_id. Same major as content-admin,
+# so one Postgres driver behaviour across the stack.
+psycopg[binary]==3.3.4
+psycopg-pool==3.3.1

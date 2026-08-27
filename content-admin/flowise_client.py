@@ -221,8 +221,9 @@ class FlowiseClient:
     ) -> tuple[str, bool]:
         """Returns (chatflow_id, created). Re-importing an edited agent updates
         the existing flow in place rather than creating a second one with the
-        same name — otherwise the CHATFLOW_AGENT0X id in .env would point at a
-        stale copy.
+        same name — otherwise the id recorded on the agent slot, which is what
+        the chat links and the LTI middleware resolve, would point at a stale
+        copy.
 
         `analytic` is Flowise's per-chatflow tracing configuration, a JSON
         string. Tracing cannot be switched on globally for Langfuse: Flowise's

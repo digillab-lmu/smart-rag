@@ -1023,15 +1023,6 @@ def slot_optimize(slot: int):
     return result
 
 
-def _first_course_id() -> str | None:
-    """The oldest course. Used only to decide which course owns the
-    single-course-era CHATFLOW_AGENTnn variables in .env."""
-    all_of_them = courses_service.all_courses()
-    if not all_of_them:
-        return None
-    return min(all_of_them, key=lambda c: c["created_at"])["id"]
-
-
 def _build_flow(course: dict, slot: int, archetype: str,
                 all_slots: dict, env: dict) -> tuple[dict, list[str]]:
     """The flow as the course, the slot's content and .env determine it —
@@ -1207,12 +1198,10 @@ def _do_import(course: dict, slot: int, archetype: str,
         chatflow_name, flow_data_json, analytic=analytic
     )
     storage.set_chatflow_id(course["id"], slot, chatflow_id, digest)
-    # CHATFLOW_AGENTnn in .env is from the single-course era: one variable per
-    # slot, with no room for a course. Kept for the LTI middleware, which
-    # still reads it, and only written for the first course so it cannot be
-    # rewritten by whichever course was imported last.
-    if course["id"] == _first_course_id():
-        set_env_var(f"CHATFLOW_AGENT{slot:02d}", chatflow_id)
+    # CHATFLOW_AGENTnn in .env was written here for the LTI middleware, and
+    # only for the oldest course, because the name has one slot and no room
+    # for a course. The middleware reads agent_slots directly now, so the
+    # variables have no reader and are not written.
     return None
 
 

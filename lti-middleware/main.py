@@ -39,6 +39,8 @@ from pylti1p3.contrib.flask import (
 from pylti1p3.tool_config import ToolConfJsonFile
 from pylti1p3.exception import LtiException
 
+import slots
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-7s  %(message)s",
@@ -73,20 +75,32 @@ def _load_json(path: Path, required: bool = True) -> dict:
 
 
 # ─── Agent mapping ────────────────────────────────────────────────────────────
-# Loaded from config/agents.json. Chatflow IDs are resolved from env vars
-# named by the `chatflow_env` field of each agent.
+# Loaded from config/agents.json: which agent slot an id refers to, and how
+# it is embedded. The chatflow is not here. It is read from `agent_slots` when
+# a launch arrives, so an agent re-imported in the Content Admin is reachable
+# without recreating this container — see slots.py for what that replaced.
+#
+# `label` and `block` were in this file and were read by nothing; they are
+# gone rather than kept as fields an operator might expect to have an effect.
 
 def _load_agent_config() -> dict[str, dict]:
     raw = _load_json(AGENTS_PATH)
     agents = {}
     for item in raw.get("agents", []):
         agent_id = item["id"]
-        chatflow_env = item.get("chatflow_env", "")
+        try:
+            slot = int(item.get("slot", 0))
+        except (TypeError, ValueError):
+            slot = 0
+        if not 1 <= slot <= 10:
+            # A slot outside the range the Content Admin allows can never
+            # resolve. Named here rather than at launch time, where it would
+            # look like a missing agent.
+            logger.warning("Agent %s has slot %r, which is not 1-10 — it will "
+                           "not resolve to a chatflow.", agent_id, item.get("slot"))
         agents[agent_id] = {
-            "label":        item.get("label", agent_id),
-            "chatflow_id":  os.getenv(chatflow_env, "") if chatflow_env else "",
-            "block":        item.get("block", 0),
-            "embed_style":  item.get("embed_style", "fullscreen"),  # "bubble" | "fullscreen"
+            "slot":        slot,
+            "embed_style": item.get("embed_style", "fullscreen"),  # "bubble" | "fullscreen"
         }
     if not agents:
         logger.warning("No agents loaded — agents.json is empty or malformed.")
@@ -127,6 +141,8 @@ DEFAULT_BRANDING = {
         "error_invalid_launch":  "Invalid LTI launch.",
         "error_no_user_id":      "user_id missing from JWT.",
         "error_session_invalid": "Please open the assistant from your LMS course.",
+        "error_agent_not_imported": "Agent '{agent_id}' has no chatbot yet. It is configured, but its agent slot has not been imported to Flowise.",
+        "error_chatflow_unavailable": "The assistant is temporarily unavailable: its configuration could not be read.",
         "default_given_name":    "Student",
     },
 }
@@ -318,8 +334,30 @@ def chat_page(agent_id):
     if agent_id not in AGENT_CONFIG:
         return _error_page(lang["error_unknown_agent"].format(agent_id=agent_id)), 404
 
-    cfg         = AGENT_CONFIG[agent_id]
-    chatflow_id = cfg["chatflow_id"]
+    cfg = AGENT_CONFIG[agent_id]
+
+    # Resolved per request, not at import. The Content Admin writes
+    # agent_slots.chatflow_id on every import, so a re-imported agent is
+    # reachable at once; the environment variables this replaced were written
+    # for the oldest course only and needed the container recreated.
+    #
+    # The course is the oldest one, which is exactly the set the variables
+    # used to hold. Taking it from the launch's LTI context claim is the next
+    # step and changes this lookup's first argument, nothing else.
+    try:
+        course_id = slots.default_course_id()
+        chatflow_id = slots.chatflow_for(course_id, cfg["slot"]) if course_id else None
+    except slots.SlotLookupError as exc:
+        logger.error("Could not resolve the chatflow for %s: %s", agent_id, exc)
+        return _error_page(lang["error_chatflow_unavailable"]), 503
+
+    if not chatflow_id:
+        # Distinct from an unknown agent above: this id is configured, its
+        # slot is simply empty or was never imported.
+        logger.warning("Agent %s maps to slot %s of course %r, which has no "
+                       "chatflow", agent_id, cfg["slot"], course_id)
+        return _error_page(lang["error_agent_not_imported"].format(agent_id=agent_id)), 404
+
     user_id     = session_data["user_id"]
     given_name  = session_data["given_name"]
     ts          = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
