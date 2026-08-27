@@ -6,16 +6,16 @@ point in the first place, see the [Quick start](../README.md#quick-start)
 in the README and [`requirements.md`](requirements.md).
 
 When something is broken rather than merely unfamiliar, start at
-[`RUNBOOK.md`](RUNBOOK.md) — it is organised by the message you are seeing.
+[`RUNBOOK.md`](RUNBOOK.md), which is organised by the message on screen.
 [`ARCHITECTURE.md`](ARCHITECTURE.md) explains why the system is built the
-way it is, which matters most when you are about to change something.
+way it is, which matters most before it is changed.
 
 ---
 
 ## First login, service by service
 
-Deployment gives you running *infrastructure* — the services themselves
-still need a first-time setup step before they're usable. Do these in
+Deployment leaves the *infrastructure* running. The services themselves each
+need one first-time setup step before they are usable. In
 order.
 
 ### Flowise (chat interface) — `https://smart-rag.your-domain.example`
@@ -27,29 +27,30 @@ ignored by the version this project pins. Instead:
 
 1. Open the URL above. Flowise detects there's no admin account yet and
    shows a **"Create Admin Account"** screen.
-2. Choose your own email + password there. This is stored in Flowise's own
+2. Choose an email and password there. This is stored in Flowise's own
    database (Postgres) from that point on — not in `.env`, and not
    editable via `scripts/admin.sh`.
-3. If you ever need to reset it, that has to go through Flowise's own
+3. Resetting it later goes through Flowise's own
    account-recovery flow (or its API/database directly) — this project
    doesn't manage that credential.
 
-Flowise starts empty, and you don't import agents here by hand: you fill
-in a course-content template in the [Content Admin GUI](#content-authoring-course-material-agent-prompts-knowledge-graph)
-and press "Save and import to Flowise". The one manual step is giving that
-GUI an API key — its **Flowise Connection** page walks you through it
+Flowise starts empty, and agents are not imported here by hand. They are
+built by filling in a course-content template in the
+[Content Admin GUI](#content-authoring-course-material-agent-prompts-knowledge-graph)
+and pressing "Save and import to Flowise". The one manual step is giving that
+GUI an API key; its **Flowise Connection** page covers it
 (Flowise has no supported way to hand out a key automatically, same
 chicken-and-egg as the admin account above).
 
 ### n8n (automation) — `https://n8n.your-domain.example`
 
-Same pattern as Flowise: the first visit prompts you to create the owner
+Same pattern as Flowise: the first visit asks for the owner
 account, stored in n8n's own database, not `.env`.
 
 **This one is required.** The ingest workflows are imported by a script,
 but that script needs an existing n8n owner to assign the imported
 credentials and workflows to — and that account can only be created in a
-browser. So `bootstrap.sh` stops at this point and asks you to do it now:
+browser. `bootstrap.sh` therefore stops at this point and asks for it:
 
 ```
 ℹ  The ingest workflows still need to be imported, and that needs an n8n
@@ -76,11 +77,10 @@ sudo smartrag
 
 → *Ingest — (re-)import n8n credentials + workflows*. That menu entry runs
 the exact same guided flow as the installer: if n8n still has no owner
-account it names the URL, waits while you create one, and then does the
+account it names the URL, waits while it is created, and then does the
 import. Importing the ingest workflows is part of a standard setup, so it
 is meant to be reachable from the menu without touching the command line.
-(`sudo bash scripts/deploy-n8n-workflows.sh` does the same thing directly,
-if you prefer.)
+(`sudo bash scripts/deploy-n8n-workflows.sh` does the same thing directly.)
 
 Either way, that imports the S3/SMTP credentials and both ingest workflows,
 activates the document-ingest workflow, restarts n8n, and then **verifies
@@ -88,12 +88,12 @@ that the webhook is actually registered** before reporting success. It is
 re-runnable at any time — imports are keyed by fixed ids, so a re-run
 updates in place rather than creating duplicates.
 
-**Until you do this, document upload will fail with a 404.** That 404 is
-the single most common symptom of a half-finished install: the Content
-Admin GUI is working correctly and n8n simply has no webhook listening.
-The GUI's **System status** page checks this — along with the API keys,
-the Flowise connection, your agents, and the Docling/markdowncleaner/
-Weaviate services — and tells you which step is missing, at any time.
+**Until this step is done, document upload fails with a 404.** That 404 is
+the most common symptom of a half-finished install: the Content Admin GUI is
+working correctly and n8n has no webhook listening. The GUI's **System
+status** page checks it, along with the API keys, the Flowise connection, the
+configured agents and the Docling, markdowncleaner and Weaviate services, and
+names the missing step.
 
 ### Object storage (Garage) — no console
 
@@ -124,22 +124,27 @@ docker run --rm --network smart-rag-network \
   --entrypoint mc minio/minio:RELEASE.2025-09-07T16-13-09Z ls --recursive s3/
 ```
 
-**One failure mode is worth knowing before you meet it.** Garage stores
-nothing until a layout has assigned capacity to a node. Without one it starts,
-reports healthy, accepts connections and refuses every write — so "uploads
+Replace `ls --recursive s3/` with `rm s3/<bucket>/<key>` to delete one object.
+Garage's own CLI has no subcommand that lists or deletes objects; `bucket
+info` reports counts only, and `bucket inspect-object` takes a single key.
+Verified against garage v2.3.0.
+
+**One failure mode is worth knowing in advance.** Garage stores nothing until
+a layout has assigned capacity to a node. Without one it starts, reports
+healthy, accepts connections and refuses every write, so "uploads
 succeed but nothing is stored" is a layout problem, not a credential problem.
 `docker exec smartrag-garage /garage layout show` answers it, and re-running
 `deploy-garage.sh` fixes it; the script is idempotent.
 
 ### Langfuse (if `observability` profile enabled) — `https://langfuse.your-domain.example`
 
-First visit prompts you to create an account, same pattern as
+The first visit asks for an account, the same pattern as
 Flowise/n8n — its own database, not `.env`.
 
 ### Neo4j Browser (optional, direct access)
 
 Not exposed via nginx/HTTPS by default (internal-network + localhost-bound
-ports only, see `docker-compose.yml`). If you need to browse the graph
+ports only, see `docker-compose.yml`). To browse the graph
 directly, `ssh -L 7474:localhost:7474 your-server` and connect to
 `http://localhost:7474` with `neo4j` / the `NEO4J_PASSWORD` from
 `credentials.txt` — that one **does** come from `.env`, Neo4j reads
@@ -156,8 +161,8 @@ admin TUI:
 sudo bash scripts/admin.sh
 ```
 
-It offers to install itself as a global `smartrag` command the first time
-you run it, so afterwards it's just:
+It installs itself as a global `smartrag` command on first use, so afterwards
+the call is:
 
 ```bash
 sudo smartrag
@@ -239,31 +244,32 @@ This is done in the **Content Admin GUI** at
 `scripts/admin.sh` on purpose: it only ever talks to Flowise, n8n and
 Neo4j over the internal Docker network, and never touches Docker or the
 host filesystem, so a compromised content GUI cannot escalate to host
-control. (That boundary is also why it can show you the
-`deploy-n8n-workflows.sh` command but cannot run it for you.)
+control. That boundary is also why it displays the
+`deploy-n8n-workflows.sh` command without being able to run it.
 
-On first visit it asks you to create its own admin account — separate
-from the Flowise and n8n accounts above, and unrelated to `.env`.
+On first visit it asks for its own admin account, separate from the Flowise
+and n8n accounts above and unrelated to `.env`.
 
-What you do there:
+The pages it offers:
 
 - **System status** — a live checklist of everything that has to be in
-  place: API keys, the Flowise connection, your agents, the n8n ingest
-  webhook, and the Docling/markdowncleaner/Weaviate services. Each line is
+  place: API keys, the Flowise connection, the configured agents, the n8n
+  ingest webhook, and the Docling, markdowncleaner and Weaviate services. Each
+  line is
   checked by asking the service itself at that moment, so it is also the
   fastest way to answer "why isn't this working?" later on.
 - **Agents** — up to 10 slots, each based on one of the agent archetypes
   in `flowise/agents/`. Fill in a plain form for that archetype's course
   content and import it into Flowise with one click; anything already
   known from the install (course name, LLM provider, embedding model, …)
-  is filled in for you. Each agent's system prompt can be viewed and
+  is filled in already. Each agent's system prompt can be viewed and
   edited, and reset to the shipped default. An imported agent can also be
   published as a public chat link — read the warning on that page first.
 - **Documents** — upload course material for retrieval. The GUI can read
   the bibliographic details out of the PDF or look them up from a DOI or
   ISBN, and suggest keywords. Processing runs asynchronously in n8n;
-  a large scanned PDF can take tens of minutes, and you get an email when
-  it's done. **This needs the n8n step above to be finished.**
+  a large scanned PDF can take tens of minutes, and a mail is sent when it
+  finishes. **This needs the n8n step above to be finished.**
 - **Knowledge Graph** — two ways to fill the Neo4j concept graph, both ending
   at the same review step. *Build the map from the course material* starts an
   n8n workflow that reads the documents of the agents ticked on the agent
@@ -286,16 +292,9 @@ What you do there:
   confirmed. The converted markdown stays in the course bucket. It is not
   reachable from the interface and the bucket is private, but the text is
   still stored, and it is removed only when the course is deleted. Where a
-  document has to be gone rather than merely unindexed, remove the object as
-  well. The keys are `agent_<n>/<name>.md`, and this lists them:
-
-  ```
-  docker exec smartrag-content-admin python -c "
-  import env_file, s3_client
-  for k in s3_client.S3Client().list_keys('<bucket>'):
-      print(k)
-  "
-  ```
+  document has to be gone rather than merely unindexed, the object has to be
+  removed as well. Its key is `agent_<n>/<name>.md`; the object-storage
+  section above shows how to list and delete objects.
 
 - **Courses** — created here. Creating a course also creates its chunk
   collection, its object-storage bucket, the ingest key's grant on that

@@ -372,8 +372,8 @@ courses. In that case traversal depth begins to matter and Neo4j is the better
 fit; until then it costs about 1.5 GB of RAM on a machine whose documented
 minimum is 8 GB.
 
-**What can be done before deciding.** Normalise the concept vocabulary (see
-the plan). Learner data already references concepts as free text —
+**What can be done before deciding.** Normalise the concept vocabulary.
+Learner data already references concepts as free text —
 `concepts_mentioned` on chat messages, `concepts_struggling` in UserMemory,
 `gaps` in TestResults — and none of it can be counted against the graph
 because "Cognitive Load", "cognitive load theory" and "Kognitive Belastung"

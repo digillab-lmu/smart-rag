@@ -1,8 +1,8 @@
 # Runbook
 
-What actually goes wrong, and what to do about it. Every entry here is a
-failure that has happened on a real deployment — the symptom is quoted as it
-appears, because that is what you will be searching for.
+What goes wrong, and what to do about it. Every entry is a failure that has
+occurred on a real deployment. The symptom is quoted as it appears on screen,
+since that is what a search starts from.
 
 **Start here:** the Content Admin GUI's **System status** page checks most of
 this live, and `sudo smartrag` → *Status* covers the rest. Between them they
@@ -27,12 +27,12 @@ finish it unattended.
 curl -s http://127.0.0.1:${N8N_PORT:-5678}/webhook/document-ingest
 ```
 
-`"not registered for GET requests"` means the webhook **is** fine — that is
+`"not registered for GET requests"` means the webhook **is** fine. That is
 the method-mismatch answer, not an error. `The requested webhook … is not
 registered.` means it is genuinely missing.
 
 **Fix.** `sudo smartrag` → *Ingest — (re-)import n8n credentials +
-workflows*. If n8n still has no owner account, the entry walks you through
+workflows*. If n8n still has no owner account, the entry covers
 creating one and finishes the import itself.
 
 ---
@@ -56,7 +56,7 @@ docker exec smartrag-content-admin grep -c FLOWISE_CREDENTIAL_ID /app/agent_temp
 
 A low number (1–2) means an old build.
 
-**Fix.** Rebuild, then **re-import the agent** — the fix only takes effect
+**Fix.** Rebuild, then **re-import the agent**. The fix only takes effect
 at import time, and the flow already in Flowise keeps its empty credential:
 
 ```bash
@@ -88,7 +88,7 @@ chain throws as soon as the value before it is empty — which
 ## An agent retrieves nothing from its course
 
 **Symptom.** The agent answers, but never cites or uses any course document.
-No error anywhere — a retrieval that matches nothing is not a failure.
+No error anywhere: a retrieval that matches nothing is not a failure.
 
 Every retrieval filters on `course_id`, deliberately as a hard stop rather
 than a filter that matches everything: the alternative serves one course's
@@ -114,9 +114,9 @@ docker exec -i smartrag-postgres psql -U "$POSTGRES_USER" -d contentadmin -c "SE
 ```
 
 **Not a cause any more:** data ingested before course scoping existed. There
-is no upgrade path from 1.x — a 2.x installation starts fresh — and the
-script that used to tag such data has been removed rather than kept for a
-case that cannot arise.
+is no upgrade path from the single-course release (0.2.0); a multi-course
+installation starts fresh. The script that used to tag such data has been
+removed rather than kept for a case that cannot arise.
 
 ---
 
@@ -131,7 +131,7 @@ course lookup existed, every message was stamped with the installation's
 single `COURSE_ID`; after it was added, `Prepare messages` looked the course
 up, used it to decide whether to skip the message, and then built its output
 object without it, so the messages were written with no course at all. Both
-are fixed in the workflow — deploy it before repairing, or the repair is
+are fixed in the workflow. Deploy it before repairing, or the repair is
 undone five minutes later:
 
 ```bash
@@ -156,7 +156,7 @@ course for it would move one course's conversations into another. Then:
 sudo bash scripts/repair-chathistory-course.sh --apply
 ```
 
-Running it again is safe — what is already right is left alone. Only
+Running it again is safe: what is already right is left alone. Only
 `course_id` is written; the vector is not recomputed.
 
 Counting per course, to check before and after:
@@ -267,12 +267,12 @@ set -a && . ./.env && set +a && for cls in UserMemory ChatHistory; do echo "— 
 
 A pair listed under `UserMemory` but not under `ChatHistory` is one of these.
 Delete it by its object id — `?class=UserMemory` lists them with `.id` — and
-check the record's `summary` first if you want to see which course it really
+check the record's `summary` first to see which course it really
 came from.
 
 There is deliberately no repair script and no rule in the workflow for this.
 A chat message can be traced back to its course through the chatflow it came
-from; a learning record cannot — it is a summary, and which course it
+from; a learning record cannot, being a summary, and which course it
 summarises is only recoverable by reading it. A rule that deleted records on
 the strength of a missing conversation would also be wrong the day anyone
 puts a retention policy on `ChatHistory`. And it cannot arise on an
@@ -317,7 +317,8 @@ answered. The course id has to be typed, which is the one confirmation that
 cannot be given by muscle memory.
 
 **Read the inventory before confirming.** A line that says **unknown** rather
-than a number means that system did not answer. That is not "nothing there" —
+than a number means that system did not answer, which is not the same as
+"nothing there":
 it may hold data the page cannot see. Deleting anyway removes what can be
 reached and reports the rest as failed; the course then stays in the list.
 
@@ -325,7 +326,7 @@ reached and reports the rest as failed; the course then stays in the list.
 
 1. The chat sessions of the course's agents are read from Flowise. A Langfuse
    trace carries a learner id and Flowise's chat id, never a course, so this
-   is the only bridge from a course to its traces — and step 3 burns it.
+   is the only bridge from a course to its traces, and step 3 destroys it.
 2. Langfuse is asked to delete those traces. **Asked**: Langfuse removes trace
    data within about fifteen minutes and confirms nothing. Scores and
    observations go with them. On an installation without the observability
@@ -344,7 +345,7 @@ reached and reports the rest as failed; the course then stays in the list.
 
 **If a step fails, the course record is kept.** That is deliberate: while it
 exists the course is still listed and the deletion can simply be run again,
-picking up where it stopped. Every step is safe to repeat — an already-deleted
+picking up where it stopped. Every step is safe to repeat: an already-deleted
 chatflow or bucket is counted as such, not treated as an error. Removing the
 record after a failed step would turn a recoverable half-deletion into data in
 five systems that nothing points at.
@@ -375,7 +376,7 @@ count unchanged. A collection that is still there is visible in
 a bucket reports zero objects — while `smartrag-garage` is healthy and
 answering.
 
-**Cause — almost always the layout.** Garage stores nothing until capacity has
+**Cause, almost always the layout.** Garage stores nothing until capacity has
 been assigned to a node. Without it the service starts, passes its
 healthcheck, accepts connections and refuses every write. It is the one
 failure mode with no MinIO equivalent, and it looks like anything but itself.
@@ -395,7 +396,7 @@ That also (re)creates the buckets and re-imports the keys, and says which of
 them already existed rather than failing on them.
 
 **If the layout is applied**, check that the key exists and may write where it
-is being used — Garage has no root user, so a key with no grant on a bucket is
+is being used. Garage has no root user, so a key with no grant on a bucket is
 refused even though it is a valid key:
 
 ```bash
@@ -407,8 +408,8 @@ docker exec smartrag-garage /garage key list
 A bucket with no key listed is a bucket nothing can write to.
 
 **To prove the write path end to end**, send Langfuse one trace and watch the
-object count. This isolates the store from everything else — no agent, no
-Flowise, no chat — and it is the only check that distinguishes "configured
+object count. This isolates the store from everything else (no agent, no
+Flowise, no chat) and is the only check that distinguishes "configured
 correctly" from "actually writing":
 
 ```bash
@@ -423,8 +424,9 @@ sleep 20
 docker exec smartrag-garage /garage bucket info langfuse-events | grep -i objects
 ```
 
-`HTTP 207` is the success answer here — batch ingestion replies multi-status,
-not 200 — and the count must be higher afterwards. Take the count BEFORE as
+`HTTP 207` is the success answer here, because batch ingestion replies
+multi-status rather than 200, and the count must be higher afterwards. Take
+the count BEFORE as
 well as after: without it, "there are objects" does not distinguish this write
 from an older one. A 401 is an authentication problem and says nothing about
 the store; note that the project keys are named
@@ -452,7 +454,7 @@ grep -nE '^[A-Z_]+="[^"]*\$\{' /srv/smart-rag/.env
 
 Anything listed is being passed literally to whatever reads it. `sudo smartrag`
 → *Upgrade* reports and repairs these, and also reports any value still holding
-the `generate-with-bootstrap` placeholder — which is a published string, not a
+the `generate-with-bootstrap` placeholder, which is a published string, not a
 secret.
 
 **A change made from the admin tool has to reach the container.** Values from
@@ -470,7 +472,7 @@ cd /srv/smart-rag && bash scripts/compose.sh up -d --force-recreate <service>
 its drive offline, n8n taking minutes to restart, containers
 disappearing, `load average` far above the core count while CPU sits idle.
 
-**Cause.** Memory. Check first — this looks like a dozen different bugs and
+**Cause.** Memory. Check this first: it looks like a dozen different bugs and
 is one:
 
 ```bash
@@ -491,7 +493,7 @@ docker rm   smartrag-clickhouse smartrag-langfuse-web smartrag-langfuse-worker
 
 Data stays in the volumes; the profile can be switched back on later.
 
-**Note.** The installer now warns about this before it happens — an
+**Note.** The installer now warns about this before it happens; an
 installation predating that check got no warning at all.
 
 ---
@@ -508,7 +510,7 @@ same record wrong by four hours and by two.
 does not support that and says so: queries return "incorrect or empty
 results"
 ([docs](https://langfuse.com/faq/all/self-hosting-timezone-errors)). The
-clock is not wrong — local time is being labelled `Z`.
+clock is not wrong: local time is being labelled `Z`.
 
 ```bash
 docker exec smartrag-clickhouse clickhouse-client --user "$CLICKHOUSE_USER" \
@@ -519,7 +521,7 @@ Anything but `UTC` is the answer.
 
 **There are two independent shifts, and fixing one leaves the other.** The
 stores render what they hold, and Flowise supplies the timestamp on every
-trace it emits — it formats local time and labels it `Z`. On this
+trace it emits, formatting local time and labelling it `Z`. On this
 installation each contributed two hours, which is why the same trace was
 wrong by four in one field and two in another.
 
@@ -538,9 +540,9 @@ read occasionally in its chat list, against every trace, cost figure and
 time filter in Langfuse being wrong.
 
 **What happens to traces already written.** The two halves behave
-differently, which is worth knowing before anyone tries to "repair" the data.
+differently, which matters before anyone attempts to "repair" the data.
 ClickHouse's timezone affected how stored values are *rendered*, so fixing it
-corrects every existing trace retroactively — verified on a record inserted
+corrects every existing trace retroactively, verified on a record inserted
 with a known UTC timestamp, which read two hours high before the change and
 correctly afterwards. Flowise's half was written into the value itself, so
 traces created before that fix stay two hours high for ever. In practice:
@@ -567,13 +569,13 @@ what somebody reading it at 2am wants.
 
 **Symptom.** A browser error where a result was expected.
 
-**Cause.** The server answered with something that is not JSON — usually a
+**Cause.** The server answered with something that is not JSON, usually a
 proxy's error page (502/504), occasionally an unhandled server error. The
 message describes the parser, not the problem.
 
 **Fix.** Current versions show the HTTP status and a snippet of the body
-instead, which names the real failure. If you see the bare SyntaxError, the
-container is running older code — rebuild it. Then read the new message and
+instead, which names the real failure. A bare SyntaxError means the
+container is running older code; rebuild it. Then read the new message and
 check `docker logs smartrag-content-admin`.
 
 ---
@@ -585,7 +587,7 @@ check `docker logs smartrag-content-admin`.
 **Cause.** `client_max_body_size` on the `content.` vhost is smaller than
 the file.
 
-**Fix.** It is set to 200M to match the GUI's own limit. If your nginx
+**Fix.** It is set to 200M to match the GUI's own limit. An nginx
 config predates that, `sudo smartrag` → *SSL* → regenerate the nginx config,
 or edit `client_max_body_size` in the `content.` server block and
 `systemctl reload nginx`.
@@ -598,7 +600,7 @@ or edit `client_max_body_size` in the `content.` server block and
 certificate.
 
 **Fix.** certbot renews automatically via its systemd timer. To force it:
-same menu, *renew*. If renewal fails, it is nearly always DNS or port 80 —
+same menu, *renew*. If renewal fails, the cause is nearly always DNS or port 80:
 `sudo smartrag` → *DNS check* verifies every subdomain still resolves here.
 
 ---
@@ -616,13 +618,13 @@ question with four answers, each stating what it needs beforehand; the entry
 also sends a test mail, so the result is visible without waiting for the next
 ingest. With Postfix already on the host, the answer is the first one and the
 value is the pinned Docker gateway `172.28.92.1`, port 25. Ingest works either
-way — only the notifications are affected.
+way; only the notifications are affected.
 
 ---
 
 ## A workflow was removed from the repository but is still in n8n
 
-**Symptom.** A `git pull` drops a workflow, and n8n goes on running it —
+**Symptom.** A `git pull` drops a workflow, and n8n goes on running it:
 possibly on a schedule, possibly failing every time.
 
 **Cause.** The deployer imports and activates workflows; nothing removes one.
@@ -635,7 +637,7 @@ repository says nothing to it.
 docker exec smartrag-n8n n8n update:workflow --id=<workflow-id> --active=false
 ```
 
-Then delete it in the interface — *Workflows* → the workflow → ⋯ → *Delete*.
+Then delete it in the interface: *Workflows* → the workflow → ⋯ → *Delete*.
 n8n's CLI (1.123.67) has `import:workflow`, `update:workflow`, `list:workflow`
 and `export:workflow`, but no `delete:workflow`; `n8n delete:workflow` answers
 `Command "delete:workflow" not found`.
@@ -657,7 +659,7 @@ docker exec smartrag-n8n n8n list:workflow
 configure as DOCLING_SERVE_MAX_SYNC_WAIT=120."}
 ```
 
-**Cause.** What takes the time is pages, scans and figures — not file size. A
+**Cause.** What takes the time is pages, scans and figures, not file size. A
 1.2 MB scanned PDF exceeded 120 seconds on the test machine while text
 documents many times larger convert in seconds.
 
@@ -669,7 +671,7 @@ cd /srv/smart-rag && bash scripts/compose.sh up -d --force-recreate smartrag-doc
 ```
 
 **One ceiling not to cross.** The workflow node that calls docling has its own
-timeout of 1800 seconds. `DOCLING_MAX_SYNC_WAIT` must stay below it — if
+timeout of 1800 seconds. `DOCLING_MAX_SYNC_WAIT` must stay below it: if
 docling outlasts n8n, the conversion is cut off by n8n instead, and its
 message says only that a request timed out. The component that knows why has
 to be the one that gives up first. `tests/test_ingest_limits.sh` holds that
@@ -677,7 +679,7 @@ ordering; raising the ceiling means raising the node's timeout in
 `n8n/workflows-ingest/ingest-document.json` first and re-importing the
 workflows.
 
-**If it still times out**, the document is genuinely too heavy for one pass —
+**If it still times out**, the document is too heavy for one pass:
 split it. A book-length scan is better ingested as chapters anyway: retrieval
 quality does not improve by feeding one enormous document.
 
@@ -696,7 +698,7 @@ Postgres and ClickHouse write continuously, and a tar of a running data
 directory is a snapshot of no consistent moment. `--running` skips the stop
 and marks the archive as torn, which the restore then says out loud.
 
-Restoring — on this machine or another — starts with a dry run, always:
+Restoring, on this machine or another, always starts with a dry run:
 
 ```bash
 sudo bash scripts/restore.sh /path/to/smartrag-20260819T101500Z.tar.gz --dry-run
@@ -720,8 +722,8 @@ sudo bash scripts/verify-backup.sh /path/to/smartrag-….tar.gz
 ```
 
 It unpacks the archive into a scratch directory and starts throwaway
-containers against that copy — own names, own high loopback-only ports, no
-shared network — and asks each one whether it can read its own data: Postgres
+containers against that copy (own names, own high loopback-only ports, no
+shared network) and asks each one whether it can read its own data: Postgres
 with the archived password, Garage for its buckets, Weaviate for its
 collections. Everything is removed afterwards, including after a failure.
 
@@ -737,10 +739,10 @@ id and the same layout with it — *should*, because it was reasoning and not a
 measurement. `verify-backup.sh` measures it: it starts Garage against the
 archive's copied metadata directory and lists the buckets. If they are there,
 the layout travelled. If it reports no usable layout, the fallback is to lay
-out a fresh cluster and copy the objects back at S3 level — slower, and known
+out a fresh cluster and copy the objects back at S3 level, which is slower and known
 to work.
 
-### What an archive contains, if you would rather do it by hand
+### What an archive contains, for unpacking it by hand
 
 ```bash
 sudo bash /srv/smart-rag/scripts/admin.sh   # → Stop, so the copy is not torn
@@ -769,11 +771,11 @@ URLs, and in the TLS certificates. Plan that as a rename, not as a restore.
 
 ## Something else
 
-1. `sudo smartrag` → *Status* — containers **and** the ingest webhook.
-2. The GUI's **System status** page — API keys, Flowise, agents, and the
+1. `sudo smartrag` → *Status*: containers **and** the ingest webhook.
+2. The GUI's **System status** page: API keys, Flowise, agents, and the
    conversion services.
 3. `bash scripts/compose.sh logs -f <service>`.
-4. `bash tests/run-tests.sh` — if a suite fails on an unmodified checkout,
+4. `bash tests/run-tests.sh`: if a suite fails on an unmodified checkout,
    that is worth reporting rather than working around.
 
 When reporting a problem, the useful three things are: the exact message,
