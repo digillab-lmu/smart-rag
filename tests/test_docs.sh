@@ -142,7 +142,12 @@ fi
 # checks out a tag. That tag then has to be the newest one, or the install
 # instructions quietly hand out an old release.
 readme_tag="$(grep -oE 'git checkout v[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+\.[0-9]+)?' "$REPO/README.md" | head -1 | awk '{print $3}')"
-newest_tag="$(git -C "$REPO" tag --sort=-v:refname 2>/dev/null | head -1)"
+# Git's version sort puts v0.3.0-rc.1 *above* v0.3.0 unless it is told which
+# suffixes mark a pre-release. Without this the check reports the candidate as
+# newest for as long as both exist, and every release after a candidate would
+# look like a stale README.
+newest_tag="$(git -C "$REPO" -c versionsort.suffix=-alpha -c versionsort.suffix=-beta \
+                  -c versionsort.suffix=-rc tag --sort=-v:refname 2>/dev/null | head -1)"
 
 [[ -n "$readme_tag" ]]
 check "the README names a release to check out" $? \
