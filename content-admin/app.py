@@ -40,6 +40,7 @@ import ingest_status
 import llm_client
 import learners
 import mailer
+import s3_client
 import setup_checks
 import storage
 from env_file import read_env, set_env_var
@@ -1913,6 +1914,38 @@ def documents():
                                      gone.get("concepts_removed", 0),
                                      gone.get("concepts_kept", 0),
                                      gone.get("edges_removed", 0))
+
+                # The converted markdown, which until now stayed in the bucket
+                # after its chunks were gone. `source_file` is the object key:
+                # the ingest builds both from the same expression, the upload
+                # node's fileName and Build Frontmatter's source_file, so they
+                # cannot diverge.
+                #
+                # Last, and deliberately not fatal. The document is already
+                # unreachable for every agent at this point; a bucket that
+                # refuses the delete leaves a file nobody can find, which is
+                # the state this used to leave behind on every deletion. It is
+                # reported rather than raised.
+                # Only when chunks actually went. With nothing removed the
+                # warning above says so, and this block would replace it with
+                # a remark about the file — the document that was not found
+                # is of course still listed, so it would look shared.
+                if removed and source_file and g.course.get("bucket"):
+                    others = [d for d in client.list_documents(collection, course_id)
+                              if (d.get("source_file") or "") == source_file]
+                    if others:
+                        # Documents ingested before object keys were unique
+                        # share one source_file, so deleting by it would take
+                        # a file another row still points at.
+                        warning = _t("docs_deleted_file_shared", source_file)
+                    else:
+                        try:
+                            s3_client.S3Client().delete_key(
+                                g.course["bucket"], source_file)
+                        except s3_client.S3Error as exc:
+                            logger.error("Removing %r from %s failed: %s",
+                                         source_file, g.course["bucket"], exc)
+                            warning = _t("docs_deleted_file_failed", source_file, exc)
 
     documents: list[dict] = []
     total = 0

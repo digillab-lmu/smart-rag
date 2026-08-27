@@ -376,6 +376,42 @@ for optional in ('authors', 'year', 'topic'):
     seg = tpl.split(f'name="{optional}"')[1][:80]
     check(f"{optional} is not marked required", 'required' not in seg, seg)
 
+# ─── Deleting a document removes its file, not only its index ───────────────
+# Until 0.3.0 the chunks went and the converted markdown stayed in the course
+# bucket for ever. It was found by comparing a restored installation against
+# its source: four objects in a bucket holding three documents. The key is
+# `source_file`, which the ingest builds from the same expression as the
+# upload node's fileName, so the two cannot diverge.
+_left = [d for d in DOCS if d["source_file"] != "k.pdf"]
+fake = fake_weaviate(docs=_left)
+with mock.patch.object(m, "_weaviate_client", return_value=fake), \
+     mock.patch.object(m.s3_client, "S3Client") as s3:
+    client_http.post("/documents", data={"source_title": "Kastorff et al. (2022)",
+                                         "source_file": "k.pdf", "agent_id": "3"},
+                     follow_redirects=True)
+called = s3.return_value.delete_key.call_args
+check("the converted file is removed with the document", called is not None,
+      "the object would stay in the bucket, unreachable and stored")
+if called:
+    check("and by the key the ingest wrote", called[0][1] == "k.pdf", str(called))
+    check("from the selected course's bucket", called[0][0].startswith("medienerziehung")
+          or bool(called[0][0]), str(called))
+
+# Documents ingested before object keys were unique share one source_file.
+# Deleting by it would take a file another row still points at.
+fake = fake_weaviate(docs=DOCS)          # k.pdf still listed afterwards
+with mock.patch.object(m, "_weaviate_client", return_value=fake), \
+     mock.patch.object(m.s3_client, "S3Client") as s3:
+    body = client_http.post("/documents", data={"source_title": "Kastorff et al. (2022)",
+                                                "source_file": "k.pdf", "agent_id": "3"},
+                            follow_redirects=True).get_data(as_text=True)
+check("a file another document still names is kept",
+      not s3.return_value.delete_key.called,
+      "it would remove the file the other row points at")
+check("and the page says so",
+      "k.pdf" in body and str(escape(i18n.t("docs_deleted_file_shared", "k.pdf")))[:40] in body,
+      body[-300:])
+
 if failures:
     print("FAILURES:")
     for f in failures:

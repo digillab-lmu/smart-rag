@@ -288,13 +288,12 @@ The pages it offers:
   that other material also supports, and deleting a document offers to remove
   its contribution.
 
-  Deleting a document removes its chunks, and its concepts if that is
-  confirmed. The converted markdown stays in the course bucket. It is not
-  reachable from the interface and the bucket is private, but the text is
-  still stored, and it is removed only when the course is deleted. Where a
-  document has to be gone rather than merely unindexed, the object has to be
-  removed as well. Its key is `agent_<n>/<name>.md`; the object-storage
-  section above shows how to list and delete objects.
+  Deleting a document removes its chunks, its concepts if that is confirmed,
+  and the converted markdown from the course bucket. The object key is the
+  `source_file` recorded on the chunks, which the ingest writes from the same
+  expression it uploads under. If the bucket refuses the delete, the page says
+  so: the document is out of the index either way, and the file is named so it
+  can be removed by hand.
 
 - **Courses** — created here. Creating a course also creates its chunk
   collection, its object-storage bucket, the ingest key's grant on that

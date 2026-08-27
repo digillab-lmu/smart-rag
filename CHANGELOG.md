@@ -17,29 +17,37 @@ carries the old number in its own files.
 
 ---
 
-## 0.3.0-rc.1 — 2026-08-26
+## 0.3.0 — 2026-08-27
 
-### Known limitations
+### Fixed
 
-- **Deleting a single document leaves its converted markdown in the course
-  bucket.** The chunks go from Weaviate and, if asked, the concepts from the
-  graph; Garage is not touched. The bucket is private and the file is not
-  listed anywhere in the interface, so this is not an exposure — but a
-  document removed *because* it should not be there is not actually gone, and
-  an invisible leftover is one nobody will clean by hand. It is cleared when
-  the course is deleted, which empties the bucket.
-
-  Not fixed here because it cannot be done correctly yet: the object key is
-  `agent_<n>/<slug>.md`, derived from the uploaded file name, while the
-  chunks record `source_file`, the raw name with its original extension. The
-  chunk schema has `bucket` but no key, so nothing stores what to delete.
-  Re-deriving the slug in a second language would put the same rule in two
-  places, and the last time a key was computed too simply every document in a
-  course overwrote the previous one. The key will be recorded at ingest
-  instead.
+- **Deleting a document left its converted markdown in the course bucket.**
+  The chunks went from Weaviate and, if confirmed, the concepts from the
+  graph; Garage was never touched. The bucket is private and the file is
+  listed nowhere in the interface, so this was not an exposure, but a document
+  removed *because* it should not be there was not actually gone, and an
+  invisible leftover is one nobody cleans by hand. It was cleared only when
+  the course was deleted, which empties the bucket.
 
   Found by comparing a restored installation against its source: four objects
   in a bucket holding three documents.
+
+  0.3.0-rc.1 recorded this as a limitation on the grounds that the object key
+  was not stored anywhere. That was wrong, and wrong from reading the code
+  rather than the data: `Sanitize Filename` replaces `originalFileName` with
+  the slug before `Build Frontmatter` writes `source_file`, and the upload
+  node's `fileName` is the same expression, `directory + '/' + originalFileName`.
+  The chunks have carried the object key all along. The two listings that
+  proved it — the documents page and the bucket — had been on screen side by
+  side and were not compared.
+
+  The deletion now removes the object as well, last and not fatally: the
+  document is already unreachable, so a bucket that refuses the delete is
+  reported with the key rather than raised. A `source_file` another document
+  in the course still names is kept, which is the state of anything ingested
+  before object keys were unique.
+
+## 0.3.0-rc.1 — 2026-08-26
 
 ### Fixed
 
