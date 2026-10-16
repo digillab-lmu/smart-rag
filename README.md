@@ -270,6 +270,19 @@ which explicitly includes educational institutions, public research
 organizations and government bodies regardless of funding source. Commercial
 use needs a separate license — [`LICENSE`](LICENSE) has the full text.
 
+## Citation
+
+[`CITATION.cff`](CITATION.cff) holds the machine-readable citation metadata;
+GitHub renders it as "Cite this repository" in the sidebar, and Zotero and
+reference managers read it directly.
+
+Use of SMART RAG, or of parts of it, should name Benjamin Götzinger and the
+DigiLLab at LMU München, Chair of Empirical Education and Educational
+Psychology (Prof. Frank Fischer) — in publications, in derived systems, and
+wherever the system is presented. Passing on a copy of the software carries
+that requirement in the license: the `Required Notice:` line in
+[`LICENSE`](LICENSE) must travel with it.
+
 ## Contributing
 
 Issues, pull requests and discussion are welcome. Most useful right now:
